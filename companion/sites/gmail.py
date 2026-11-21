@@ -59,11 +59,37 @@ class GmailPrivacy(PrivacyProfile):
         ))
 
 
+_MAIL_WORDS = re.compile(r"\b(?:e-?mail|mail|gmail|message|letter)\b|ഇമെയിൽ|ഈമെയിൽ|ഇ-മെയിൽ|മെയിൽ|മെയില്|കത്ത്|സന്ദേശം")
+_COMPOSE_WORDS = re.compile(r"\b(?:send|write|compose|new|draft|ayakk\w*|ayakkanam|ezhuth\w*)\b|അയ|എഴുത")
+_REPLY_WORDS = re.compile(r"\brepl(?:y|ies|ying)\b|\banswer\b|മറുപടി")
+_SEARCH_WORDS = re.compile(r"\b(?:find|search|look for|where is|kandupidi\w*)\b|കണ്ടെത്ത|കണ്ടുപിടി|തിരയ")
+_ATTACH_WORDS = re.compile(r"\b(?:attach\w*|photo|picture|image|cherkk\w*)\b|ഫോട്ടോ|ചിത്രം|ചേർക്ക")
+
+
 class GmailPack(SitePack):
     provider_goal = "Guide the visible Gmail controls. Never infer or reveal message content."
 
     def is_practice(self, snap: Snapshot) -> bool:
         return False
+
+    def goal_for(self, question: str) -> SiteGoal | None:
+        goal = super().goal_for(question)
+        if goal is not None:
+            return goal
+        # Live test 22 Nov 04:05: real speech ("I need to send an email to my son.", "എനിക്കൊരു ഇമെയിൽ അയക്കണം",
+        # "I want to write a mail") missed the exact phrase list. Fall back to keywords on both halves.
+        text = " ".join(_phrase(part) for part in question.split(" / ", 1))
+        mail = bool(_MAIL_WORDS.search(text))
+        name = None
+        if _REPLY_WORDS.search(text):
+            name = "reply"
+        elif mail and _SEARCH_WORDS.search(text):
+            name = "search"
+        elif mail and _COMPOSE_WORDS.search(text):
+            name = "compose"
+        elif _ATTACH_WORDS.search(text):
+            name = "attach"
+        return next((g for g in self.goals if g.name == name), None)
 
     def start_guidance(self, question: str) -> GmailGuide:
         goal = self.goal_for(self.privacy.filter_question(question))
