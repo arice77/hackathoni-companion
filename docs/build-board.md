@@ -54,6 +54,14 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | 5–7 | Streaming barge-in, AXObserver window tracking, Chrome `AXManualAccessibility` | deferred | — |
 | — | Shepherd / Intro.js / Skyvern code | idea-only (AGPL) | — |
 
+### Retest 22 Nov ~00:15 (`runs/session-20261122-001418-3c4e76.jsonl`)
+| Bug | Fix | Owner |
+|---|---|---|
+| Optional units (toppings, delivery time, instructions) skipped silently: my earlier policy, wrong for parents | offer every visible unit in order, mark optional, done when filled/skipped/a later unit filled; panel Skip button + spoken "skip" | planner builder + coordinator (Skip button done) + QA (test expectations) |
+| "Start with" on every step | "Next, …" from step 2 | planner builder |
+| KSEB: `clarify` instead of pointing at "Submit to see the bill" | wider primary-action detection; no mid-walk clarify | planner builder (with KSEB pack) |
+| "Browser Accessibility did not respond in time" on real pages | larger budget, one retry, keep last good snapshot | web builder |
+
 ## Site packs (started 22 Nov ~00:15)
 
 | Piece | Owner | Status |
