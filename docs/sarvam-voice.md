@@ -1,13 +1,21 @@
 # Sarvam voice adapter
 
-Checked against Sarvam's hosted REST documentation on **21 November 2026**. Both preferences passed the **live** synthetic round trip. The native recorder built successfully, and real-microphone capture is **blocked** pending macOS permission.
+Checked against Sarvam's hosted REST documentation on **21 November 2026**. Malayalam and English passed the **live** synthetic round trip. The native recorder built successfully, and real-microphone capture is **blocked** pending macOS permission.
+
+## Languages
+
+Select Malayalam (`--lang ml`), English (`en`), Hindi (`hi`) or Kannada (`kn`) at launch or from the panel. **Hindi and Kannada are implemented and tested with mocks only.** Live speech recognition, translation quality and pronunciation in these two languages remain unverified.
+
+- For Hindi and Kannada, Saaras v4 transcribes the WAV with `hi-IN` or `kn-IN` for the panel, then translates the same WAV to English for the planner. Typed questions use text translation to English. The person still sees their original question. [Saaras languages and output modes](https://docs.sarvam.ai/api/api-guides-tutorials/models/saaras)
+- The panel, pointer and narration share one translation of the planner’s English instruction. The app uses `sarvam-translate:v1` with explicit source and target codes. It replaces quoted UI labels with numeric placeholders locally and restores the exact labels and quotation marks after checking each placeholder survived once. Successful translations are cached in memory by English text and target language. A failed request, empty response or damaged placeholder leaves the original English instruction available. [Text translation REST reference](https://docs.sarvam.ai/api-reference/text/translate-text) · [Sarvam Translate](https://docs.sarvam.ai/api/api-guides-tutorials/models/sarvam-translate) · [Mayura language pairs](https://docs.sarvam.ai/api/api-guides-tutorials/models/mayura)
+- Bulbul v3 uses the `shubh` speaker for both languages. The REST field for the selected TTS language is `language_code`. Text translation uses `target_language_code`. [Bulbul REST schema](https://docs.sarvam.ai/api-reference/text-to-speech/convert) · [Recommended v3 speakers by language](https://docs.sarvam.ai/api/api-guides-tutorials/text-to-speech/bulbul-v3-best-practices)
 
 ## Panel integration
 
 Import these functions from `companion.voice`.
 
 ```python
-LanguagePreference = Literal["ml-IN", "en-IN"]
+LanguagePreference = Literal["ml-IN", "en-IN", "hi-IN", "kn-IN"]
 
 record_push_to_talk() -> None
 stop_recording() -> Path
@@ -16,10 +24,10 @@ speak(text: str, preference: LanguagePreference) -> sarvam.SynthesisMeta | None
 stop_speaking() -> None
 ```
 
-- Map the panel's Malayalam and English options to `ml-IN` and `en-IN`. Keep the preference used for a voice turn through transcription, reply planning, overlay text and playback.
+- Map the selected panel language to its BCP-47 code. Keep the preference used for a voice turn through transcription, reply planning, overlay text and playback.
 - Start capture on press on a worker, then call `stop_recording()` on release after startup has completed. On a first-use permission prompt, grant access and make a fresh press-to-talk recording. Only one recorder is active per Python process. The helper caps capture at 29 seconds, and release finalizes a 16 kHz mono 16-bit PCM WAV under `runs/`.
-- Pass relevant visible English control labels as `keyterms`, for example `ask(wav_path, "ml-IN", keyterms=("Save Draft", "Next"))`. The adapter forwards them to both speech modes used for a Malayalam turn and to native transcription for an English turn.
-- `VoiceTranscript` extends the shared `Transcript`. Use `result.text` for the native transcript and `result.planner_text` for the English question. For Malayalam, `result.english_translation` is a second `Transcript` with its own request ID and latency. For English, `planner_text` uses the native transcript. Supply the planner with the observed English control labels and the preference for the reply.
+- Pass relevant visible English control labels as `keyterms`, for example `ask(wav_path, "ml-IN", keyterms=("Save Draft", "Next"))`. The adapter forwards them to each speech request in the turn.
+- `VoiceTranscript` extends the shared `Transcript`. Use `result.text` for the native transcript and `result.planner_text` for the English question. For Malayalam, Hindi and Kannada, `result.english_translation` is a second `Transcript` with its own request ID and latency. For English speech, `planner_text` uses the native transcript. Supply the planner with the observed English control labels and the preference for the reply.
 - Pass the same preference and localized instruction to `speak` and show that instruction on the overlay. `ask` and `speak` block and belong on workers. `speak` returns TTS metadata when playback finishes, or `None` if interrupted. `stop_speaking()` terminates the current `afplay` process and prevents any in-flight synthesis from starting late playback.
 
 ### macOS microphone permission
@@ -36,12 +44,12 @@ Both calls use `POST https://api.sarvam.ai/speech-to-text` with `multipart/form-
 
 | Call | Multipart fields alongside `file` |
 |---|---|
-| Native transcript | `model=saaras:v4`, `language_code=ml-IN` in Malayalam mode or `unknown` in English mode, `mode=transcribe` |
-| Malayalam audio to English | `model=saaras:v4`, `language_code=ml-IN`, `mode=translate` |
+| Native transcript | `model=saaras:v4`, the selected Indic language code or `unknown` in English mode, `mode=transcribe` |
+| Indic audio to English | `model=saaras:v4`, the source `language_code`, `mode=translate` |
 
 The adapter pins Saaras v4 for both calls. The API also supports `verbatim`, `translit`, `codemix`, optional `with_timestamps`, and automatic language detection with `language_code=unknown` or an omitted language code. Sarvam lists Saaras v3 as legacy and Saarika as deprecated. [REST request reference](https://docs.sarvam.ai/api-reference/speech-to-text/transcribe) · [Saarika model guide](https://docs.sarvam.ai/api/getting-started/models/saarika)
 
-In English panel mode, `ask()` adds the translation call if Sarvam detects Malayalam or the transcript contains Malayalam script or common romanized Malayalam words. It keeps the native transcript alongside the English translation and makes at most two speech calls.
+In English panel mode, `ask()` adds the translation call if Sarvam detects Malayalam, Hindi or Kannada, or the transcript contains Malayalam script or common romanized Malayalam words. It keeps the native transcript alongside the English translation and makes at most two speech calls.
 
 Saaras v4 accepts `keyterms` as one JSON-encoded array in a multipart field. Each label is one array element, including labels with spaces. The adapter deduplicates labels and accepts up to 50 distinct terms with up to 64 characters each. These hints bias recognition. [Keyterm prompting](https://docs.sarvam.ai/api/api-guides-tutorials/speech-to-text/how-to/keyterms)
 
@@ -53,11 +61,11 @@ The legacy `POST https://api.sarvam.ai/speech-to-text-translate` route originall
 
 ## Text translation
 
-`POST https://api.sarvam.ai/translate` takes a JSON body with `input`, `source_language_code`, `target_language_code`, and the selected `model`. Swap `ml-IN` and `en-IN` for the two directions. The adapter pins `sarvam-translate:v1`, which supports formal translation and up to **2,000 characters**. `mayura:v1` also supports the pair with up to **1,000 characters** and additional style and script settings. The service responds with `translated_text`, `source_language_code`, and `request_id`. The adapter's `translate_text` returns the translated string. This endpoint handles text only. [Text translation reference](https://docs.sarvam.ai/api-reference/text/translate-text)
+`POST https://api.sarvam.ai/translate` takes a JSON body with `input`, `source_language_code`, `target_language_code`, and the selected `model`. The adapter pins `sarvam-translate:v1`, which supports formal translation and up to **2,000 characters**. `mayura:v1` also supports the pair with up to **1,000 characters** and additional style and script settings. The service responds with `translated_text`, `source_language_code`, and `request_id`. The adapter's `translate_text` returns the translated string. This endpoint handles text only. [Text translation reference](https://docs.sarvam.ai/api-reference/text/translate-text)
 
 ## Text-to-speech
 
-`POST https://api.sarvam.ai/text-to-speech` takes JSON with required `text` and `language_code`. Optional controls include `model`, `speaker`, `speech_sample_rate`, `output_audio_codec`, `pace`, `pitch`, `loudness`, `temperature`, `enable_preprocessing`, `dict_id` and `enable_cached_responses`. REST takes **1–2,500 characters**. The adapter pins `bulbul:v3` with the documented Malayalam speaker `shubh` (or a v3 speaker override), `language_code=ml-IN` or `en-IN`, and 16 kHz WAV. `bulbul:v4-flash` is the newer model. It accepts `ml-IN` but currently has no dedicated Malayalam persona. [TTS reference](https://docs.sarvam.ai/api-reference/text-to-speech/convert) · [Malayalam v3 voices](https://docs.sarvam.ai/api-reference-docs/api-guides-tutorials/text-to-speech/how-to/change-the-speaker-voice) · [v4 persona coverage](https://docs.sarvam.ai/api/api-guides-tutorials/text-to-speech/best-practices)
+`POST https://api.sarvam.ai/text-to-speech` takes JSON with required `text` and `language_code`. Optional controls include `model`, `speaker`, `speech_sample_rate`, `output_audio_codec`, `pace`, `pitch`, `loudness`, `temperature`, `enable_preprocessing`, `dict_id` and `enable_cached_responses`. REST takes **1–2,500 characters**. The adapter pins `bulbul:v3` with the documented Malayalam speaker `shubh` (or a v3 speaker override), the selected language code, and 16 kHz WAV. `bulbul:v4-flash` is the newer model. It accepts `ml-IN` but currently has no dedicated Malayalam persona. [TTS reference](https://docs.sarvam.ai/api-reference/text-to-speech/convert) · [Malayalam v3 voices](https://docs.sarvam.ai/api-reference-docs/api-guides-tutorials/text-to-speech/how-to/change-the-speaker-voice) · [v4 persona coverage](https://docs.sarvam.ai/api/api-guides-tutorials/text-to-speech/best-practices)
 
 Supported output codecs are `wav`, `mp3`, `aac`, `flac`, `opus`, `linear16`, `mulaw` and `alaw`. REST supports 8, 16, 22.05, 24, 32, 44.1 and 48 kHz, with 22.05 kHz WAV as the default and a narrower rate set for Opus (8, 16, 24 or 48 kHz). The response contains `audios` (base64 strings) and `request_id`. For one utterance, `synthesize` returns the decoded WAV and metadata with model, language, speaker, request ID and HTTP latency. [TTS REST guide](https://docs.sarvam.ai/api/api-guides-tutorials/text-to-speech/rest-api)
 
@@ -69,7 +77,7 @@ For a short call, send `stream: false`, set `max_tokens` to bound generation (de
 
 ## Smoke test
 
-The first attempt returned exit code 2 with `BLOCKED: no SARVAM_API_KEY`. The latest **live** synthetic run passed on 21 November 2026 with Saaras v4 across both preferences. All three speech requests accepted the sample keyterms `Save Draft` and `Next`. Both native transcripts matched their reference text at 100% character similarity. Saaras translated the Malayalam audio to “How to fill out this form?” The run used five provider calls. The report is `runs/sarvam-smoke-20261121T144028.202966Z.json` in the adapter worktree.
+The first attempt returned exit code 2 with `BLOCKED: no SARVAM_API_KEY`. The latest **live** synthetic run passed on 21 November 2026 with Saaras v4 for Malayalam and English. All three speech requests accepted the sample keyterms `Save Draft` and `Next`. Both native transcripts matched their reference text at 100% character similarity. Saaras translated the Malayalam audio to “How to fill out this form?” The run used five provider calls. The report is `runs/sarvam-smoke-20261121T144028.202966Z.json` in the adapter worktree.
 
 1. Sign in to the Sarvam dashboard, open **API Keys**, and create a key. [Dashboard](https://indus.sarvam.ai/) · [Key setup](https://docs.sarvam.ai/api-reference/authentication)
 2. In the shell running the smoke test, set `export SARVAM_API_KEY='...'`. Alternatively, add `SARVAM_API_KEY=...` to the gitignored repo-root `.env`. Replace the ellipsis locally.

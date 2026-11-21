@@ -21,7 +21,7 @@ import objc
 from AppKit import NSApplication, NSApplicationActivationPolicyRegular
 from Foundation import NSObject, NSTimer
 
-from .panel import PaperPanel
+from .panel import LANGUAGES, WORDS, PaperPanel
 from . import reader
 from .contracts import Decision
 from .guidance import with_choice_group_bounds
@@ -40,7 +40,16 @@ UI = {
            "ask": "Ask", "stop": "Stop", "skip": "Skip", "mic": "Speak", "listening": "Listening… click to stop",
            "thinking": "Understanding…",
            "placeholder": "Ask in English (Utter works here)"},
+    "hi": {"nothing": "कुछ सुनाई नहीं दिया। फिर से बोलें।", "start": "शुरू करने के लिए सवाल पूछें।",
+           "mic": "बोलें", "listening": "सुन रहा हूँ… रोकने के लिए दबाएँ",
+           "placeholder": "हिन्दी में अपना सवाल लिखें"},
+    "kn": {"nothing": "ಏನೂ ಕೇಳಿಸಲಿಲ್ಲ. ಮತ್ತೊಮ್ಮೆ ಹೇಳಿ.", "start": "ಪ್ರಾರಂಭಿಸಲು ಒಂದು ಪ್ರಶ್ನೆ ಕೇಳಿ.",
+           "mic": "ಮಾತನಾಡಿ", "listening": "ಕೇಳುತ್ತಿದ್ದೇನೆ… ನಿಲ್ಲಿಸಲು ಒತ್ತಿ",
+           "placeholder": "ಕನ್ನಡದಲ್ಲಿ ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಬರೆಯಿರಿ"},
 }
+for _lang in ("hi", "kn"):
+    UI[_lang].update({key: WORDS[_lang][key] for key in ("ask", "skip", "stop", "heard")})
+    UI[_lang]["thinking"] = WORDS[_lang]["think"]
 TICK_S = 0.5
 
 
@@ -95,7 +104,11 @@ def make_planner(name: str, task: str):
 class Companion(NSObject):
     def initWithPlanner_task_lang_(self, planner_name, task_name, lang):
         self = objc.super(Companion, self).init()
-        self.lang = lang  # "ml" or "en": language of the panel, the overlay and (later) the voice
+        self.lang = lang
+        self.translations = {}
+        self.pending_translations = set()
+        self.failed_translations = set()
+        self.translating_question = False
         self.last_decision = None
         self.voice = load_voice()
         self.mute = False  # set from --mute; QA runs stay silent so they don't spend credits
@@ -150,30 +163,65 @@ class Companion(NSObject):
 
     @objc.python_method
     def text_for(self, decision: Decision) -> str:
-        return decision.instruction if self.lang == "ml" else (decision.instruction_en or decision.instruction)
+        if self.lang == "ml":
+            return decision.instruction
+        english = decision.instruction_en
+        return self.translations.get((english, self.pref()), english or decision.instruction)
+
+    @objc.python_method
+    def request_translation(self, decision):
+        english, pref = decision.instruction_en, self.pref()
+        key = (english, pref)
+        if (self.lang not in ("hi", "kn") or not english or self.voice is None or key in self.translations
+                or key in self.pending_translations or key in self.failed_translations):
+            return
+        self.pending_translations.add(key)
+
+        def work():
+            try:
+                text = self.voice.translate_instruction(english, pref)
+            except self.voice.sarvam.SarvamError:
+                text = ""
+            self.on_main("instructionTranslated:", (english, pref, text))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def instructionTranslated_(self, payload):
+        english, pref, text = payload
+        key = (english, pref)
+        self.pending_translations.discard(key)
+        if text:
+            self.translations[key] = text
+        else:
+            self.failed_translations.add(key)  # keep the English step, retry on the next question
+        decision = self.panel.current_decision
+        if decision is None or self.pref() != pref or decision.instruction_en != english:
+            return
+        self.panel.render()
+        if self.active and self.shown_frame is not None and decision.kind == "point":
+            self.overlay.show(self.shown_frame, self.text_for(decision), "")
+        if not self.panel.voice_phase:
+            self.speak(decision)
 
     def langChanged_(self, sender):
-        self.lang = "ml" if sender.selectedSegment() == 0 else "en"
-        t = UI[self.lang]
-        self.field.setPlaceholderString_(t["placeholder"])
-        self.ask_button.setTitle_(t["ask"])
-        self.stop_button.setTitle_(t["stop"])
-        self.skip_button.setTitle_(t["skip"])
-        self.mic_button.setTitle_("🎤 " + t["mic"])
+        self.lang = LANGUAGES[sender.selectedSegment()]
         self.reset_mic()
-        if self.last_decision is not None:
-            self.say(self.last_decision)
-            self.last_spoken = None
-            self.speak(self.last_decision)
-        self.last_key = None  # redraw the pointer in the new language on the next tick
-        self.shown_frame = None
+        if self.voice is not None:
+            self.voice.stop_speaking()
         self.panel.set_state("language")
+        decision = self.panel.current_decision
+        if decision is not None:
+            self.request_translation(decision)
+            if self.active and self.shown_frame is not None and decision.kind == "point":
+                self.overlay.show(self.shown_frame, self.text_for(decision), "")
+            self.last_spoken = None
+            self.speak(decision)
         self.log("language", lang=self.lang)
 
     # ---------- voice (Sarvam) ----------
     @objc.python_method
     def pref(self) -> str:
-        return "ml-IN" if self.lang == "ml" else "en-IN"
+        return f"{self.lang}-IN"
 
     @objc.python_method
     def keyterms(self) -> list[str]:
@@ -224,7 +272,7 @@ class Companion(NSObject):
         self.log("voice_heard", provider=heard.provider, model=heard.model, text=heard.text,
                  english=heard.english_translation.text if heard.english_translation else None,
                  ms=round(1000 * (time.perf_counter() - t0)), sarvam_calls=1 + int(heard.english_translation is not None))
-        self.on_main("voiceHeard:", {"text": heard.text, "planner": heard.planner_text})
+        self.on_main("voiceHeard:", {"text": heard.text, "planner": heard.planner_text, "preference": pref})
 
     @objc.python_method
     def on_main(self, selector, payload):
@@ -234,8 +282,10 @@ class Companion(NSObject):
         self.reset_mic()
         native, english = payload["text"], payload["planner"]
         self.field.setStringValue_(native)
-        # The planner sees both: the native words and Sarvam's English translation of them.
-        self.start_question(native if english == native else f"{native} / {english}", shown=native)
+        question = english
+        if native != english and payload["preference"] in ("ml-IN", "en-IN"):
+            question = f"{native} / {english}"
+        self.start_question(question, shown=native)
 
     def voiceFailed_(self, message):
         self.reset_mic()
@@ -252,6 +302,8 @@ class Companion(NSObject):
     @objc.python_method
     def speak(self, decision: Decision):
         """Read each new instruction aloud once, in the user's language."""
+        if (decision.instruction_en, self.pref()) in self.pending_translations:
+            return
         text = self.text_for(decision)
         if self.voice is None or self.mute or not text or text == self.last_spoken:
             return
@@ -269,10 +321,10 @@ class Companion(NSObject):
     # ---------- actions ----------
     def ask_(self, sender):
         text = str(self.field.stringValue())
-        self.start_question(text, shown=text)
+        self.start_question(text, shown=text, translate=self.lang in ("hi", "kn") and bool(text.strip()))
 
     @objc.python_method
-    def start_question(self, question: str, shown: str):
+    def start_question(self, question: str, shown: str, translate=False):
         with self.plan_lock:
             self.question = question
             self.question_version += 1
@@ -281,13 +333,43 @@ class Companion(NSObject):
             if reset_question is not None:
                 reset_question()
         self.last_spoken = None
+        self.failed_translations.clear()
+        self.translating_question = translate
         t = UI[self.lang]
         self.heard.setStringValue_(f"{t['heard']}: “{shown}”" if shown.strip() else t["nothing"])
         self.active, self.last_key, self.started = True, None, time.time()
         self.shown_frame, self.panel_thinking = None, False
         self.progressed, self.unsure = False, 0
         self.panel.set_state("question", heard=shown)
+        if translate:
+            version, pref = self.question_version, self.pref()
+            self.overlay.hide()
+
+            def work():
+                english = ""
+                if self.voice is not None:
+                    try:
+                        english = self.voice.sarvam.translate_text(question, pref, "en-IN").strip()
+                    except self.voice.sarvam.SarvamError:
+                        pass
+                self.on_main("questionTranslated:", (version, english))
+
+            threading.Thread(target=work, daemon=True).start()
+            return
         self.log("question", text=self.question, chars=len(self.question))
+        self.tick_(None)
+
+    def questionTranslated_(self, payload):
+        version, english = payload
+        if self.question_version != version or not self.active:
+            return
+        self.translating_question = False
+        if not english:
+            self.active = False
+            self.panel.set_state("question_error")
+            return
+        self.question = english
+        self.log("question", text=english, chars=len(english))
         self.tick_(None)
 
     def skip_(self, sender):
@@ -313,7 +395,7 @@ class Companion(NSObject):
 
     # ---------- loop ----------
     def tick_(self, timer):
-        if not self.active:
+        if not self.active or self.translating_question:
             return
         t0 = time.perf_counter()
         try:
@@ -349,8 +431,9 @@ class Companion(NSObject):
         ok, why = validate(decision, snap)
         target = snap.control(decision.control_id) if decision.control_id else None
         stable_target = (target.identifier or (target.role, target.label)) if target else None
-        key = (decision.kind, stable_target, decision.instruction, ok)
+        key = (decision.kind, stable_target, decision.instruction, decision.instruction_en, ok)
         changed = key != self.last_key
+        self.request_translation(decision)
 
         if decision.kind == "point" and ok:
             self.progressed = True
@@ -447,16 +530,23 @@ class Companion(NSObject):
             fh.write(json.dumps(fields, ensure_ascii=False) + "\n")
 
 
-def main():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--planner", default=os.environ.get("COMPANION_PLANNER"), choices=["scripted", "sarvam"],
                     help="default: sarvam for web_any (no step script), scripted otherwise")
     ap.add_argument("--task", default=os.environ.get("COMPANION_TASK", "aims"), help="companion/tasks/<name>.py")
     ap.add_argument("--mute", action="store_true", help="no spoken replies (QA, or to save Sarvam credits)")
-    ap.add_argument("--lang", default=os.environ.get("COMPANION_LANG", "ml"), choices=["ml", "en"])
+    ap.add_argument("--lang", default=os.environ.get("COMPANION_LANG", "ml"), choices=LANGUAGES)
     ap.add_argument("--question", help="pre-fill and ask (rehearsal/testing); normally typed or dictated")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.lang not in LANGUAGES:
+        ap.error(f"Unsupported COMPANION_LANG: {args.lang}")
     args.planner = args.planner or ("sarvam" if args.task in ("web_any", "web_site") else "scripted")
+    return args
+
+
+def main():
+    args = parse_args()
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
     companion = Companion.alloc().initWithPlanner_task_lang_(args.planner, args.task, args.lang)
