@@ -180,7 +180,9 @@ class Companion(NSObject):
         """English labels on the current screen help Saaras hear 'Next', 'Save Draft' and the like."""
         snap, seen = self.last_snapshot, []
         for c in (snap.controls if snap else ()):
-            if c.label and len(c.label) <= 40 and c.role != "AXStaticText" and c.label not in seen:
+            # Saaras rejects any keyterm containing a comma or semicolon (HTTP 400), so skip those labels.
+            if (c.label and len(c.label) <= 40 and c.role != "AXStaticText" and c.label not in seen
+                    and not any(ch in c.label for ch in ",;")):
                 seen.append(c.label)
         return seen[:50]
 
@@ -418,6 +420,12 @@ class Companion(NSObject):
             self.plan_thread = threading.Thread(target=work, daemon=True)
             self.plan_thread.start()
         if result is None or result[2] != sig:
+            if result is not None and result[0].kind in {"point", "clarify"}:
+                # Live pages (YouTube previews, carousels) change every tick. Keep the current step on screen
+                # while re-planning instead of flashing "Understanding…" (Abin's real-mic test, 22 Nov 02:20).
+                stale = rebind(result[0], result[1], snap)
+                if stale is not None:
+                    return stale, result[3]
             if not self.panel_thinking:
                 self.overlay.hide()
                 self.shown_frame = None

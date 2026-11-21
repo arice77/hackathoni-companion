@@ -252,6 +252,10 @@ def _video_key(control: Control) -> str:
     return ""
 
 
+def _result_id(control: Control) -> str:
+    return _video_key(control) or _phrase(control.label)
+
+
 def _result_links(controls: tuple[Control, ...]) -> tuple[Control, ...]:
     # Channel cards also have both a heading and a link. Only the reader can verify a watch URL.
     titles = {_phrase(c.label) for c in controls if c.role == "AXHeading" and c.label}
@@ -406,7 +410,7 @@ class YouTubeGuide:
                 return _point(snap, play, "വീഡിയോ തുടങ്ങാൻ {label} അമർത്തൂ.", "Use {label} to start the video.")
             if on_watch:
                 return _await_player(snap, controls)
-            if result is not None and _phrase(result.label) == self.result_label:
+            if result is not None and _result_id(result) == self.result_label:
                 return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
         elif self.search_phase == "start":
             if not player_visible and (results_ui or (links and search and search.filled is True)):
@@ -427,8 +431,11 @@ class YouTubeGuide:
                 self.search_phase = "results"
             elif submit is not None:
                 return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
-        if result is not None and (self.search_phase != "watch" or self.result_label == _phrase(result.label)):
-            self.search_phase, self.result_label, self.prior_results = "watch", _phrase(result.label), fingerprint
+        # Match the chosen video by its URL hash, not its label (YouTube rewrites labels on hover), and re-pick
+        # the best visible result while no player is open (Abin's live test, 22 Nov 02:25: stuck on "scroll").
+        if result is not None and (self.search_phase != "watch" or self.result_label == _result_id(result)
+                                   or not player_visible):
+            self.search_phase, self.result_label, self.prior_results = "watch", _result_id(result), fingerprint
             self.had_player = player_visible
             return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
         if self.search_phase in {"results", "watch"} and snap.below_fold_count > 0:
