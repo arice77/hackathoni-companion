@@ -125,7 +125,10 @@ class Companion(NSObject):
         self.active = False
         self.progressed, self.unsure = False, 0
         self.question = ""
-        self.last_key = None
+        self.last_key = None  # logical step: (kind, stable target, instruction, valid); logged and spoken once
+        self.shown_frame = None  # where the pointer is drawn now; redrawn on any shift without re-narrating
+        self.panel_thinking = False
+        self.reader_error_logged = False
         self.started = 0.0
         RUNS.mkdir(exist_ok=True)
         self.log_path = RUNS / f"session-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.jsonl"
@@ -209,6 +212,7 @@ class Companion(NSObject):
             self.last_spoken = None
             self.speak(self.last_decision)
         self.last_key = None  # redraw the pointer in the new language on the next tick
+        self.shown_frame = None
         self.log("language", lang=self.lang)
 
     # ---------- voice (Sarvam) ----------
@@ -320,6 +324,7 @@ class Companion(NSObject):
         t = UI[self.lang]
         self.heard.setStringValue_(f"{t['heard']}: “{shown}”" if shown.strip() else t["nothing"])
         self.active, self.last_key, self.started = True, None, time.time()
+        self.shown_frame, self.panel_thinking = None, False
         self.progressed, self.unsure = False, 0
         self.log("question", text=self.question, chars=len(self.question))
         self.tick_(None)
@@ -333,6 +338,7 @@ class Companion(NSObject):
         with self.plan_lock:
             self.plan_result = None
         self.last_key = None
+        self.shown_frame = None
         self.log("skip")
         self.tick_(None)
 
@@ -356,12 +362,14 @@ class Companion(NSObject):
             self.last_snapshot = snap
         except reader.ReaderError as e:
             self.overlay.hide()
+            self.shown_frame = None
             self.say(None, "പരിശീലന ഫോം തുറക്കൂ.", str(e))
             self.status.setStringValue_(f"paused: {e}")
-            if self.last_key != "reader-error":
+            if not self.reader_error_logged:
                 self.log("reader_error", error=str(e))
-                self.last_key = "reader-error"
+                self.reader_error_logged = True
             return
+        self.reader_error_logged = False
         t1 = time.perf_counter()
         if self.background:
             decision, plan_ms = self.background_decision(snap)
@@ -379,16 +387,22 @@ class Companion(NSObject):
             self.unsure = 0
         ok, why = validate(decision, snap)
         target = snap.control(decision.control_id) if decision.control_id else None
-        key = (decision.kind, target.identifier if target else None, target.frame if target else None, ok)
+        stable_target = (target.identifier or (target.role, target.label)) if target else None
+        key = (decision.kind, stable_target, decision.instruction, ok)
         changed = key != self.last_key
 
         if decision.kind == "point" and ok:
             self.progressed = True
-            if changed:
+            if changed or target.frame != self.shown_frame:  # a 1-pt layout shift repaints, nothing more
                 self.overlay.show(target.frame, self.text_for(decision), "")
-        else:
+                self.shown_frame = target.frame
+        elif self.shown_frame is not None:
             self.overlay.hide()
+            self.shown_frame = None
         t3 = time.perf_counter()
+        if not changed and self.panel_thinking:  # same step after a re-plan: restore the text quietly
+            self.say(decision)
+        self.panel_thinking = False
 
         if changed:
             if plan_ms is not None:
@@ -440,10 +454,11 @@ class Companion(NSObject):
             self.plan_thread = threading.Thread(target=work, daemon=True)
             self.plan_thread.start()
         if result is None or result[2] != sig:
-            if self.last_key != "thinking":
+            if not self.panel_thinking:
                 self.overlay.hide()
+                self.shown_frame = None
                 self.instruction.setStringValue_(UI[self.lang]["thinking"])
-                self.last_key = "thinking"
+                self.panel_thinking = True
             return None, None
         decision = rebind(result[0], result[1], snap)
         if decision is None:
