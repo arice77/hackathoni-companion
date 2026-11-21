@@ -23,6 +23,7 @@ Both Sarvam MCPs (`sarvam`, `sarvam-docs`) are installed at user scope for new C
 |---|---|---|
 | 21 Nov 20:10 | key verified with 1 chat call | orchestrator |
 | 21 Nov 20:40 | ~48 calls used so far: 1 chat (key check), 5 voice smoke, 1 TTS (panel test), 39 planner eval, ~2 planner live | agents' reports; Abin to post dashboard balance |
+| 21 Nov ~20:45 | **597 of 600 left** (~3 credits for ~48 calls: chat, STT, TTS are cheap; budget is not a constraint for testing) | Abin, dashboard |
 
 ## Parked: GST hero demo (decided earlier on 21 Nov, on hold)
 
