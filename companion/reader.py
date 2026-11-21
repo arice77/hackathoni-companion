@@ -17,7 +17,6 @@ from .contracts import Control, Rect, Snapshot
 
 INPUT_ROLES = {"AXTextField", "AXTextArea", "AXComboBox", "AXPopUpButton", "AXCheckBox", "AXDateField"}
 KEEP_ROLES = INPUT_ROLES | {"AXButton", "AXStaticText", "AXLink", "AXRadioButton", "AXMenuButton"}
-PLACEHOLDER_CHOICES = {"", "select", "--select--", "choose"}
 MAX_ELEMENTS = 400
 
 
@@ -58,6 +57,12 @@ def _label(el, role: str) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
+def is_placeholder_choice(value: str) -> bool:
+    """'Select', '---Select My Service---', 'Choose...' and blanks mean nothing is chosen yet."""
+    v = value.strip().strip("-").strip(" .…").lower()
+    return v == "" or v.startswith("select") or v.startswith("choose")
+
+
 def _filled(el, role: str) -> bool | None:
     if role not in INPUT_ROLES:
         return None
@@ -65,7 +70,7 @@ def _filled(el, role: str) -> bool | None:
     if role == "AXCheckBox":
         return bool(v)
     if role == "AXPopUpButton":
-        return isinstance(v, str) and v.strip().lower() not in PLACEHOLDER_CHOICES
+        return isinstance(v, str) and not is_placeholder_choice(v)
     if role == "AXDateField":
         return v is not None
     return isinstance(v, str) and v.strip() != ""

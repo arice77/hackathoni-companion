@@ -27,12 +27,13 @@ from Foundation import NSMakeRect, NSObject, NSTimer
 from . import reader
 from .contracts import Decision
 from .planner import ScriptedPlanner
+from .tasks import load as load_task
 from .validator import validate
 
-TARGET_BUNDLE = "in.hackathoni.crop-loss-training"
 ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
 TICK_S = 0.5
+SETTLE_TICKS = 3  # mid-task "unsupported" must persist this many ticks (screens redraw in pieces)
 
 
 def make_overlay():
@@ -44,11 +45,11 @@ def make_overlay():
         return BasicOverlay(), "basic"
 
 
-def make_planner(name: str):
+def make_planner(name: str, task: str):
     if name == "sarvam":
         from .planner_sarvam import SarvamPlanner  # requires SARVAM_API_KEY
-        return SarvamPlanner()
-    return ScriptedPlanner()
+        return SarvamPlanner(task)
+    return ScriptedPlanner(task)
 
 
 def label(text: str, size: float, bold: bool = False, wrap: bool = False) -> NSTextField:
@@ -61,11 +62,13 @@ def label(text: str, size: float, bold: bool = False, wrap: bool = False) -> NST
 
 
 class Companion(NSObject):
-    def initWithPlanner_(self, planner_name):
+    def initWithPlanner_task_(self, planner_name, task_name):
         self = objc.super(Companion, self).init()
-        self.planner = make_planner(planner_name)
+        self.task = load_task(task_name)
+        self.planner = make_planner(planner_name, task_name)
         self.overlay, self.overlay_kind = make_overlay()
         self.active = False
+        self.progressed, self.unsure = False, 0
         self.question = ""
         self.last_key = None
         self.started = 0.0
@@ -74,7 +77,7 @@ class Companion(NSObject):
         self.build_window()
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             TICK_S, self, "tick:", None, True)
-        self.log("start", planner=self.planner.name, overlay=self.overlay_kind, trusted=reader.is_trusted())
+        self.log("start", task=self.task.name, planner=self.planner.name, overlay=self.overlay_kind, trusted=reader.is_trusted())
         return self
 
     # ---------- UI ----------
@@ -124,6 +127,7 @@ class Companion(NSObject):
         self.question = str(self.field.stringValue())
         self.heard.setStringValue_(f"Heard: “{self.question}”" if self.question.strip() else "Heard nothing — try again.")
         self.active, self.last_key, self.started = True, None, time.time()
+        self.progressed, self.unsure = False, 0
         self.log("question", text=self.question, chars=len(self.question))
         self.tick_(None)
 
@@ -139,7 +143,7 @@ class Companion(NSObject):
             return
         t0 = time.perf_counter()
         try:
-            snap = reader.snapshot(TARGET_BUNDLE)
+            snap = reader.snapshot(self.task.bundle_id)
         except reader.ReaderError as e:
             self.overlay.hide()
             self.say(None, "പരിശീലന ഫോം തുറക്കൂ.", str(e))
@@ -151,12 +155,19 @@ class Companion(NSObject):
         t1 = time.perf_counter()
         decision = self.planner.decide(self.question, snap)
         t2 = time.perf_counter()
+        if decision.kind == "unsupported" and self.progressed:
+            self.unsure += 1
+            if self.unsure < SETTLE_TICKS:  # likely a half-drawn screen; look again before giving up
+                return
+        else:
+            self.unsure = 0
         ok, why = validate(decision, snap)
         target = snap.control(decision.control_id) if decision.control_id else None
         key = (decision.kind, target.identifier if target else None, target.frame if target else None, ok)
         changed = key != self.last_key
 
         if decision.kind == "point" and ok:
+            self.progressed = True
             if changed:
                 self.overlay.show(target.frame, decision.instruction, decision.instruction_en)
         else:
@@ -177,11 +188,11 @@ class Companion(NSObject):
             self.last_key = key
 
         if decision.kind == "complete":
-            receipt = RUNS / "draft-saved.json"
+            receipt = RUNS / self.task.receipt_file
             fresh = receipt.exists() and receipt.stat().st_mtime >= self.started - 1
             self.log("complete", status_text_seen=True, receipt_file_fresh=fresh)
             self.status.setStringValue_(
-                "Verified: status text seen" + (" + fresh draft-saved.json receipt" if fresh else " (no receipt file)"))
+                "Verified: status text seen" + (" + fresh training receipt file" if fresh else " (no receipt file)"))
             self.active = False
         elif decision.kind in ("clarify", "unsupported"):
             self.active = False
@@ -196,11 +207,12 @@ class Companion(NSObject):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--planner", default=os.environ.get("COMPANION_PLANNER", "scripted"), choices=["scripted", "sarvam"])
+    ap.add_argument("--task", default=os.environ.get("COMPANION_TASK", "aims"), help="companion/tasks/<name>.py")
     ap.add_argument("--question", help="pre-fill and ask (rehearsal/testing); normally typed or dictated")
     args = ap.parse_args()
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
-    companion = Companion.alloc().initWithPlanner_(args.planner)
+    companion = Companion.alloc().initWithPlanner_task_(args.planner, args.task)
     app.activateIgnoringOtherApps_(True)
     if args.question is not None:
         companion.field.setStringValue_(args.question)

@@ -1,62 +1,88 @@
-// Crop-loss application TRAINING form. Synthetic, offline, never submits anything.
-// Three screens imitating the shape of the Kerala online crop-loss application so the
-// companion can be demonstrated on a repeatable target. Labels are provisional until the
-// workflow review confirms them (see .context/workflow-review.md / HANDOFF.md).
+// Crop Insurance Compensation claim — TRAINING form. Synthetic, offline, never submits anything.
+// Labels follow the Kerala AIMS user manual (Crop-Insurance-Consolidated-UM.pdf, March 2026,
+// pp. 45-50) as recorded in the workflow review. Strings marked [invented] in comments are not
+// in the manual. The real "Proceed" terms screen (p. 46) is skipped to keep three screens.
 import AppKit
 
 struct Field {
     let id: String
     let label: String
     let kind: Kind
-    enum Kind { case text(placeholder: String), popup([String]), date, attach(sample: String), check }
+    enum Kind {
+        case text(placeholder: String, prefilled: String?)
+        case popup([String])
+        case readonly(String)
+        case attach(sample: String, hint: String)
+        case add
+        case check
+    }
 }
 
 struct Screen {
     let id: String
     let title: String
+    let subtitle: String
     let fields: [Field]
     let nextTitle: String
 }
 
+let declaration = "അപേക്ഷയിൽ പ്രസ്താവിച്ചിട്ടുള്ള വിവരങ്ങൾ സത്യമാണെന്നും… (training copy)"
+
 let screens: [Screen] = [
-    Screen(id: "farmer", title: "Step 1 of 3 · Farmer & Land Details", fields: [
-        Field(id: "farmer-id", label: "Farmer Registration No.", kind: .text(placeholder: "e.g. TRN-0000")),
-        Field(id: "panchayat", label: "Panchayat", kind: .popup(["Select", "Pulincunnoo (training)", "Kainakary (training)", "Nedumudi (training)"])),
-        Field(id: "krishi-bhavan", label: "Krishi Bhavan", kind: .popup(["Select", "Pulincunnoo KB (training)", "Kainakary KB (training)", "Nedumudi KB (training)"])),
-        Field(id: "survey-no", label: "Survey Number", kind: .text(placeholder: "e.g. 000/0")),
-        Field(id: "land-area", label: "Land Area (ha)", kind: .text(placeholder: "e.g. 0.40")),
-    ], nextTitle: "Next"),
-    Screen(id: "loss", title: "Step 2 of 3 · Crop Loss Details", fields: [
-        Field(id: "crop", label: "Crop", kind: .popup(["Select", "Paddy", "Banana", "Coconut"])),
-        Field(id: "season", label: "Season", kind: .popup(["Select", "Puncha", "Virippu", "Mundakan"])),
-        Field(id: "cause", label: "Cause of Loss", kind: .popup(["Select", "Flood", "Heavy Rain", "Drought", "Pest Attack"])),
-        Field(id: "loss-date", label: "Date of Loss", kind: .date),
-        Field(id: "affected-area", label: "Affected Area (ha)", kind: .text(placeholder: "e.g. 0.30")),
-    ], nextTitle: "Next"),
-    Screen(id: "evidence", title: "Step 3 of 3 · Evidence & Review", fields: [
-        Field(id: "photo", label: "Field Photo", kind: .attach(sample: "sample-paddy-field.jpg")),
-        Field(id: "tax-receipt", label: "Land Tax Receipt", kind: .attach(sample: "sample-tax-receipt.pdf")),
-        Field(id: "declaration", label: "I declare the details are correct", kind: .check),
-    ], nextTitle: "Save Draft"),
+    Screen(id: "submission", title: "Application Submission", subtitle: "UM p. 45", fields: [
+        Field(id: "krishibhavan", label: "Krishibhavan", kind: .text(placeholder: "", prefilled: "Pulincunnoo")),
+        Field(id: "classification", label: "Classification",
+              kind: .popup(["---Select Classification---", "Insurance & Calamity Relief Services"])),
+        Field(id: "service", label: "Service",
+              kind: .popup(["---Select My Service---", "Crop Insurance Compensation"])),
+    ], nextTitle: "Apply for New"),
+    // "Service : Crop Insurance Compensation" short form is [invented]; manual shows the long name.
+    Screen(id: "calamity", title: "Calamity Details", subtitle: "Service : Crop Insurance Compensation", fields: [
+        Field(id: "calamity-date", label: "Calamity Date*", kind: .popup(["Select", "12-08-2026 (TEST FIR)"])),
+        // "Flood" is documented (p. 50); "Drought" and "Pest/Disease" are [invented].
+        Field(id: "calamity-type", label: "Calamity Type*", kind: .popup(["Select", "Flood", "Drought", "Pest/Disease"])),
+        Field(id: "calamity-description", label: "Calamity Description", kind: .text(placeholder: "", prefilled: nil)),
+    ], nextTitle: "Save »"),
+    Screen(id: "crop", title: "Crop Information", subtitle: "UM p. 48", fields: [
+        Field(id: "insured-crop", label: "My Insured Crops*", kind: .popup(["Select", "Paddy (TEST policy)"])),
+        // "Mainfield" seen on p. 49; "Nursery" is [invented].
+        Field(id: "crop-stage", label: "Crop Stages", kind: .popup(["Select", "Mainfield", "Nursery"])),
+        Field(id: "crop-unit", label: "Crop Unit", kind: .readonly("Cent")),
+        Field(id: "planting-date", label: "Date Of Planting", kind: .readonly("15-06-2026")),
+        Field(id: "crop-age", label: "Crop Age", kind: .readonly("58 days")),
+        Field(id: "quantity-applied", label: "Quantity Applied*", kind: .text(placeholder: "", prefilled: nil)),
+        Field(id: "crop-image", label: "Upload Crop Image*",
+              kind: .attach(sample: "TEST-paddy-flood.jpg (SAMPLE)", hint: "File Upload Type - jpeg, jpg, png(Max File Size 1.91 MB)")),
+        Field(id: "add-crop", label: "+Add", kind: .add),
+    ], nextTitle: "Submit Application"),
+    // Read-only preview (UM p. 50). "Final Submit »" disabled in training is [invented].
+    Screen(id: "view", title: "Application View (training draft)", subtitle: "UM p. 50", fields: [
+        Field(id: "summary-calamity", label: "Calamity Details", kind: .readonly("12-08-2026 · Flood")),
+        Field(id: "summary-crop", label: "Crop information", kind: .readonly("Paddy · Mainfield")),
+        Field(id: "declaration", label: declaration, kind: .check),
+    ], nextTitle: "Final Submit »"),
 ]
 
 final class Controller: NSObject {
     let window: NSWindow
     var index = 0
     let titleLabel = NSTextField(labelWithString: "")
-    let banner = NSTextField(labelWithString: "TRAINING FORM · synthetic data · nothing is submitted")
+    let subtitleLabel = NSTextField(labelWithString: "")
+    let banner = NSTextField(labelWithString: "TRAINING — not connected to AIMS · synthetic data · nothing is submitted")
     let status = NSTextField(labelWithString: "")
     let stack = NSStackView()
     let backButton = NSButton(title: "Back", target: nil, action: nil)
+    let printButton = NSButton(title: "Print Application", target: nil, action: nil)
     let nextButton = NSButton(title: "Next", target: nil, action: nil)
-    var attached: [String: NSTextField] = [:]
-    var values: [String: Bool] = [:]
+    var notes: [String: NSTextField] = [:]
+    var attachedFile = false
+    var receiptDir: String? { ProcessInfo.processInfo.environment["TRAINING_RECEIPT_DIR"] }
 
     override init() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 640),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         super.init()
-        window.title = "Crop Loss Application — Training"
+        window.title = "AIMS Crop Insurance Compensation — Training"
         window.center()
         let root = NSView()
         window.contentView = root
@@ -65,20 +91,23 @@ final class Controller: NSObject {
         banner.font = .systemFont(ofSize: 11, weight: .semibold)
         titleLabel.font = .systemFont(ofSize: 20, weight: .bold)
         titleLabel.setAccessibilityIdentifier("screen-title")
+        subtitleLabel.textColor = .secondaryLabelColor
+        subtitleLabel.setAccessibilityIdentifier("screen-subtitle")
         status.setAccessibilityIdentifier("status")
         status.textColor = .secondaryLabelColor
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 12
+        stack.spacing = 10
 
         backButton.target = self; backButton.action = #selector(back)
         backButton.setAccessibilityIdentifier("back")
+        printButton.setAccessibilityIdentifier("print")
+        printButton.target = self; printButton.action = #selector(printDraft)
         nextButton.target = self; nextButton.action = #selector(next)
-        nextButton.keyEquivalent = "\r"
         nextButton.setAccessibilityIdentifier("next")
-        let buttons = NSStackView(views: [backButton, nextButton])
+        let buttons = NSStackView(views: [backButton, printButton, nextButton])
 
-        for v in [banner, titleLabel, stack, buttons, status] as [NSView] {
+        for v in [banner, titleLabel, subtitleLabel, stack, buttons, status] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -87,7 +116,9 @@ final class Controller: NSObject {
             banner.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
             titleLabel.topAnchor.constraint(equalTo: banner.bottomAnchor, constant: 8),
             titleLabel.leadingAnchor.constraint(equalTo: banner.leadingAnchor),
-            stack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 18),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subtitleLabel.leadingAnchor.constraint(equalTo: banner.leadingAnchor),
+            stack.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
             stack.leadingAnchor.constraint(equalTo: banner.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
             buttons.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
@@ -103,78 +134,112 @@ final class Controller: NSObject {
         let l = NSTextField(labelWithString: label)
         l.alignment = .right
         l.translatesAutoresizingMaskIntoConstraints = false
-        l.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        l.widthAnchor.constraint(equalToConstant: 180).isActive = true
         let r = NSStackView(views: [l, control])
         r.spacing = 12
         return r
     }
 
+    func note(_ id: String, _ text: String) -> NSTextField {
+        let n = NSTextField(labelWithString: text)
+        n.textColor = .secondaryLabelColor
+        n.setAccessibilityIdentifier(id)
+        notes[id] = n
+        return n
+    }
+
     func render() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        attached = [:]
+        notes = [:]
+        attachedFile = false
         let s = screens[index]
         titleLabel.stringValue = s.title
+        subtitleLabel.stringValue = s.subtitle
         for f in s.fields {
-            let control: NSView
             switch f.kind {
-            case .text(let placeholder):
+            case .text(let placeholder, let prefilled):
                 let t = NSTextField()
                 t.placeholderString = placeholder
+                if let p = prefilled { t.stringValue = p; t.isEditable = false }
                 t.translatesAutoresizingMaskIntoConstraints = false
-                t.widthAnchor.constraint(equalToConstant: 220).isActive = true
-                control = t
+                t.widthAnchor.constraint(equalToConstant: f.id == "calamity-description" ? 360 : 240).isActive = true
+                t.setAccessibilityLabel(f.label)
+                t.setAccessibilityIdentifier(f.id)
+                stack.addArrangedSubview(row(f.label, t))
             case .popup(let items):
                 let p = NSPopUpButton()
                 p.addItems(withTitles: items)
-                control = p
-            case .date:
-                let d = NSDatePicker()
-                d.datePickerStyle = .textFieldAndStepper
-                d.datePickerElements = .yearMonthDay
-                d.dateValue = Date()
-                control = d
-            case .attach(let sample):
-                let b = NSButton(title: "Attach sample file", target: self, action: #selector(attach(_:)))
-                b.identifier = NSUserInterfaceItemIdentifier(f.id + "|" + sample)
-                let note = NSTextField(labelWithString: "No file attached")
-                note.textColor = .secondaryLabelColor
-                note.setAccessibilityIdentifier(f.id + "-file")
-                attached[f.id] = note
-                let h = NSStackView(views: [b, note])
-                b.setAccessibilityLabel("Upload " + f.label)
+                p.setAccessibilityLabel(f.label)
+                p.setAccessibilityIdentifier(f.id)
+                stack.addArrangedSubview(row(f.label, p))
+            case .readonly(let value):
+                stack.addArrangedSubview(row(f.label, note(f.id, value)))
+            case .attach(let sample, let hint):
+                let b = NSButton(title: "Browse...", target: self, action: #selector(attach(_:)))
+                b.identifier = NSUserInterfaceItemIdentifier(sample)
+                b.setAccessibilityLabel("Upload Crop Image Browse")
                 b.setAccessibilityIdentifier(f.id)
-                stack.addArrangedSubview(row(f.label, h))
-                continue
+                let v = NSStackView(views: [NSStackView(views: [b, note(f.id + "-file", "No file chosen")]),
+                                            note(f.id + "-hint", hint)])
+                v.orientation = .vertical
+                v.alignment = .leading
+                stack.addArrangedSubview(row(f.label, v))
+            case .add:
+                let b = NSButton(title: "+Add", target: self, action: #selector(addRow))
+                b.setAccessibilityIdentifier(f.id)
+                stack.addArrangedSubview(row("", NSStackView(views: [b, note("added-details", "Added Details: none")])))
             case .check:
-                let c = NSButton(checkboxWithTitle: f.label, target: nil, action: nil)
+                let c = NSButton(checkboxWithTitle: f.label, target: self, action: #selector(declared(_:)))
+                c.setAccessibilityLabel("Declaration")
                 c.setAccessibilityIdentifier(f.id)
                 stack.addArrangedSubview(c)
-                continue
             }
-            control.setAccessibilityLabel(f.label)
-            control.setAccessibilityIdentifier(f.id)
-            stack.addArrangedSubview(row(f.label, control))
         }
+        let last = index == screens.count - 1
         backButton.isHidden = index == 0
+        printButton.isHidden = !last
         nextButton.title = s.nextTitle
-        status.stringValue = ""
+        nextButton.isEnabled = !last  // Final Submit is disabled in training
+        nextButton.toolTip = last ? "Disabled in training" : nil
+        status.stringValue = last ? "Training draft ready — Final Submit is disabled. Tick the declaration to finish." : ""
+        if last { writeReceipt("draft_view_shown") }
     }
 
     @objc func attach(_ sender: NSButton) {
-        let parts = (sender.identifier?.rawValue ?? "|").split(separator: "|").map(String.init)
-        attached[parts[0]]?.stringValue = "Attached: \(parts.count > 1 ? parts[1] : "sample") (synthetic)"
-        sender.title = "Replace sample file"
+        notes["crop-image-file"]?.stringValue = "Chosen: \(sender.identifier?.rawValue ?? "sample") · 0.8 MB"
+        attachedFile = true
     }
+
+    @objc func addRow() {
+        guard attachedFile else {
+            status.stringValue = "Choose a crop image before +Add."
+            return
+        }
+        notes["added-details"]?.stringValue = "Added Details: 1 row (Paddy, TEST-paddy-flood.jpg)"
+        status.stringValue = ""
+    }
+
+    @objc func declared(_ sender: NSButton) {
+        if sender.state == .on {
+            status.stringValue = "Training draft complete — declaration ticked. Nothing was submitted."
+            writeReceipt("declaration_ticked")
+        } else {
+            status.stringValue = "Training draft ready — Final Submit is disabled. Tick the declaration to finish."
+        }
+    }
+
+    @objc func printDraft() { status.stringValue = "Print is disabled in training." }
 
     @objc func back() { if index > 0 { index -= 1; render() } }
 
-    @objc func next() {
-        if index < screens.count - 1 { index += 1; render(); return }
-        status.stringValue = "Draft saved — training only. Nothing was submitted."
-        let receipt: [String: Any] = ["event": "draft_saved", "at": ISO8601DateFormatter().string(from: Date())]
-        if let data = try? JSONSerialization.data(withJSONObject: receipt),
-           let dir = ProcessInfo.processInfo.environment["TRAINING_RECEIPT_DIR"] {
-            try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("draft-saved.json"))
+    @objc func next() { if index < screens.count - 1 { index += 1; render() } }
+
+    func writeReceipt(_ event: String) {
+        guard let dir = receiptDir else { return }
+        let receipt: [String: Any] = ["event": event, "at": ISO8601DateFormatter().string(from: Date()),
+                                      "training": true, "submitted": false]
+        if let data = try? JSONSerialization.data(withJSONObject: receipt) {
+            try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("training-\(event).json"))
         }
     }
 }

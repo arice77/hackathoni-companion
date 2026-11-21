@@ -21,19 +21,19 @@ from companion import reader  # noqa: E402
 BUNDLE = "in.hackathoni.crop-loss-training"
 # Synthetic case: obviously fake identifiers.
 CASE = {
-    "farmer-id": "TRN-0042",
-    "panchayat": "Pulincunnoo (training)",
-    "krishi-bhavan": "Pulincunnoo KB (training)",
-    "survey-no": "123/4",
-    "land-area": "0.40",
-    "crop": "Paddy",
-    "season": "Puncha",
-    "cause": "Flood",
-    "affected-area": "0.30",
+    "classification": "Insurance & Calamity Relief Services",
+    "service": "Crop Insurance Compensation",
+    "calamity-date": "12-08-2026 (TEST FIR)",
+    "calamity-type": "Flood",
+    "calamity-description": "TRAINING: bund breach, field submerged 14 days",
+    "insured-crop": "Paddy (TEST policy)",
+    "crop-stage": "Mainfield",
+    "quantity-applied": "100",
 }
-ORDER = ["farmer-id", "panchayat", "krishi-bhavan", "survey-no", "land-area", "next",
-         "crop", "season", "cause", "affected-area", "next",
-         "photo", "tax-receipt", "declaration", "next"]
+ORDER = ["classification", "service", "next",
+         "calamity-date", "calamity-type", "calamity-description", "next",
+         "insured-crop", "crop-stage", "quantity-applied", "crop-image", "add-crop", "next",
+         "declaration"]
 
 
 def element_for(ident):
@@ -58,10 +58,16 @@ def act(ident):
         AX.AXUIElementSetAttributeValue(el, "AXValue", CASE[ident])
     elif role == "AXPopUpButton":
         AX.AXUIElementPerformAction(el, "AXPress")
-        time.sleep(0.3)
-        _, kids = AX.AXUIElementCopyAttributeValue(el, "AXChildren", None)
-        menu = kids[0]
-        _, items = AX.AXUIElementCopyAttributeValue(menu, "AXChildren", None)
+        items = []
+        for _ in range(20):  # the menu can take a moment to open
+            time.sleep(0.1)
+            _, kids = AX.AXUIElementCopyAttributeValue(el, "AXChildren", None)
+            if kids:
+                _, items = AX.AXUIElementCopyAttributeValue(kids[0], "AXChildren", None)
+                if items:
+                    break
+        if not items:
+            raise SystemExit(f"menu for {ident} never opened")
         for it in items:
             _, title = AX.AXUIElementCopyAttributeValue(it, "AXTitle", None)
             if title == CASE[ident]:

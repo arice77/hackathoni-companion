@@ -19,36 +19,37 @@ def field(cid, ident, filled, role="AXTextField", label=None, frame=(680, 235, 2
     return Control(cid, role, label or ident, frame, enabled, ident, filled)
 
 
-SCREEN1 = "Step 1 of 3 · Farmer & Land Details"
-ASK = "how do I report paddy loss"
+SCREEN1 = "Application Submission"
+ASK = "how do I claim crop insurance for paddy loss"
+
+
+def note(cid, ident, text):
+    return Control(cid, "AXStaticText", text, (0, 0, 1, 1), identifier=ident)
 
 
 class PlannerTests(unittest.TestCase):
     p = ScriptedPlanner()
 
     def test_first_unfilled_field(self):
-        s = snap(SCREEN1, [field("c01", "farmer-id", True), field("c02", "panchayat", False, "AXPopUpButton"),
-                           field("c03", "krishi-bhavan", False, "AXPopUpButton"), field("c04", "survey-no", False),
-                           field("c05", "land-area", False), field("c06", "next", None, "AXButton")])
+        s = snap(SCREEN1, [field("c01", "classification", True, "AXPopUpButton"),
+                           field("c02", "service", False, "AXPopUpButton"), field("c06", "next", None, "AXButton")])
         d = self.p.decide(ASK, s)
         self.assertEqual((d.kind, d.control_id), ("point", "c02"))
 
     def test_all_filled_points_at_next(self):
-        ids = ["farmer-id", "panchayat", "krishi-bhavan", "survey-no", "land-area"]
-        s = snap(SCREEN1, [field(f"c{i}", x, True) for i, x in enumerate(ids, 1)] + [field("c9", "next", None, "AXButton")])
+        s = snap(SCREEN1, [field("c1", "classification", True, "AXPopUpButton"),
+                           field("c2", "service", True, "AXPopUpButton"), field("c9", "next", None, "AXButton")])
         self.assertEqual(self.p.decide(ASK, s).control_id, "c9")
 
     def test_similar_labels_use_identifier_not_label(self):
-        # Two fields both labelled "Area"; the planner must pick by identifier/order.
-        s = snap("Step 2 of 3 · Crop Loss Details", [
-            field("c1", "crop", True, "AXPopUpButton"), field("c2", "season", True, "AXPopUpButton"),
-            field("c3", "cause", True, "AXPopUpButton"),
-            field("c4", "land-area", False, label="Area"), field("c5", "affected-area", False, label="Area"),
-            field("c6", "next", None, "AXButton")])
-        self.assertEqual(self.p.decide(ASK, s).control_id, "c5")
+        s = snap("Calamity Details", [
+            field("c1", "calamity-date", True, "AXPopUpButton", label="Calamity"),
+            field("c2", "calamity-type", False, "AXPopUpButton", label="Calamity"),
+            field("c3", "calamity-description", False), field("c6", "next", None, "AXButton")])
+        self.assertEqual(self.p.decide(ASK, s).control_id, "c2")
 
     def test_missing_control_is_unsupported(self):
-        s = snap(SCREEN1, [field("c01", "farmer-id", True)])
+        s = snap(SCREEN1, [field("c01", "classification", True, "AXPopUpButton")])
         self.assertEqual(self.p.decide(ASK, s).kind, "unsupported")
 
     def test_empty_question_clarifies(self):
@@ -58,20 +59,33 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(self.p.decide("what's the weather", snap(SCREEN1, [])).kind, "unsupported")
 
     def test_malayalam_question_accepted(self):
-        s = snap(SCREEN1, [field("c01", "farmer-id", False)])
+        s = snap(SCREEN1, [field("c01", "classification", False, "AXPopUpButton")])
         self.assertEqual(self.p.decide("നെല്ല് നഷ്ടം അപേക്ഷ", s).kind, "point")
 
     def test_unknown_screen(self):
         self.assertEqual(self.p.decide(ASK, snap("Login", [])).kind, "unsupported")
 
-    def test_attachment_done_detected_from_note(self):
-        s = snap("Step 3 of 3 · Evidence & Review", [
-            field("c1", "photo", None, "AXButton"),
-            Control("c2", "AXStaticText", "Attached: sample-paddy-field.jpg (synthetic)", (0, 0, 1, 1), identifier="photo-file"),
-            field("c3", "tax-receipt", None, "AXButton"),
-            Control("c4", "AXStaticText", "No file attached", (0, 0, 1, 1), identifier="tax-receipt-file"),
-            field("c5", "declaration", False, "AXCheckBox"), field("c6", "next", None, "AXButton")])
-        self.assertEqual(self.p.decide(ASK, s).control_id, "c3")
+    def test_upload_then_add_detected_from_notes(self):
+        crop = [field("c1", "insured-crop", True, "AXPopUpButton"), field("c2", "crop-stage", True, "AXPopUpButton"),
+                field("c3", "quantity-applied", True), field("c4", "crop-image", None, "AXButton"),
+                field("c6", "add-crop", None, "AXButton"), field("c8", "next", None, "AXButton")]
+        before = snap("Crop Information", crop + [note("c5", "crop-image-file", "No file chosen"),
+                                                  note("c7", "added-details", "Added Details: none")])
+        self.assertEqual(self.p.decide(ASK, before).control_id, "c4")
+        chosen = snap("Crop Information", crop + [note("c5", "crop-image-file", "Chosen: TEST.jpg"),
+                                                  note("c7", "added-details", "Added Details: none")])
+        self.assertEqual(self.p.decide(ASK, chosen).control_id, "c6")
+
+    def test_declaration_then_complete(self):
+        view = "Application View (training draft)"
+        s = snap(view, [field("c1", "declaration", False, "AXCheckBox")])
+        self.assertEqual(self.p.decide(ASK, s).control_id, "c1")
+        done = Snapshot("s1", time.time(), "b", 1, "w", WIN, (
+            Control("c00", "AXStaticText", view, (448, 193, 322, 26), identifier="screen-title"),
+            Control("c99", "AXStaticText", "Training draft complete — declaration ticked.", (448, 647, 574, 18),
+                    identifier="status"),
+            field("c1", "declaration", True, "AXCheckBox")))
+        self.assertEqual(self.p.decide(ASK, done).kind, "complete")
 
 
 class ValidatorTests(unittest.TestCase):
