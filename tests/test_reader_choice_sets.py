@@ -13,7 +13,7 @@ def collect(nodes, viewport=None, frames=None):
     with patch.object(reader, "_frame", side_effect=lambda el, get: (frames or {}).get(el, (5, 5, 60, 25))):
         return {control.label: control for control in reader._collect(
             "root", lambda el, name: nodes[el].get(name), 100, viewport,
-        )}
+        ).controls}
 
 
 def signature(controls):

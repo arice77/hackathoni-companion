@@ -67,10 +67,12 @@ class WebReaderTests(unittest.TestCase):
         nodes = {
             "app": {"AXWindows": ["other", "practice"], "AXFocusedWindow": "practice"},
             "practice": {"AXRole": "AXWindow", "AXTitle": reader.PRACTICE_TITLE,
-                         "AXChildren": ["toolbar", "page"]},
+                         "AXChildren": ["toolbar", "outer-scroll"]},
             "toolbar": {"AXRole": "AXToolbar"},
-            "page": {"AXRole": "AXWebArea", "AXURL": url, "AXParent": "scroll"},
-            "scroll": {"AXRole": "AXScrollArea"},
+            "outer-scroll": {"AXRole": "AXScrollArea", "AXChildren": ["inner-scroll"]},
+            "inner-scroll": {"AXRole": "AXScrollArea", "AXChildren": ["wrapper"]},
+            "wrapper": {"AXRole": "AXGroup", "AXChildren": ["page"]},
+            "page": {"AXRole": "AXWebArea", "AXURL": url},
         }
 
         def get(el, name):
@@ -78,7 +80,8 @@ class WebReaderTests(unittest.TestCase):
                 self.fail(f"Read outside the front page: {el} {name}")
             return nodes[el].get(name)
 
-        frames = {"practice": window_frame, "page": (0, 20, 100, 150), "scroll": viewport}
+        frames = {"practice": window_frame, "page": (0, 20, 100, 150),
+                  "outer-scroll": (0, 35, 100, 95), "inner-scroll": (0, 25, 100, 110)}
         with patch.object(reader, "_frame", side_effect=lambda el, get: frames[el]):
             self.assertEqual(reader._selected_web_page("app", get), ("page", window_frame, viewport, url))
             self.assertEqual(reader._selected_web_page("app", get, reader.PRACTICE_TITLE, url),
@@ -108,7 +111,7 @@ class WebReaderTests(unittest.TestCase):
         }
         frames = {"input": (-5, 70, 25, 20), "offscreen": (0, 0, 20, 20)}
         with patch.object(reader, "_frame", side_effect=lambda el, get: frames.get(el)):
-            controls = reader._collect("page", lambda el, name: nodes[el].get(name), 10, (0, 80, 100, 100))
+            controls = reader._collect("page", lambda el, name: nodes[el].get(name), 10, (0, 80, 100, 100)).controls
         self.assertEqual(len(controls), 1)
         self.assertEqual((controls[0].identifier, controls[0].label, controls[0].frame, controls[0].filled),
                          ("business-name", "Business Name", (0, 80, 20, 10), True))
@@ -132,7 +135,7 @@ class WebReaderTests(unittest.TestCase):
                 self.fail(f"Accessed a password field's {name}")
             return nodes[el].get(name)
 
-        self.assertEqual(reader._collect("page", get, 10, (0, 0, 100, 100)), ())
+        self.assertEqual(reader._collect("page", get, 10, (0, 0, 100, 100)).controls, ())
 
     def test_generic_headings_and_labels_are_capped_and_prose_is_not_read(self):
         nodes = {
@@ -148,7 +151,7 @@ class WebReaderTests(unittest.TestCase):
             return nodes[el].get(name)
 
         with patch.object(reader, "_frame", return_value=(0, 25, 50, 10)):
-            controls = reader._collect("page", get, 10, (0, 0, 100, 100))
+            controls = reader._collect("page", get, 10, (0, 0, 100, 100)).controls
         self.assertEqual([control.id for control in controls], ["c00", "c01", "c02"])
         self.assertEqual([control.label for control in controls[:2]], ["Go to example.test", "Next"])
         self.assertEqual(len(controls[2].label), reader.MAX_WEB_LABEL_LENGTH)
@@ -166,7 +169,7 @@ class WebReaderTests(unittest.TestCase):
             return nodes[el].get(name)
 
         with patch.object(reader, "_frame", return_value=(0, 25, 50, 10)):
-            field, time_picker = reader._collect("page", get, 10, (0, 0, 100, 100))
+            field, time_picker = reader._collect("page", get, 10, (0, 0, 100, 100)).controls
         self.assertEqual((field.label, field.filled), ("Business Name", True))
         self.assertEqual((time_picker.label, time_picker.filled), ("Preferred delivery time:", None))
 
