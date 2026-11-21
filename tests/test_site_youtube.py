@@ -141,6 +141,36 @@ class YouTubeTests(unittest.TestCase):
         self.assertIn("press Return", instruction.instruction_en)
         self.assertEqual(guide.decide(snapshot("results")).control_id, "best")
 
+    def test_home_feed_without_a_match_stays_at_search_even_as_cards_change(self):
+        home = snapshot("home")
+        unrelated = tuple(
+            Control(f"card-{i}", "AXLink", title, (20, 125 + 35 * i, 220, 24),
+                    identifier=f"youtube-watch:card-{i}:a01")
+            for i, title in enumerate(("Evening News", "Sports Highlights", "Weather Forecast", "Morning Yoga"))
+        )
+        feed = replace(home, controls=(*home.controls, *unrelated[:3]), below_fold_count=160)
+        question = "Enikku Darshana kaananam"
+        guide = PACK.start_guidance(question)
+        for visible in (feed, replace(feed, controls=(*home.controls, *unrelated[1:]))):
+            decision = guide.decide(visible)
+            self.assertEqual((decision.kind, decision.control_id), ("point", "search"))
+            self.assertIn("Type ‘darshana’", decision.instruction_en)
+
+        matching = replace(feed, controls=(*feed.controls, snapshot("results").control("best")))
+        self.assertEqual(PACK.start_guidance(question).decide(matching).control_id, "best")
+
+    def test_named_title_beats_a_more_decorated_credit_mention(self):
+        results = snapshot("results")
+        official = results.control("best")
+        for separator in ("|", "-", ":"):
+            with self.subTest(separator=separator):
+                credit = replace(official, id="credit", identifier="youtube-watch:nagumo:a123",
+                                 frame=(20, 80, 220, 24), label=f"Nagumo Official Video Song {separator} Darshana")
+                title = replace(official, label=f"Darshana {separator} Hridayam")
+                snap = replace(results, controls=(*results.controls[:3], credit, title))
+                guide = PACK.start_guidance("I want to watch Darshana.")
+                self.assertEqual(guide.decide(snap).control_id, "best")
+
     def test_open_menu_state_does_not_repoint_settings(self):
         guide = PACK.start_guidance("Play it slower")
         self.assertEqual(guide.decide(snapshot("watch")).control_id, "gear")
@@ -359,6 +389,9 @@ class YouTubeTests(unittest.TestCase):
             "എനിക്ക് വീഡിയോ ഇച്ചിരി സ്ലോ ആക്കണം. / I need to slow down the video a bit.",
             "എനിക്ക് വീഡിയോ ഇച്ചിരി സ്ലോ ആക്കണം.", "സ്ലോ ആക്കണം", "സ്ലോ ആക്കൂ", "ഇച്ചിരി സ്ലോ", "കുറച്ച് സ്ലോ",
             "Slow down the video", "Slow down the video a bit", "I need to slow down", "I want to slow down",
+            "എനിക്ക് ഈ വീഡിയോ സ്ലോ ആക്കണം.", "I need to slow down this video.",
+            "Can you slow down this video a little, please?",
+            "എനിക്ക് ഈ വീഡിയോ സ്ലോ ആക്കണം. / I would like to see a slower version.",
             "പതുക്കെ ആക്കണം", "വേഗം കുറയ്ക്കണം", "സ്പീഡ് കുറയ്ക്കണം",
             "വീഡിയോ കുറിച്ച് പറയൂ / I need to slow down the video a bit.",
         )
@@ -372,6 +405,13 @@ class YouTubeTests(unittest.TestCase):
             ("വലുതാക്കണം", "watch", "full"), ("ശബ്ദം ഓഫ് ചെയ്യണം", "watch", "mute"),
             ("ശബ്ദം തിരിച്ചു കൊണ്ടുവരണം", "muted", "unmute"), ("അക്ഷരങ്ങൾ കാണിക്കണം", "cc_off", "cc"),
             ("വേഗം കൂട്ടണം", "speed_menu", "fast"), ("ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തു വരണം", "fullscreen", None),
+            ("ഫാസ്റ്റ് ആക്കണം", "speed_menu", "fast"), ("ഫാസ്റ്റ് ആക്കൂ", "speed_menu", "fast"),
+            ("സ്പീഡ് കൂട്ടണം", "speed_menu", "fast"), ("Make it faster.", "speed_menu", "fast"),
+            ("Make it quicker", "speed_menu", "fast"), ("Speed up the video", "speed_menu", "fast"),
+            ("എനിക്ക് ഈ വീഡിയോ നിർത്തണം", "watch", "pause"), ("Can you pause this video, please?", "watch", "pause"),
+            ("ഈ വീഡിയോ പ്ലേ ചെയ്യണം", "watch_paused", "play"), ("I want to play the video.", "watch_paused", "play"),
+            ("I need to mute this video.", "watch", "mute"), ("സബ്‌ടൈറ്റിൽ ഇടണം", "cc_off", "cc"),
+            ("Can you show subtitles for this video?", "cc_off", "cc"), ("full screen ആക്കണം", "watch", "full"),
         ):
             with self.subTest(question=question):
                 decision = SarvamPlanner("web_site", log_calls=False).decide(question, snapshot(screen))
@@ -393,6 +433,23 @@ class YouTubeTests(unittest.TestCase):
                     self.assertEqual(step.control_id, "search")
                     self.assertIn("Type the name", step.instruction_en)
                 post.assert_called_once()
+
+    def test_unrecognized_or_untitled_intent_clarifies_on_the_watch_page(self):
+        for action in (None, "find"):
+            with (self.subTest(action=action), patch.object(sarvam, "_load_api_key", return_value="test-key"),
+                  patch.object(sarvam, "_post") as post):
+                reply = json.dumps({"action": action, "title": ""})
+                post.return_value = ({"choices": [{"finish_reason": "stop", "message": {"content": reply}}]}, 1.0)
+                planner = SarvamPlanner("web_site", log_calls=False)
+                for screen in ("watch", "watch_paused"):
+                    decision = planner.decide("Could you help me with this?", snapshot(screen))
+                    self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+                    self.assertIn("What would you like to do with this video?", decision.instruction_en)
+                    self.assertIn("വേഗം കുറയ്ക്കണോ", decision.instruction)
+                post.assert_called_once()
+                self.assertIn("action verb", json.loads(post.call_args.args[2])["messages"][0]["content"])
+        decision = PACK.start_guidance("Find and play a video").decide(snapshot("watch"))
+        self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
 
     def test_privacy_keeps_fixed_menu_names(self):
         safe = PACK.privacy.filter_snapshot(snapshot("settings_values"))
