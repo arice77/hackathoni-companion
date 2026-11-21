@@ -10,6 +10,20 @@
       {"id": "go", "role": "AXButton", "label": "Search"},
       {"id": "voice", "role": "AXButton", "label": "Search with your voice"}
     ],
+    "home_with_display_ad": [
+      {"id": "search", "role": "AXComboBox", "label": "Search", "filled": false},
+      {"id": "go", "role": "AXButton", "label": "Search"},
+      {"id": "ad-centre", "role": "AXButton", "label": "My Ad Centre"},
+      {"id": "skip", "role": "AXButton", "label": "Skip"}
+    ],
+    "results_with_display_ad": [
+      {"id": "filters", "role": "AXButton", "label": "Search filters"},
+      {"id": "ad-centre", "role": "AXButton", "label": "My Ad Centre"},
+      {"id": "sponsor", "role": "AXStaticText", "label": "Sponsored"},
+      {"id": "advertiser", "role": "AXLink", "label": "Visit advertiser"},
+      {"id": "ad", "role": "AXStaticText", "label": "Ad"},
+      {"id": "best", "role": "AXLink", "label": "Darshana | Hridayam | Official Video Song", "identifier": "youtube-watch:official"}
+    ],
     "results": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
       {"id": "go", "role": "AXButton", "label": "Search"},
@@ -280,14 +294,15 @@
       {"id": "waiting", "role": "AXButton", "label": "Skip ad in 5", "enabled": false}
     ],
     "ad_skip_plain": [
+      {"id": "pause", "role": "AXButton", "label": "Pause (k)"},
       {"id": "skip", "role": "AXButton", "label": "Skip"}
     ],
     "ad_at_start": [
       {"id": "pause", "role": "AXButton", "label": "Pause (k)"},
-      {"id": "ad-count", "role": "AXStaticText", "label": "Ad 1 of 2"},
-      {"id": "ad-centre", "role": "AXButton", "label": "My Ad Centre"}
+      {"id": "ad-count", "role": "AXStaticText", "label": "Ad 1 of 2"}
     ],
     "ad_skip_plural": [
+      {"id": "pause", "role": "AXButton", "label": "Pause (k)"},
       {"id": "skip", "role": "AXButton", "label": "Skip ads"}
     ],
     "unmatched_more": [
@@ -326,7 +341,7 @@
     {"id": "ask-faster-speed", "language": "malayalam", "question": "വേഗം കൂട്ടൂ", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "clarify", null, "1.25"]]},
     {"id": "ad-skip-and-resume", "language": "english", "question": "Pause this video", "walk": [["ad", "point", "skip"], ["watch", "point", "pause"]]},
     {"id": "ad-wait", "language": "english", "question": "Pause this video", "walk": [["ad_wait", "clarify", null, "The ad will finish in a few seconds"]]},
-    {"id": "find-finishes-after-the-ad", "language": "english", "question": "Find and play Darshana Hridayam", "walk": [["home", "point", "search"], ["typed", "point", "go"], ["results", "point", "best"], ["ad_at_start", "clarify", null, "The ad will finish in a few seconds"], ["ad_skip_plain", "point", "skip"], ["watch", "complete", null, "playing"]]},
+    {"id": "find-ignores-display-ads-and-waits-through-preroll", "language": "english", "question": "Find and play Darshana Hridayam", "walk": [["home_with_display_ad", "point", "search"], ["typed", "point", "go"], ["results_with_display_ad", "point", "best"], ["ad_at_start", "clarify", null, "The ad will finish in a few seconds"], ["ad_skip_plain", "point", "skip"], ["watch", "complete", null, "playing"]]},
     {"id": "slower-waits-through-ad-menu", "language": "manglish", "question": "Speed kurakku", "walk": [["watch_paused", "point", "gear"], ["settings_partial_ad", "clarify", null, "The ad will finish in a few seconds"], ["ad_skip_plain", "point", "skip"], ["settings_partial", "clarify", null, "Wait for the Settings menu"], ["settings_values", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "make-it-slower", "language": "english", "question": "Make it slower", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "slow-it-down", "language": "english", "question": "Slow it down", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},

@@ -77,7 +77,6 @@ _AD_MARKERS = {
     "Sponsored": re.compile(r"\bsponsored\b"),
     "Skip ad": re.compile(r"^skip(?: ads?)?(?: in .+)?$"),
 }
-_AD_CARD_MARKERS = {"Ad", "Sponsored"}
 _AD_HEADING = re.compile(r"ad|sponsored|ad \d+ of \d+")
 _PLAYER = {
     *(("AXButton", label) for label in _PLAYER_SHORTCUTS),
@@ -252,26 +251,30 @@ def _ad_marker(control: Control) -> str | None:
 
 
 def _ad(snap: Snapshot, controls: tuple[Control, ...]) -> Decision | None:
+    markers = _player_ad_controls(controls)
     for label in _SKIP_LABELS:
-        if skip := _target(controls, {"AXButton"}, label):
+        if skip := _target(markers, {"AXButton"}, label):
             return _point(snap, skip, "പരസ്യം ഒഴിവാക്കാൻ {label} അമർത്തൂ.", "Use {label} to skip the ad.")
-    markers = [(marker, c) for c in controls if (marker := _ad_marker(c)) is not None]
-    if any(marker not in _AD_CARD_MARKERS for marker, _ in markers) or _player_ad_card(controls, markers):
+    if markers:
         return _decision(snap, "clarify", "പരസ്യം ഏതാനും സെക്കൻഡിനുള്ളിൽ തീരും.",
                          "The ad will finish in a few seconds.")
     return None
 
 
-def _player_ad_card(controls: tuple[Control, ...], markers: list[tuple[str, Control]]) -> bool:
-    if not markers or not _has_player(controls):
-        return False
+def _player_ad_controls(controls: tuple[Control, ...]) -> tuple[Control, ...]:
+    player = tuple(c for c in controls if _key(c) in _PLAYER)
+    if not player:
+        return ()  # Home and search results can both contain display ads.
     seek = _target(controls, {"AXSlider"}, "seek slider")
-    if seek is None:
-        return True
-    left, bottom, width, height = seek.frame
-    # Generic Sponsored badges can also appear in the recommendations beside the player.
-    return any(c.frame[0] < left + width and c.frame[0] + c.frame[2] > left
-               and c.frame[1] < bottom + height + 64 for _, c in markers)
+    anchors = (seek,) if seek is not None else player
+    left = min(c.frame[0] for c in anchors)
+    right = max(c.frame[0] + c.frame[2] for c in anchors)
+    bottom = max(c.frame[1] + c.frame[3] for c in anchors)
+    side_margin = 24 if seek is not None else 64
+    # Ad overlays sit above the playback bar, near its edges, or just below it.
+    return tuple(c for c in controls if c.frame[0] < right + side_margin
+                 and c.frame[0] + c.frame[2] > left - side_margin
+                 and c.frame[1] < bottom + 64 and _ad_marker(c) is not None)
 
 
 @dataclass
@@ -509,13 +512,17 @@ class YouTubeGuide:
 
 class YouTubePrivacy(PrivacyProfile):
     def filter_snapshot(self, snap: Snapshot) -> Snapshot:
+        player_ads = {c.id for c in _player_ad_controls(snap.controls)}
         controls = []
         for control in snap.controls:
             if (name := _setting_name(control)) in _SHARED_SETTINGS:
                 control = replace(control, label=name, identifier=None, group=None)
-            elif (marker := _ad_marker(control)) is not None and _key(control) not in _AD_SKIP_BUTTONS:
-                # Share the marker as context, without allowing a pointer to an ad or advertiser.
-                control = replace(control, role="AXStaticText", label=marker, identifier=None, group=None)
+            elif (marker := _ad_marker(control)) is not None:
+                if control.id not in player_ads:
+                    continue
+                if _key(control) not in _AD_SKIP_BUTTONS:
+                    # Share the marker as context, without allowing a pointer to an ad or advertiser.
+                    control = replace(control, role="AXStaticText", label=marker, identifier=None, group=None)
             controls.append(control)
         return super().filter_snapshot(replace(snap, controls=tuple(controls)))
 

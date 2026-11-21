@@ -142,10 +142,12 @@ class YouTubeTests(unittest.TestCase):
 
     def test_sponsored_recommendation_beside_the_player_does_not_block_playback(self):
         playing = snapshot("watch")
-        sponsor = Control("sponsor", "AXStaticText", "Sponsored", (300, 20, 150, 20))
+        ads = tuple(Control(f"outside-{i}", "AXButton", label, (300, 20 + 25 * i, 150, 20))
+                    for i, label in enumerate(("Sponsored", "My Ad Centre", "Visit advertiser", "Skip")))
+        snap = replace(playing, controls=(*playing.controls, *ads))
         guide = PACK.start_guidance("Resume the video")
-        decision = guide.decide(replace(playing, controls=(*playing.controls, sponsor)))
-        self.assertEqual(decision.kind, "complete")
+        self.assertEqual(guide.decide(snap).kind, "complete")
+        self.assertTrue(all(PACK.privacy.filter_snapshot(snap).control(ad.id) is None for ad in ads))
 
     def test_partial_settings_reopens_once_then_advances_when_the_row_appears(self):
         planner = SarvamPlanner("web_site", log_calls=False)
