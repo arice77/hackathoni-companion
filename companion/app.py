@@ -37,11 +37,11 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
 UI = {
     "ml": {"heard": "കേട്ടത്", "nothing": "ഒന്നും കേട്ടില്ല — വീണ്ടും പറയൂ.", "start": "ചോദ്യം ചോദിച്ച് തുടങ്ങൂ.",
-           "ask": "ചോദിക്കൂ", "stop": "നിർത്തൂ", "mic": "സംസാരിക്കൂ", "listening": "കേൾക്കുന്നു… നിർത്താൻ അമർത്തൂ",
+           "ask": "ചോദിക്കൂ", "stop": "നിർത്തൂ", "skip": "ഒഴിവാക്കൂ", "mic": "സംസാരിക്കൂ", "listening": "കേൾക്കുന്നു… നിർത്താൻ അമർത്തൂ",
            "thinking": "മനസ്സിലാക്കുന്നു…",
            "placeholder": "മലയാളത്തിൽ ചോദിക്കൂ (Utter ഇവിടെ പ്രവർത്തിക്കും)"},
     "en": {"heard": "Heard", "nothing": "Heard nothing — try again.", "start": "Ask a question to start.",
-           "ask": "Ask", "stop": "Stop", "mic": "Speak", "listening": "Listening… click to stop",
+           "ask": "Ask", "stop": "Stop", "skip": "Skip", "mic": "Speak", "listening": "Listening… click to stop",
            "thinking": "Understanding…",
            "placeholder": "Ask in English (Utter works here)"},
 }
@@ -158,6 +158,9 @@ class Companion(NSObject):
         self.ask_button = ask = NSButton.buttonWithTitle_target_action_(t["ask"], self, "ask:")
         ask.setKeyEquivalent_("\r")
         self.stop_button = stop = NSButton.buttonWithTitle_target_action_(t["stop"], self, "stop:")
+        self.skip_button = skip = NSButton.buttonWithTitle_target_action_(t["skip"], self, "skip:")
+        skip.setToolTip_("Skip this optional step")
+        skip.setAccessibilityIdentifier_("companion-skip")
         self.mic_button = mic = NSButton.buttonWithTitle_target_action_("🎤 " + t["mic"], self, "mic:")
         mic.setEnabled_(self.voice is not None)
         mic.setToolTip_(None if self.voice else "Sarvam voice not connected yet (needs the voice module and SARVAM_API_KEY)")
@@ -168,7 +171,7 @@ class Companion(NSObject):
         self.status = label(f"planner: {self.planner.name} · pointer: {self.overlay_kind}", 11, wrap=True)
         self.status.setTextColor_(NSColor.secondaryLabelColor())
 
-        buttons = NSStackView.stackViewWithViews_([ask, mic, stop])
+        buttons = NSStackView.stackViewWithViews_([ask, mic, skip, stop])
         stack = NSStackView.stackViewWithViews_(
             [self.lang_switch, self.field, buttons, self.heard, self.instruction, self.subtitle, self.status])
         stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
@@ -198,6 +201,7 @@ class Companion(NSObject):
         self.field.setPlaceholderString_(t["placeholder"])
         self.ask_button.setTitle_(t["ask"])
         self.stop_button.setTitle_(t["stop"])
+        self.skip_button.setTitle_(t["skip"])
         self.mic_button.setTitle_("🎤 " + t["mic"])
         self.reset_mic()
         if self.last_decision is not None:
@@ -318,6 +322,18 @@ class Companion(NSObject):
         self.active, self.last_key, self.started = True, None, time.time()
         self.progressed, self.unsure = False, 0
         self.log("question", text=self.question, chars=len(self.question))
+        self.tick_(None)
+
+    def skip_(self, sender):
+        """Skip the step currently pointed at (optional fields, toppings...). The planner decides what's next."""
+        skip = getattr(self.planner, "skip_current", None)
+        if skip is None or not self.active:
+            return
+        skip()
+        with self.plan_lock:
+            self.plan_result = None
+        self.last_key = None
+        self.log("skip")
         self.tick_(None)
 
     def stop_(self, sender):
