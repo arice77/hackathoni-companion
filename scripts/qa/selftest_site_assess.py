@@ -38,54 +38,91 @@ def statuses(got):
 
 # ---------------------------------------------------------------- YouTube
 LINK = "Darshana (Official Video) | Hridayam | Pranav"
-YGOOD = [
+DEC = "Decrease playback speed 0.05"
+
+
+def reindex(recs):
+    n = 0
+    for r in recs:
+        if r["event"] == "decision":
+            r["index"], n = n, n + 1
+    return recs
+
+
+def q2(counts=(5, 4, 3, 2, 1), end="complete"):
+    out = [dec(0, 2, "Settings", "Open 'Settings'.", "AXPopUpButton"),
+           dec(0, 2, "Playback speed Normal", "Open 'Playback speed' to see the available speeds.", "AXMenuItem")]
+    out += [dec(0, 2, DEC, f"Press − to slow down ({n} more times).", action="pressed") for n in counts]
+    if end == "complete":
+        out.append(dec(0, 2, None, "The video is set to 0.75×.", kind="complete", action="none"))
+    return out
+
+
+STOP_OK = {"event": "stop", "reason": "phase1=complete phase2=complete", "phases": {"1": "complete", "2": "complete"},
+           "decreases": 5, "speed_restored": True, "menu_closed": True, "speed_after": 1.0}
+Q1 = [
     dec(0, 1, "Search", "Type 'Darshana' in 'Search'.", "AXComboBox", action="typed (value not recorded)"),
-    dec(1, 1, "Search", "Click 'Search' to see the results."),
-    dec(2, 1, LINK, "Open the video to play it.", "AXLink", url_watch=True),
-    dec(3, 1, None, "The video is playing.", kind="complete", action="none"),
+    dec(0, 1, "Search", "Click 'Search' to see the results."),
+    dec(0, 1, LINK, "Open the video to play it.", "AXLink", url_watch=True),
+    dec(0, 1, None, "The video is playing.", kind="complete", action="none"),
     {"event": "state", "name": "after-find", "playing": True, "url_watch": True},
-    dec(4, 2, "Settings", "Open 'Settings'.", "AXPopUpButton"),
-    dec(5, 2, "Playback speed Normal", "Open 'Playback speed' to see the speeds.", "AXMenuItem"),
-    dec(6, 2, "0.75", "Choose '0.75' for that playback speed.", action="held: speed target reached; not pressed"),
-    {"event": "stop", "reason": "phase1=complete phase2=reached-target", "phases": {"1": "complete", "2": "reached-target"}},
 ]
-YBAD = [  # Search button first, button pointed twice, an ad and an unrelated link, invalid pointer, no playing, 1.25 not 0.75
+YGOOD = reindex(Q1 + q2() + [dict(STOP_OK)])
+YBAD = reindex([  # Search button first, button pointed twice, an ad and an unrelated link, invalid pointer, no playing, speed never reached
     dec(0, 1, "Search", "Click Search.", "AXButton"),
-    dec(1, 1, "Search", "Type here.", "AXComboBox"),
-    dec(2, 1, "Search", "Click Search.", "AXButton", times_pointed=2),
-    dec(3, 1, "Ad · Sponsored: Buy Now", "Open this.", "AXLink", url_watch=False),
-    dec(4, 1, "Top 10 cooking videos", "Open this.", "AXLink", url_watch=True, valid=False),
+    dec(0, 1, "Search", "Type here.", "AXComboBox"),
+    dec(0, 1, "Search", "Click Search.", "AXButton", times_pointed=2),
+    dec(0, 1, "Ad · Sponsored: Buy Now", "Open this.", "AXLink", url_watch=False),
+    dec(0, 1, "Top 10 cooking videos", "Open this.", "AXLink", url_watch=True, valid=False),
     {"event": "state", "name": "after-find", "playing": False, "url_watch": False},
-    dec(5, 2, "Playback speed Normal", "Open it.", "AXMenuItem"),
-    dec(6, 2, "1.25", "Choose 1.25.", action="refused: control is outside the YouTube allowlist"),
-    dec(7, 2, "0.75", "Choose 0.75.", action="pressed"),
-    {"event": "stop", "reason": "phase1=decision-timeout", "phases": {"1": "decision-timeout", "2": "refused"}},
-]
+    dec(0, 2, "Playback speed Normal", "Open it.", "AXMenuItem"),
+    dec(0, 2, "1.25", "Choose 1.25.", action="refused: control is outside the YouTube allowlist"),
+    dec(0, 2, DEC, "Press − to slow down (2 more times).", action="pressed"),
+    dec(0, 2, DEC, "Press − to slow down (3 more times).", action="pressed"),
+    {"event": "stop", "reason": "phase1=decision-timeout", "phases": {"1": "decision-timeout", "2": "refused"},
+     "decreases": 2, "speed_restored": False, "menu_closed": False},
+])
 ygood = statuses(yt.assess(YGOOD, 0, "", X, X, X))
 ybad = statuses(yt.assess(YBAD, 1, "", X, X, X))
 print("youtube good:", ygood)
 print("youtube bad: ", ybad)
 assert set(ygood.values()) == {"pass"}, ygood
 yfails = [k for k, v in ybad.items() if v == "fail"]
-for needle in ("find: pointed in order", "find: ended by", "slower: pointed in order", "no setting applied",
-               "no target pointed at twice", "never points at ads", "every pointer validated", "every pointed control"):
+for needle in ("find: pointed in order", "find: ended by", "slower: Settings", "slower: the countdown", "account left as found",
+               "never points at ads", "every pointer validated", "every pointed control"):
     assert any(needle in k for k in yfails), (needle, yfails)
-# a walk that points at an unrelated link in phase 2 or ends without the Pause button also fails
+
+
+def status_of(recs, needle):
+    return [v for k, v in statuses(yt.assess(recs, 0, "", X, X, X)).items() if k.startswith(needle)]
+
+
+# ends without the Pause button
 alt = [dict(r) for r in YGOOD]
 alt[4] = {"event": "state", "name": "after-find", "playing": False, "url_watch": True}
-assert statuses(yt.assess(alt, 0, "", X, X, X))["find: ended by a complete decision with the video actually playing (Pause"[:60]] == "fail"
-alt2 = YGOOD[:6] + [dec(6, 2, "Subscribe", "Subscribe.", action="refused: control is outside the YouTube allowlist")] + YGOOD[7:]
-assert any(v == "fail" for k, v in statuses(yt.assess(alt2, 0, "", X, X, X)).items() if "every pointed control" in k)
+assert status_of(alt, "find: ended by") == ["fail"]
+# a Subscribe pointer is refused by the driver and fails the allowlist item
+alt2 = reindex(Q1 + q2()[:2] + [dec(0, 2, "Subscribe", "Subscribe.", action="refused: control is outside the YouTube allowlist")] + [dict(STOP_OK)])
+assert status_of(alt2, "every pointed control") == ["fail"]
+# a countdown that does not decrease, one that is cut short, 7 presses, no complete, speed not restored, menu left open
+assert status_of(reindex(Q1 + q2((5, 4, 4, 2, 1)) + [dict(STOP_OK)]), "slower: the countdown") == ["fail"]
+assert status_of(reindex(Q1 + q2((5, 4, 3)) + [dict(STOP_OK)]), "slower: the countdown") == ["pass"]  # strictly decreasing is enough
+assert status_of(reindex(Q1 + q2((5, 4, 3, 2, 1, 1, 1)) + [dict(STOP_OK, decreases=7)]), "slower: the countdown") == ["fail"]
+assert status_of(reindex(Q1 + q2(end="none") + [dict(STOP_OK, phases={"1": "complete", "2": "decision-timeout"})]), "slower: Settings") == ["fail"]
+assert status_of(reindex(Q1 + q2() + [dict(STOP_OK, speed_restored=False, speed_after=0.75)]), "account left as found") == ["fail"]
+assert status_of(reindex(Q1 + q2() + [dict(STOP_OK, menu_closed=False)]), "account left as found") == ["fail"]
+# only one Decrease press may stay unrepeated-tolerant: a different target pointed twice still fails
+dup = reindex(Q1 + q2() + [dict(STOP_OK)])
+dup.insert(7, dict(dup[6], index=99))  # Playback speed pointed a second time
+assert status_of(dup, "no target pointed at twice") == ["fail"]
 
 
 # optional scroll step on YouTube results
-yscroll = YGOOD[:2] + [dec(2, 1, None, "Scroll down to continue.", kind="clarify", action="scrolled page down to 0.50")] + YGOOD[2:]
-for n, r in enumerate(x for x in yscroll if x["event"] == "decision"):
-    r["index"] = n
+yscroll = reindex(YGOOD[:2] + [dec(2, 1, None, "Scroll down to continue.", kind="clarify", action="scrolled page down to 0.50")] + YGOOD[2:])
 assert set(statuses(yt.assess(yscroll, 0, "", X, X, X)).values()) == {"pass"}
 yscroll_bad = [dict(r) for r in yscroll]
 yscroll_bad[2]["action"] = "scroll failed: scrollbar did not move"
-assert [v for k, v in statuses(yt.assess(yscroll_bad, 0, "", X, X, X)).items() if k.startswith("scrolling is optional")] == ["fail"]
+assert status_of(yscroll_bad, "scrolling is optional") == ["fail"]
 
 # ---------------------------------------------------------------- Gmail
 GGOOD = [
@@ -127,24 +164,19 @@ gs = {r["check"][:14]: r["status"] for r in ggate if r["evidence"] != "needs-hum
 assert gs["send and compl"] == "blocked" and all(v == "pass" for k, v in gs.items() if k != "send and compl"), gs
 
 # one intentional Settings retry is exempt (and labelled); a second one, or any other repeat, still fails
-retry = YGOOD[:7] + [dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=2, action="pressed (retry: closed, reopened)")] + YGOOD[7:]
+SET = [i for i, r in enumerate(YGOOD) if r.get("target_label") == "Settings"][0]
+retry = reindex(YGOOD[:SET + 1] + [dec(0, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", action="pressed (retry: closed, reopened)")] + YGOOD[SET + 1:])
 res = yt.assess(retry, 0, "", X, X, X)
 assert set(statuses(res).values()) == {"pass"}, statuses(res)
 assert "RETRY" in next(r["detail"] for r in res if r["check"].startswith("no target pointed at twice"))
-retry2 = YGOOD[:7] + [dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=2),
-                      dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=3)] + YGOOD[7:]
-assert [v for k, v in statuses(yt.assess(retry2, 0, "", X, X, X)).items() if k.startswith("no target pointed at twice")] == ["fail"]
-
-# landing on the decrease-speed stepper (no 0.75 button exists) counts as the target; "scroll inside" is not a page scroll
-stepper = [dict(r) for r in YGOOD]
-stepper[7] = dec(6, 2, "Decrease playback speed 0.05", "Press 'Decrease playback speed 0.05' five times.", action="held: speed target reached; not pressed")
-assert set(statuses(yt.assess(stepper, 0, "", X, X, X)).values()) == {"pass"}
-inside = YGOOD[:7] + [dec(5, 2, None, "Scroll inside Playback speed to look for 0.75×.", kind="clarify", action="waiting (clarify): nothing pressed")] + YGOOD[7:]
+retry2 = reindex(YGOOD[:SET + 1] + [dec(0, 2, "Settings", "Open 'Settings'.", "AXPopUpButton")] * 2 + YGOOD[SET + 1:])
+assert status_of(retry2, "no target pointed at twice") == ["fail"]
+# "scroll inside" is not a page scroll
+inside = reindex(YGOOD[:SET + 2] + [dec(0, 2, None, "Scroll inside Playback speed.", kind="clarify", action="waiting (clarify): nothing pressed")] + YGOOD[SET + 2:])
 assert set(statuses(yt.assess(inside, 0, "", X, X, X)).values()) == {"pass"}
 
 # a bare "Skip" ad button pointed at is allowed (not an ad link); an ad link is still a failure
-skip = [dict(r) for r in YGOOD]
-skip.insert(2, dec(2, 1, "Skip", "Use 'Skip' to skip the ad.", "AXButton"))
+skip = reindex(YGOOD[:2] + [dec(0, 1, "Skip", "Use 'Skip' to skip the ad.", "AXButton")] + YGOOD[2:])
 assert set(statuses(yt.assess(skip, 0, "", X, X, X)).values()) == {"pass"}
 
 # a stuck step repeated across 'Next' acknowledgements (different phases) still fails the repeat rule
@@ -165,8 +197,11 @@ assert "son.fake" not in red("Type son.fake@example.invalid in To") and "@" not 
 import drive_follow_site as drv  # noqa: E402
 
 
+STOP = r"^(?:0?\.75|decrease playback speed\b.*)$"  # the driver's optional --stop-label hold
+
+
 class O:
-    song_token, stop_label, allow_send, sends = "darshana", yt.STOP_LABEL, True, 0
+    song_token, stop_label, allow_send, sends = "darshana", STOP, True, 0
 
 
 o = O()
@@ -183,7 +218,15 @@ assert d("youtube", "AXButton", "Play keyboard shortcut k", "", o)[0] == "press"
 for no in (("AXLink", "Skip"), ("AXButton", "Skip navigation"), ("AXButton", "Skipper")):
     assert d("youtube", no[0], no[1], "https://www.youtube.com/watch?v=a", o)[0] == "refuse", no
 assert d("youtube", "AXButton", "0.75", "", o)[0] == "hold"
-assert d("youtube", "AXButton", "Decrease playback speed 0.05", "", o)[0] == "hold"
+assert d("youtube", "AXButton", "Decrease playback speed 0.05", "", o)[0] == "hold"  # without --apply-speed, stop_label matches
+o.stop_label, o.apply_speed, o.decreases, o.max_decreases = "", True, 0, 6
+assert d("youtube", "AXButton", "Decrease playback speed 0.05", "", o)[0] == "press"
+o.decreases = 6
+assert d("youtube", "AXButton", "Decrease playback speed 0.05", "", o)[0] == "refuse"  # a 7th press is refused
+o.decreases = 0
+assert d("youtube", "AXButton", "Increase playback speed 0.05", "", o)[0] == "refuse"
+assert d("youtube", "AXButton", "3.0", "", o)[0] == "refuse" and d("youtube", "AXButton", "1.25", "", o)[0] == "refuse"
+o.stop_label, o.apply_speed = STOP, False
 assert d("youtube", "AXButton", "Increase playback speed 0.05", "", o)[0] == "refuse"
 import drive_follow_pointer as _bp
 assert not _bp.is_scroll_clarify("clarify", "Scroll inside Playback speed to look for 0.75×.")

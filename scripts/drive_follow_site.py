@@ -115,6 +115,10 @@ def decide_action(site: str, role: str, label: str, url: str, opts) -> tuple[str
             return "press", "settings"
         if role in MENU_ROLES and low.startswith("playback speed"):
             return "press", "playback speed menu"
+        if low.startswith("decrease playback speed") and getattr(opts, "apply_speed", False):
+            if opts.decreases >= opts.max_decreases:
+                return "refuse", f"more than {opts.max_decreases} Decrease presses"
+            return "press", "speed stepper (decrease)"
         if opts.stop_label and re.search(opts.stop_label, low):
             return "hold", "speed target reached; not pressed"
         return "refuse", "control is outside the YouTube allowlist"
@@ -315,6 +319,69 @@ def reader_diagnostic() -> dict:
     return {"event": "diagnostic", "controls": len(snap.controls), "rows": rows}
 
 
+SPEED_SLIDER = re.compile(r"^playback speed slider\s*([\d.]+)", re.IGNORECASE)
+
+
+def speed_now(window):
+    """Playback speed read from the slider (the reader's name 'Playback speed slider <n>', else its AXValue), or None."""
+    for el in walk(window):
+        if _get(el, "AXRole") == "AXSlider":
+            m = SPEED_SLIDER.match(base._label(el) or "")
+            if m:
+                return float(m.group(1))
+    for el in walk(window):  # the panel's unlabelled slider carries the value
+        if _get(el, "AXRole") == "AXSlider" and not (base._label(el) or "").strip():
+            v = _get(el, "AXValue")
+            if isinstance(v, (int, float)) and 0.1 <= float(v) <= 4:
+                return float(v)
+    return None
+
+
+def panel_open(window) -> bool:
+    return find_by_label(window, "youtube", {"AXButton"}, lambda l: l.lower().startswith("decrease playback speed")) is not None
+
+
+def menu_open(window) -> bool:
+    return find_by_label(window, "youtube", {"AXMenuItem"}, lambda l: l.lower().startswith(("ambient mode", "playback speed"))) is not None
+
+
+def restore_speed(bounds) -> dict:
+    """Put the speed back to Normal (the 1.0 preset, reopening the panel if needed) and close the Settings menu.
+    The slider only exists while the speed panel is open, so the last value it showed is what counts."""
+    last = None
+    for _ in range(6):
+        pid, window = our_window(bounds)
+        now = speed_now(window)
+        if now is not None:
+            last = now
+        opened = panel_open(window) or menu_open(window)
+        if last == 1.0 and not opened:
+            break
+        gear = find_by_label(window, "youtube", {"AXPopUpButton"}, lambda l: l.strip().lower() == "settings")
+        if panel_open(window) and now != 1.0:
+            preset = find_by_label(window, "youtube", {"AXButton"}, lambda l: l.strip() in {"1.0", "1", "Normal"})
+            if preset:
+                press(preset[0])
+        elif opened and last == 1.0:
+            if gear:
+                press(gear[0])  # closes the open menu
+        elif not opened and gear:  # reopen: Settings, then Playback speed
+            press(gear[0])
+            time.sleep(1.2)
+            pid, window = our_window(bounds)
+            item = find_by_label(window, "youtube", {"AXMenuItem"}, lambda l: l.lower().startswith("playback speed"))
+            if item:
+                press(item[0])
+        elif menu_open(window):  # Settings menu open but not the panel: open Playback speed
+            item = find_by_label(window, "youtube", {"AXMenuItem"}, lambda l: l.lower().startswith("playback speed"))
+            if item:
+                press(item[0])
+        time.sleep(1.2)
+    pid, window = our_window(bounds)
+    return {"speed_restored": last == 1.0, "speed_after": last,
+            "menu_closed": not panel_open(window) and not menu_open(window)}
+
+
 # ---- main --------------------------------------------------------------------------------------------
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -332,6 +399,10 @@ def main(argv=None) -> int:
     ap.add_argument("--allow-send", action="store_true", help="gmail: Send may be pressed (needs the env gate too)")
     ap.add_argument("--keep-playing", action="store_true", help="youtube: do not pause the video between questions")
     ap.add_argument("--max-scrolls", type=int, default=4)
+    ap.add_argument("--apply-speed", action="store_true",
+                    help="youtube: press 'Decrease playback speed 0.05' each time it is pointed (max --max-decreases), "
+                         "then restore Normal speed and close Settings")
+    ap.add_argument("--max-decreases", type=int, default=6)
     ap.add_argument("--max-next", type=int, default=3, help="most times the driver says 'Next' in the panel (runaway guard)")
     ap.add_argument("--decision-timeout", type=float, default=45.0)
     ap.add_argument("--total-timeout", type=float, default=300.0)
@@ -340,6 +411,7 @@ def main(argv=None) -> int:
     ap.add_argument("--settle", type=float, default=1.0)
     a = ap.parse_args(argv)
     a.sends = 0
+    a.decreases = 0
     nexts = 0
     bounds = tuple(float(x) for x in a.bounds.split(","))
     site = a.site
@@ -347,7 +419,8 @@ def main(argv=None) -> int:
     tail, records = Tail(a.log), []
     phase, awaiting_q, scrolls = 0, False, 0
     phase_end, seen = {}, {}
-    state = {"sends": 0, "sent_seen": None, "draft": None, "playing": None, "paused": None, "search_fallback": None}
+    state = {"sends": 0, "sent_seen": None, "draft": None, "playing": None, "paused": None, "search_fallback": None,
+             "decreases": 0, "speed_restored": None, "menu_closed": None, "speed_after": None}
     start = last = time.time()
     dt = a.decision_timeout
 
@@ -482,6 +555,10 @@ def main(argv=None) -> int:
                             result = type_text(el, text)
                         else:
                             result = press(el)
+                            if why == "speed stepper (decrease)":
+                                a.decreases += 1
+                                state["decreases"] = a.decreases
+                                time.sleep(0.8)
                             if site == "youtube" and why == "settings" and seen[key] >= 2 and result == "pressed":
                                 # the pack's intentional recovery for a reduced menu: close it, then reopen it
                                 time.sleep(1.0)
@@ -514,13 +591,20 @@ def main(argv=None) -> int:
                             result += f"; said 'Next' in the panel ({asked})"
                             awaiting_q = asked == "asked"
                         emit({**out, "action": result})
-                        if seen[key] >= a.repeat_limit:
+                        if seen[key] >= (a.max_decreases + 1 if why == "speed stepper (decrease)" else a.repeat_limit):
                             done = finish_phase(f"repeat:{label}", fatal=True)
                         time.sleep(a.settle)
             if done:
                 break
         time.sleep(a.poll)
 
+    if site == "youtube" and a.decreases > 0:
+        try:
+            pid, window = our_window(bounds)
+            state.update(restore_speed(bounds))
+        except SystemExit as exc:
+            state["speed_restored"], state["menu_closed"] = False, f"window gone: {exc}"
+        emit({"event": "restore", **{k: state[k] for k in ("speed_restored", "menu_closed", "speed_after")}})
     if site == "gmail" and a.sends == 0:
         try:
             pid, window = our_window(bounds)

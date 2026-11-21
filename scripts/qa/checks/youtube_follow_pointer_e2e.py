@@ -5,9 +5,11 @@ pack with its start_guidance hook is on this branch, and the process is Accessib
 
 Walk 1, Malayalam question "ദർശന പാട്ട് പ്ലേ ചെയ്യൂ" (play the Darshana song): Search box (the driver types
 "Darshana Hridayam") -> Search button -> the matching /watch result link -> playback started (pack says complete).
-The driver then pauses the video (quiet Mac) and asks walk 2 in the panel, "Play it slower": Settings -> Playback
-speed -> the pointer lands on 0.75. The driver STOPS there and presses nothing: no setting is applied, no like,
-subscribe or comment is touched. Everything happens in one Safari window this check opens and closes itself.
+The driver then pauses the video (quiet Mac) and asks walk 2 in the panel, "make it slower": Settings -> Playback
+speed -> "Decrease playback speed 0.05", pressed each time it is pointed (max 6), the instruction counting down
+"(N more times)" until the slider reads 0.75 and the pack says complete. Afterwards the driver restores Normal speed
+(the 1.0 preset) and closes Settings, so the account is left as found. No like, subscribe or comment is touched.
+Everything happens in one Safari window this check opens and closes itself.
 Driver: scripts/drive_follow_site.py (allowlist, ad guard, never presses an unmatched control).
 """
 import os
@@ -19,12 +21,14 @@ import _site
 
 FEATURE = "web-support"
 QUESTION = os.environ.get("QA_YT_QUESTION", "ദർശന പാട്ട് പ്ലേ ചെയ്യൂ")
-THEN_ASK = os.environ.get("QA_YT_SLOWER", "Play it slower")  # known pack phrase; "make it slower" does not parse
+THEN_ASK = os.environ.get("QA_YT_SLOWER", "make it slower")
 SONG_TEXT, SONG_TOKEN = "Darshana Hridayam", "darshana"
 URL, HOST, PREFIX = "https://www.youtube.com/", "youtube.com", "https://www.youtube.com/"
-# YouTube's speed panel has presets 1.0, 1.25, 1.5, 2.0, 3.0 and a 0.05 stepper: no 0.75 button. Landing on a 0.75 button
-# or on "Decrease playback speed 0.05" (five presses from Normal reach 0.75) is the slower-speed target.
-STOP_LABEL = r"^(?:0?\.75|decrease playback speed\b.*)$"
+# YouTube's speed panel has presets 1.0, 1.25, 1.5, 2.0, 3.0 and a 0.05 stepper but no 0.75 button: the pointer lands on
+# "Decrease playback speed 0.05" (five presses from Normal reach 0.75).
+DECREASE = re.compile(r"^decrease playback speed\b", re.IGNORECASE)
+MAX_DECREASES = 6
+COUNTDOWN = re.compile(r"\((\d+) more times?\)")
 AD = re.compile(r"\b(ad|ads|advert|advertisement|sponsored)\b", re.IGNORECASE)
 SEARCH_ROLES = {"AXComboBox", "AXSearchField", "AXTextField"}
 SKIP_AD = re.compile(r"^(?:skip ads?\b|skip$)", re.IGNORECASE)  # the ad buttons the pack may offer
@@ -43,7 +47,7 @@ FIND_STEPS = [
 SPEED_STEPS = [
     ("Settings", lambda r: _lab(r) == "settings"),
     ("Playback speed", lambda r: _lab(r).startswith("playback speed")),
-    ("0.75 or the decrease-speed stepper", lambda r: re.fullmatch(STOP_LABEL, _lab(r)) is not None),
+    ("Decrease playback speed stepper", lambda r: DECREASE.match(_lab(r)) is not None),
 ]
 
 
@@ -64,7 +68,7 @@ def run():
 
     err, ctx = _site.run_walk(site="youtube", url=URL, host=HOST, ready_prefix=PREFIX, question=QUESTION,
                               driver_args=["--song-text", SONG_TEXT, "--song-token", SONG_TOKEN,
-                                           "--stop-label", STOP_LABEL, "--then-ask", THEN_ASK,
+                                           "--apply-speed", "--max-decreases", str(MAX_DECREASES), "--then-ask", THEN_ASK,
                                            *(["--type-from-instruction"] if TYPE_FROM_INSTRUCTION else [])],
                               total_timeout=240)
     if err:
@@ -100,21 +104,34 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
         f"search fallback={stop.get('search_fallback')}")
 
     ok, d = _site.order_check(pts2, SPEED_STEPS)
-    reached = phases.get("2", phases.get(2)) == "reached-target"
+    p2end = phases.get("2", phases.get(2))
     diag = next((r for r in records if r["event"] == "diagnostic"), None)
-    add("slower: pointed in order Settings, Playback speed, 0.75 (target asserted)", ok and reached,
-        f"{d}; phase 2 end={phases.get('2', phases.get(2))}; {where}",
+    last2 = [r for r in decisions if r.get("phase") == 2][-1:] or [None]
+    done2 = p2end == "complete" and last2[0] is not None and last2[0]["kind"] == "complete" and "0.75" in last2[0].get("instruction_en", "")
+    add("slower: Settings, Playback speed, Decrease pressed each time pointed, ended by complete at 0.75", ok and done2,
+        f"{d}; phase 2 end={p2end}; last decision {last2[0]['kind'] if last2[0] else None}: "
+        f"{(last2[0] or {}).get('instruction_en', '')[:60]!r}; {where}",
         f"\nREADER ROWS at the stall (role, label, enabled, filled): {diag}" if diag else "")
 
-    pressed_target = [r["index"] for r in pts2 if SPEED_STEPS[2][1](r) and str(r.get("action", "")).startswith("pressed")]
-    add("no setting applied: the driver stopped at 0.75 and pressed nothing there",
-        not pressed_target and reached, f"pressed 0.75 in decisions {pressed_target}; phase 2 end={phases.get('2', phases.get(2))}")
+    dec_pts = [r for r in pts2 if DECREASE.match(_lab(r))]
+    counts = [int(m.group(1)) for r in dec_pts if (m := COUNTDOWN.search(r.get("instruction_en", "")))]
+    pressed = [r for r in dec_pts if str(r.get("action", "")).startswith("pressed")]
+    strictly = all(a > b for a, b in zip(counts, counts[1:])) and len(counts) >= 1
+    exact = counts == [5, 4, 3, 2, 1] or counts == [5, 4, 3, 2]  # the last step may read "(1 more time)" or complete first
+    add("slower: the countdown strictly decreases (5, 4, 3, 2, 1) and at most 6 presses", strictly and 1 <= len(pressed) <= MAX_DECREASES,
+        f"Decrease pointed {len(dec_pts)} times, pressed {len(pressed)}; countdown read {counts} "
+        f"({'exactly 5,4,3,2,1' if counts == [5, 4, 3, 2, 1] else 'strictly decreasing, not the full 5..1' if strictly else 'NOT decreasing'})")
 
-    rep = _site.repeats(allpts, allow={"settings": 1})
+    restored = stop.get("speed_restored") is True and stop.get("menu_closed") is True
+    add("account left as found: speed back to Normal (1.0) and Settings closed", restored,
+        f"speed restored={stop.get('speed_restored')} (last slider reading {stop.get('speed_after')}), settings closed={stop.get('menu_closed')}, "
+        f"Decrease presses={stop.get('decreases')}")
+
+    rep = _site.repeats(allpts, allow={"settings": 1, "decrease playback speed 0.05": MAX_DECREASES})
     retries = [r["index"] for r in allpts if (r.get("target_label") or "").strip().lower() == "settings"][1:]
-    add("no target pointed at twice (per question; one Settings retry is the pack's intended recovery)", not rep,
+    add("no target pointed at twice (per question; one Settings retry and the Decrease stepper presses are expected)", not rep,
         f"repeated targets: {rep}; stop {stop['reason']}" if rep else
-        "every target pointed at once" + (f"; Settings pointed again in decisions {retries} (RETRY, exempt: allowed exactly once)" if retries else ""))
+        "every target pointed at once (the Decrease stepper is pointed once per press, up to 6)" + (f"; Settings pointed again in decisions {retries} (RETRY, exempt: allowed exactly once)" if retries else ""))
 
     bad = []
     for r in allpts:
