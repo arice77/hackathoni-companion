@@ -65,9 +65,9 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 ### Live site runs 22 Nov ~01:05 (QA)
 | Site | Result | Next |
 |---|---|---|
-| YouTube Q1 (Malayalam "play Darshana") | PASS: search → search button → /watch link → playing | prefer the actual song over "Mix –" results |
-| YouTube Q2 ("play it slower") | FAIL: a single early clarify ended the session; paused Play label dropped | app fixed (clarify keeps watching); pack fixes briefed |
-| Gmail compose → send | FAIL: stuck on To ×112 (reader filled=None, pack ack path dead). 0 sends, draft discarded | reader computes filled bool only; pack ack fix briefed |
+| YouTube Q1 (Malayalam "play Darshana") | PASS (2nd run picks "Darshana - Official Video Song") | done |
+| YouTube Q2 ("play it slower") | FAIL ×2: now opens Settings, then menu items carry values ("Playback speed Normal") and the allowlist drops them | prefix-match menu labels (planner builder) |
+| Gmail compose → send | To/Subject/Body now advance (private filled flags, d7593e2); stuck at optional Attach: skip not routed to the site guide. 0 sends | route Skip / "Next" to the site guide (planner builder) |
 
 ## Site packs (started 22 Nov ~00:15)
 
