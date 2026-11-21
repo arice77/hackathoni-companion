@@ -83,11 +83,13 @@ class WebMenuTests(unittest.TestCase):
             with self.subTest(value=value):
                 snap, reads = self.speed_panel(value, host="m.youtube.com")
                 self.assertEqual(reads, ["speed"])
-                self.assertEqual(next(c.label for c in snap.controls if c.identifier == "speed-test"),
-                                 f"Playback speed slider {expected}")
+                slider = next(c for c in snap.controls if c.label.startswith("Playback speed slider"))
+                self.assertEqual(slider.label, f"Playback speed slider {expected}")
+                self.assertIsNone(slider.identifier)  # a value change must change the app's screen signature
 
         for value in ("0.75×", "1 secret", 0.049, 4.01, True, float("nan"), None):
             with self.subTest(value=value):
                 snap, reads = self.speed_panel(value)
                 self.assertEqual(reads, ["speed"])
-                self.assertFalse(any(c.identifier == "speed-test" for c in snap.controls))
+                self.assertFalse(any(c.identifier == "speed-test" or c.label.startswith("Playback speed slider")
+                                     for c in snap.controls))

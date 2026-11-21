@@ -419,7 +419,7 @@ def _youtube_speed_controls(controls: list[Control], sliders: dict[str, object],
             continue
         label = _youtube_speed_slider_label(get(sliders[control.id], "AXValue"))
         if label:
-            result.append(replace(control, label=label))
+            result.append(replace(control, label=label, identifier=None))  # the value must change the screen signature
     return result
 
 
