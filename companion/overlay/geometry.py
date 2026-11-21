@@ -33,14 +33,15 @@ def place_note(target: Rect, bounds: Rect, width: float, height: float) -> Rect:
     """Try the preview's above-right placement first, then flip away from edges."""
     x, y, w, h = target
     sx, sy, sw, sh = bounds
-    margin, gap = 8, 45
+    margin, gap = 10, 32
     left, top = sx + margin, sy + margin
     right, bottom = sx + sw - margin, sy + sh - margin
     width, height = min(width, right - left), min(height, bottom - top)
     max_x, max_y = right - width, bottom - height
-    tx = x + min(w * .72, 124)
+    overlap = min(w / 2, 18)
+    tx = x + w - overlap
     if tx > max_x:
-        tx = x + w * .28 - width
+        tx = x + overlap - width
     tx = clamp(tx, left, max_x)
     ty = clamp(y + h / 2 - height / 2, top, max_y)
     candidates = [
