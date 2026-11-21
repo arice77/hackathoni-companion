@@ -304,6 +304,8 @@ class Companion(NSObject):
     @objc.python_method
     def start_question(self, question: str, shown: str):
         self.question = question
+        with self.plan_lock:  # a new question must never reuse the answer to the previous one
+            self.plan_result = None
         self.last_spoken = None
         t = UI[self.lang]
         self.heard.setStringValue_(f"{t['heard']}: “{shown}”" if shown.strip() else t["nothing"])
@@ -409,7 +411,8 @@ class Companion(NSObject):
                     d = Decision("unsupported", snap.snapshot_id, "സഹായി ഇപ്പോൾ ലഭ്യമല്ല.",
                                  f"Planner error: {e}", source="sarvam")
                 with self.plan_lock:
-                    self.plan_result = (d, snap, sig, 1000 * (time.perf_counter() - t0))
+                    if question == self.question:  # drop late answers to an earlier question
+                        self.plan_result = (d, snap, sig, 1000 * (time.perf_counter() - t0))
             self.plan_thread = threading.Thread(target=work, daemon=True)
             self.plan_thread.start()
         if result is None or result[2] != sig:
