@@ -303,6 +303,7 @@ def main(argv=None) -> int:
     ap.add_argument("--allow-send", action="store_true", help="gmail: Send may be pressed (needs the env gate too)")
     ap.add_argument("--keep-playing", action="store_true", help="youtube: do not pause the video between questions")
     ap.add_argument("--max-scrolls", type=int, default=4)
+    ap.add_argument("--max-next", type=int, default=3, help="most times the driver says 'Next' in the panel (runaway guard)")
     ap.add_argument("--decision-timeout", type=float, default=45.0)
     ap.add_argument("--total-timeout", type=float, default=300.0)
     ap.add_argument("--repeat-limit", type=int, default=3)
@@ -310,6 +311,7 @@ def main(argv=None) -> int:
     ap.add_argument("--settle", type=float, default=1.0)
     a = ap.parse_args(argv)
     a.sends = 0
+    nexts = 0
     bounds = tuple(float(x) for x in a.bounds.split(","))
     site = a.site
 
@@ -353,6 +355,15 @@ def main(argv=None) -> int:
             return False
         return True
 
+    def say_next() -> str:
+        nonlocal nexts
+        if not a.companion_pid:
+            return "no companion pid"
+        if nexts >= a.max_next:
+            return "not asked: Next limit reached"
+        nexts += 1
+        return ask_companion(a.companion_pid, "Next")
+
     done = False
     while not done:
         now = time.time()
@@ -367,7 +378,8 @@ def main(argv=None) -> int:
             if name == "question":
                 phase += 1
                 awaiting_q, last = False, time.time()
-                seen.clear()
+                if site == "youtube":
+                    seen.clear()  # a new YouTube question starts a new walk; Gmail "Next" acknowledgements must not reset it
             elif name == "reader_error":
                 emit({"event": "reader_error", "error": str(ev.get("error"))[:200]})
             if name != "decision" or awaiting_q or phase == 0:
@@ -419,7 +431,7 @@ def main(argv=None) -> int:
                         emit({**out, "action": f"refused: {why}"})
                         done = finish_phase("refused", fatal=True)
                     elif verb == "skip":
-                        asked = ask_companion(a.companion_pid, "Next") if a.companion_pid else "no companion pid"
+                        asked = say_next()
                         emit({**out, "action": f"skipped optional step, said 'Next' in the panel ({asked})"})
                         awaiting_q = asked == "asked"
                         last = time.time()
@@ -455,8 +467,9 @@ def main(argv=None) -> int:
                         if verb == "type:to":
                             AX.AXUIElementPerformAction(el, "AXConfirm")  # "then press Enter"
                         if verb.startswith("type:") and SAY_NEXT.search(rec["instruction_en"]) and a.companion_pid:
-                            result += f"; said 'Next' in the panel ({ask_companion(a.companion_pid, 'Next')})"
-                            awaiting_q = True
+                            asked = say_next()
+                            result += f"; said 'Next' in the panel ({asked})"
+                            awaiting_q = asked == "asked"
                         emit({**out, "action": result})
                         if seen[key] >= a.repeat_limit:
                             done = finish_phase(f"repeat:{label}", fatal=True)
