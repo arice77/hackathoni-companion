@@ -10,8 +10,10 @@ results.json. Exit code 1 if any check fails.
 
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import json
+import os
 import sys
 import time
 import traceback
@@ -21,16 +23,56 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "checks"))
 CHECKS = Path(__file__).resolve().parent / "checks"
+LOCK_PATH = "/tmp/hackathoni-companion-qa.lock"  # machine-wide: every worktree shares fixtures and bundle ids
+LOCK_TIMEOUT_S = float(os.environ.get("QA_LOCK_TIMEOUT_S", "600"))
+NO_LOCK = {"unit"}  # checks that touch no screen, fixture or Safari window
 ICON = {"pass": "PASS", "fail": "FAIL", "blocked": "BLOCKED", "skip": "SKIP"}
+
+
+def acquire_lock():
+    """Hold an exclusive flock for the whole run so live checks from different worktrees serialize.
+
+    Returns the open file (keep it referenced; the lock drops when the process exits) or None on timeout.
+    """
+    fh = open(LOCK_PATH, "a+")
+    deadline = time.time() + LOCK_TIMEOUT_S
+    announced = False
+    while True:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fh.seek(0)
+            fh.truncate()
+            fh.write(f"pid {os.getpid()} worktree {ROOT} since {time.strftime('%H:%M:%S')}\n")
+            fh.flush()
+            return fh
+        except BlockingIOError:
+            if not announced:
+                fh.seek(0)
+                print(f"waiting for another QA run (holder: {fh.read().strip() or 'unknown'}); "
+                      f"timeout {LOCK_TIMEOUT_S:.0f} s", flush=True)
+                announced = True
+            if time.time() >= deadline:
+                fh.close()
+                return None
+            time.sleep(1)
 
 
 def main(words: list[str]) -> int:
     out = ROOT / "runs" / "qa" / time.strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
+    selected = [p for p in sorted(CHECKS.glob("*.py"))
+                if not p.name.startswith("_") and (not words or any(w in p.stem for w in words))]
     results = []
-    for path in sorted(CHECKS.glob("*.py")):
-        if path.name.startswith("_") or (words and not any(w in path.stem for w in words)):
-            continue
+    lock = None
+    if any(p.stem not in NO_LOCK for p in selected):
+        lock = acquire_lock()
+        if lock is None:
+            results.append({"feature": "qa-runner", "check": "machine-wide QA lock", "status": "blocked",
+                            "evidence": "blocked", "source": "run.py", "seconds": LOCK_TIMEOUT_S,
+                            "detail": f"another QA run held {LOCK_PATH} for over {LOCK_TIMEOUT_S:.0f} s; nothing was run"})
+            selected = []
+            print(f"[BLOCKED] {results[0]['detail']}")
+    for path in selected:
         spec = importlib.util.spec_from_file_location(f"qa_{path.stem}", path)
         mod = importlib.util.module_from_spec(spec)
         t0 = time.time()
@@ -54,6 +96,8 @@ def main(words: list[str]) -> int:
               f"{r['detail'].replace('|', '/').replace(chr(10), ' ')[:300]} |" for r in results]
     (out / "report.md").write_text("\n".join(lines) + "\n")
     print(f"\n{counts} -> {out / 'report.md'}")
+    if lock is None and selected == [] and results:
+        return 2  # nothing ran: lock timeout
     return 1 if counts["fail"] else 0
 
 

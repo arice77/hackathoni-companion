@@ -29,3 +29,19 @@ def wait_for(fn, seconds=8.0, every=0.25):
 
 
 sys.path.insert(0, str(ROOT))
+
+
+def foreign_fixtures(bundle_id):
+    """Running instances of a shared-bundle-id fixture that were launched from another workspace.
+
+    Every workspace's AIMS build has the same bundle id, so restart_training.sh (quit by bundle id)
+    and reader.find_app (first instance) can hit another agent's copy. Used only to explain failures.
+    """
+    out = sh("ps", "-axo", "pid,command").stdout
+    foreign = []
+    for line in out.splitlines():
+        if "CropLossTraining" in line and str(ROOT) not in line:
+            pid = line.split()[0]
+            where = line.split("/workspaces/hackathoni-companion/")[-1].split("/")[0] if "/workspaces/" in line else "?"
+            foreign.append(f"pid {pid} from worktree {where}")
+    return foreign
