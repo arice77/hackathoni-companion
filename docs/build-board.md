@@ -22,6 +22,7 @@ Both Sarvam MCPs (`sarvam`, `sarvam-docs`) are installed at user scope for new C
 | Time (IST) | Balance | Source |
 |---|---|---|
 | 21 Nov 20:10 | key verified with 1 chat call | orchestrator |
+| 21 Nov 20:40 | ~48 calls used so far: 1 chat (key check), 5 voice smoke, 1 TTS (panel test), 39 planner eval, ~2 planner live | agents' reports; Abin to post dashboard balance |
 
 ## Parked: GST hero demo (decided earlier on 21 Nov, on hold)
 
@@ -62,11 +63,11 @@ Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime:
 | Feature | Status | Owner | Evidence / next |
 |---|---|---|---|
 | Reader, scripted planner, validator, loop | merged | coordinator | QA green on merged tree (runs/qa/20261121-201515) |
-| QA skill + runner | merged, growing | coordinator → Sonnet QA | Sonnet QA adding web/overlay/voice checks now |
+| QA skill + runner | merged, growing | Sonnet QA | Web, overlay, opt-in voice checks + machine-wide lock; merged suite 18 pass / 0 fail |
 | Web reader + practice web app (Safari; Brave isolated profile) | merged | Codex sol | Practice page only (title + local URL match). **Next: read any page in the front browser window when the user asks** |
-| Sketch overlay | merged; taste pass in progress | Codex astra | Outline too clean, note not crooked, too far from target; fixes briefed |
+| Sketch overlay | merged incl. taste pass (fc95633) | Codex astra | Offset rough strokes, 2° note with shadow, short arrow. Nit: Malayalam glyphs read slightly smaller than Latin |
 | Sarvam voice (Saaras v4 ml/en + translate, Bulbul, mic helper) | merged + wired into panel | Codex sol + coordinator | Live: Malayalam reply spoken on Safari practice page. Real mic needs Abin to allow the macOS prompt |
 | Language preference (panel + overlay + voice) | merged | coordinator | `--lang ml|en`, switch in panel |
-| Sarvam planner (LLM picks the control on any page) | building | Codex sol | eval on sanitized snapshots, signature cache to save credits |
+| Sarvam planner (LLM picks the control on any page) | merged; fixing | Codex sol + coordinator (async in app) | 10/17 exact on first eval; live: rejected a valid target over label wording. Fix + accuracy push briefed |
 | AIMS fixture | reference | coordinator | regression target in QA |
 | GST practice portal | parked | — | — |
