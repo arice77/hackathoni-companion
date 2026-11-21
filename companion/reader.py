@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import time
+import unicodedata
 import uuid
 from collections import deque
 from dataclasses import dataclass, replace
@@ -30,8 +31,11 @@ MAX_WEB_ELEMENTS = 1200
 MAX_WEB_CONTROLS = 96
 MAX_WEB_HEADINGS = 12
 MAX_WEB_LABEL_LENGTH = 160
-WEB_READ_BUDGET_S = 0.300
-WEB_AX_TIMEOUT_S = 0.040
+WEB_READ_BUDGET_S = 0.750
+WEB_FIRST_ATTEMPT_S = 0.400
+WEB_CACHE_CHECK_S = 0.100
+WEB_AX_TIMEOUT_S = 0.120
+WEB_CACHE_MAX_AGE_S = 1.500
 EMPTY_BOUNDS: Rect = (0.0, 0.0, 0.0, 0.0)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_BUNDLE_PREFIX = "in.hackathoni."
@@ -45,15 +49,35 @@ UNSUPPORTED_BROWSERS = {"com.apple.SafariTechnologyPreview", "com.google.Chrome"
 WEB_TEXT_NOTES = {"status", "document-note"}
 WEB_VALUE_ROLES = INPUT_ROLES | {"AXSearchField", "AXTimeField"}
 WEB_INPUT_ROLES = WEB_VALUE_ROLES | {"AXDateTimeArea"}
-WEB_ACTION_ROLES = (KEEP_ROLES | WEB_INPUT_ROLES) - {"AXStaticText"}
+WEB_ACTION_ROLES = (KEEP_ROLES | WEB_INPUT_ROLES | {"AXSlider"}) - {"AXStaticText"}
 SECURE_ROLE = "AXSecureTextField"
-WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXWebArea"}
+WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXSlider", "AXWebArea"}
 HTTP_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 CAROUSEL_DOT = re.compile(r"(?:(?:go to )?slide\s+)?(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 CAROUSEL_ROLES = {"AXButton", "AXLink", "AXRadioButton"}
+GMAIL_HOST = "mail.google.com"
+GMAIL_FIELDS = {"Search mail", "To", "Cc", "Bcc", "Subject", "Message Body"}
+GMAIL_FOLDERS = {"Inbox", "Starred", "Snoozed", "Sent", "Drafts", "Important", "All Mail", "Spam", "Trash",
+                 "Scheduled", "Outbox", "Categories", "Labels", "Primary", "Promotions", "Social", "Updates", "Forums"}
+GMAIL_ACTIONS = {"Compose", "Search mail", "Show search options", "Reply", "Reply all", "Forward", "Attach files",
+                 "Insert photo", "Send", "Discard", "Back", "Archive", "More", "Cc", "Bcc", "Minimize", "Close",
+                 "Formatting options", "Newer", "Older"}
+GMAIL_ALIASES = {name.casefold(): name for name in GMAIL_FIELDS | GMAIL_FOLDERS | GMAIL_ACTIONS}
+GMAIL_ALIASES.update({"recipients": "To", "to recipients": "To", "add recipients": "To", "back to inbox": "Back",
+                      "discard draft": "Discard", "more options": "More", "more actions": "More", "send (⌘enter)": "Send"})
+GMAIL_FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
+GMAIL_BUTTON_ROLES = {"AXButton", "AXMenuButton", "AXPopUpButton"}
+GMAIL_ROW_ROLES = {"AXRow", "AXLayoutRow"}
+GMAIL_THREAD = re.compile(
+    r"(?:inbox|all|sent|starred|snoozed|spam|trash|important|drafts|(?:label|search)/[^/]+)/[a-z0-9_-]{12,}$", re.I,
+)
 
 
 class ReaderError(RuntimeError):
+    pass
+
+
+class _WebReadTimeout(ReaderError):
     pass
 
 
@@ -149,14 +173,19 @@ def _walk(start, get, limit, leaf_roles):
             queue.extend((child, seen) for child in children[:remaining])
 
 
-def _web_getter(started):
+def _web_getter(started, *, deadline=None):
+    deadline = started + WEB_READ_BUDGET_S if deadline is None else deadline
+
     def get(el, name):
-        if time.monotonic() - started >= WEB_READ_BUDGET_S:
-            raise ReaderError("Browser Accessibility read exceeded its time budget.")
-        AX.AXUIElementSetMessagingTimeout(el, WEB_AX_TIMEOUT_S)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _WebReadTimeout("Browser Accessibility read exceeded its time budget.")
+        AX.AXUIElementSetMessagingTimeout(el, min(WEB_AX_TIMEOUT_S, remaining))
         err, value = AX.AXUIElementCopyAttributeValue(el, name, None)
         if err == AX.kAXErrorCannotComplete:
-            raise ReaderError("Browser Accessibility did not respond in time. Try again once the page is ready.")
+            raise _WebReadTimeout("Browser Accessibility did not respond in time. Try again once the page is ready.")
+        if time.monotonic() >= deadline:
+            raise _WebReadTimeout("Browser Accessibility read exceeded its time budget.")
         return value if err == 0 else None
     return get
 
@@ -295,6 +324,81 @@ class _Collection:
     below_fold_count: int
 
 
+def _gmail_name(value) -> str | None:
+    if not isinstance(value, str) or len(value) > 80:
+        return None
+    token = " ".join("".join(char for char in value if unicodedata.category(char) != "Cf").split()).casefold()
+    token = re.sub(r"^(inbox|drafts|spam)\s+\(?[\d,]+(?: unread)?\)?$", r"\1", token)
+    token = re.sub(r"^send\s*\(\s*(?:⌘\s*enter|ctrl\s*\+\s*enter)\s*\)$", "send", token)
+    return GMAIL_ALIASES.get(token)
+
+
+def _gmail_label(el, role, get) -> str | None:
+    if role in GMAIL_FIELD_ROLES:
+        allowed = GMAIL_FIELDS
+    elif role in GMAIL_BUTTON_ROLES:
+        allowed = GMAIL_ACTIONS | GMAIL_FOLDERS
+    else:
+        allowed = GMAIL_FOLDERS
+    for name in ("AXTitle", "AXDescription", "AXLabel", "AXPlaceholderValue"):
+        label = _gmail_name(get(el, name))
+        if label in allowed:
+            return label
+    if role in GMAIL_FIELD_ROLES:
+        relation = get(el, "AXTitleUIElement")
+        if relation is not None and get(relation, "AXRole") == "AXStaticText":
+            for name in ("AXTitle", "AXDescription", "AXLabel"):
+                label = _gmail_name(get(relation, name))
+                if label in allowed:
+                    return label
+    return None
+
+
+def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
+    """Project only fixed UI names and structural counts; don't read values or identifiers."""
+    controls: list[Control] = []
+    clips: dict[int | None, Rect | None] = {}
+    message_table: tuple[int, Rect] | None = None
+    main_frame = viewport
+    route = urlsplit(url).fragment.partition("?")[0]
+    thread = bool(GMAIL_THREAD.fullmatch(route))
+    leaves = (WEB_LEAVES - {"AXComboBox"}) | {"AXTable", "AXLayoutTable", "AXCell"} | GMAIL_ROW_ROLES
+    chrome_roles = GMAIL_BUTTON_ROLES | GMAIL_FIELD_ROLES | {"AXLink", "AXHeading", "AXRadioButton"}
+    for index, (el, role, parent) in enumerate(_walk(page, get, MAX_WEB_ELEMENTS, leaves)):
+        clip = _scroll_clip(el, role, clips.get(parent, viewport), get)
+        clips[index] = clip
+        if role == "AXGroup" and get(el, "AXSubrole") == "AXLandmarkMain":
+            frame = _frame(el, get)
+            main_frame = (_intersection(frame, viewport) if frame else None) or viewport
+        if role not in chrome_roles | {"AXTable", "AXLayoutTable"}:
+            continue
+        if role in GMAIL_FIELD_ROLES and get(el, "AXSubrole") == SECURE_ROLE:
+            continue
+        frame = _frame(el, get)
+        frame = _intersection(frame, clip) if frame and clip is not None else None
+        if frame is None:
+            continue
+        if role in {"AXTable", "AXLayoutTable"}:
+            if not thread:
+                rows = get(el, "AXRows")
+                count = len(rows) if rows is not None else sum(
+                    get(child, "AXRole") in GMAIL_ROW_ROLES for child in get(el, "AXChildren") or []
+                )
+                if message_table is None or count > message_table[0]:
+                    message_table = (count, frame)
+            continue
+        label = _gmail_label(el, role, get)
+        if label is not None and len(controls) < MAX_WEB_CONTROLS - 1:
+            controls.append(Control(f"c{len(controls):02d}", role, label, frame, enabled=_enabled(el, get)))
+    if thread:
+        controls.append(Control(f"c{len(controls):02d}", "AXStaticText", "Open email", main_frame, enabled=False))
+    elif message_table is not None:
+        count, frame = message_table
+        folder = "Inbox" if route in {"", "inbox"} else "Messages"
+        controls.append(Control(f"c{len(controls):02d}", "AXTable", f"{folder}: {count} messages", frame, enabled=False))
+    return _Collection(tuple(controls), 0)
+
+
 def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None) -> _Collection:
     controls: list[Control] = []
     first_dot: Control | None = None
@@ -414,23 +518,96 @@ def frontmost_bundle_id() -> str | None:
     return app.bundleIdentifier() if app else None
 
 
+@dataclass(frozen=True)
+class _WebView:
+    page: object
+    window_frame: Rect
+    viewport: Rect
+    url: str
+    scroll: tuple[float | None, ...]
+
+
+@dataclass(frozen=True)
+class _CachedWebSnapshot:
+    scope: tuple
+    view: _WebView
+    snapshot: Snapshot
+    cached_at: float
+
+
+_last_web_snapshot: _CachedWebSnapshot | None = None
+
+
+def _web_view(root, get, page_title, page_url_prefix) -> _WebView:
+    page, window_frame, viewport, url = _selected_web_page(root, get, page_title, page_url_prefix)
+    if not url:
+        raise ReaderError("The selected browser page has no readable URL. Wait for it to load.")
+    parent = get(page, "AXParent")
+    scroll = []
+    if parent is not None and get(parent, "AXRole") == "AXScrollArea":
+        for name in ("AXHorizontalScrollBar", "AXVerticalScrollBar"):
+            bar = get(parent, name)
+            value = get(bar, "AXValue") if bar is not None else None
+            scroll.append(float(value) if isinstance(value, (int, float)) else None)
+    return _WebView(page, window_frame, viewport, url, tuple(scroll))
+
+
+def _read_web_snapshot(view: _WebView, bundle_id: str, browser_pid: int, get) -> Snapshot:
+    practice = view.url == _practice_url()
+    host = _host(view.url)
+    if host == GMAIL_HOST:
+        collected = _gmail_collect(view.page, get, view.viewport, view.url)
+    else:
+        collected = _collect(view.page, get, MAX_WEB_ELEMENTS, view.viewport, practice=practice)
+    if str(get(view.page, "AXURL") or "") != view.url:
+        raise ReaderError("The selected page changed while it was being read. Try again.")
+    title = PRACTICE_TITLES[bundle_id] if practice else host or "Browser page"
+    return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, view.window_frame,
+                    collected.controls, view.viewport, below_fold_count=collected.below_fold_count)
+
+
+def _browser_snapshot(bundle_id, pid, page_title, page_url_prefix, started) -> Snapshot:
+    global _last_web_snapshot
+    browser_pid = _browser_pid(bundle_id, pid)
+    scope = (bundle_id, browser_pid, page_title, page_url_prefix)
+    root = AX.AXUIElementCreateApplication(browser_pid)
+    deadline = started + WEB_READ_BUDGET_S
+    failure = _WebReadTimeout("Browser Accessibility read exceeded its time budget.")
+    for attempt_deadline in (started + WEB_FIRST_ATTEMPT_S, deadline - WEB_CACHE_CHECK_S):
+        get = _web_getter(started, deadline=attempt_deadline)
+        try:
+            view = _web_view(root, get, page_title, page_url_prefix)
+            snap = _read_web_snapshot(view, bundle_id, browser_pid, get)
+        except _WebReadTimeout as exc:
+            failure = exc
+            continue
+        except ReaderError:
+            _last_web_snapshot = None
+            raise
+        _last_web_snapshot = _CachedWebSnapshot(scope, view, snap, time.monotonic())
+        return snap
+
+    cached = _last_web_snapshot
+    if cached is not None and cached.scope == scope and time.monotonic() - cached.cached_at < WEB_CACHE_MAX_AGE_S:
+        try:
+            get = _web_getter(started, deadline=deadline)
+            current = _web_view(root, get, page_title, page_url_prefix)
+            still_current = current == cached.view and str(get(current.page, "AXURL") or "") == current.url
+            if still_current and time.monotonic() - cached.cached_at < WEB_CACHE_MAX_AGE_S:
+                return cached.snapshot
+        except ReaderError:
+            pass
+    _last_web_snapshot = None
+    raise failure
+
+
 def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None = None,
              page_url_prefix: str | None = None) -> Snapshot:
     started = time.monotonic()
     if not is_trusted():
         raise ReaderError("This process is not allowed to read other apps (Accessibility permission missing).")
     if bundle_id in PRACTICE_TITLES:
-        browser_pid = _browser_pid(bundle_id, pid)
-        get = _web_getter(started)
-        root = AX.AXUIElementCreateApplication(browser_pid)
-        page, window_frame, viewport, url = _selected_web_page(root, get, page_title, page_url_prefix)
-        practice = url == _practice_url()
-        collected = _collect(page, get, MAX_WEB_ELEMENTS, viewport, practice=practice)
-        if str(get(page, "AXURL") or "") != url:
-            raise ReaderError("The selected page changed while it was being read. Try again.")
-        title = PRACTICE_TITLES[bundle_id] if practice else _host(url) or "Browser page"
-        return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame,
-                        collected.controls, viewport, below_fold_count=collected.below_fold_count)
+        return _browser_snapshot(bundle_id, pid, page_title, page_url_prefix, started)
     if bundle_id in UNSUPPORTED_BROWSERS or pid is not None:
         raise ReaderError("This browser or pid is not a supported practice target.")
     app = find_app(bundle_id)

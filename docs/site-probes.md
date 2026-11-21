@@ -24,10 +24,12 @@ Pages: Think Music's official [Darshana video from *Hridayam*](https://www.youtu
 | Subtitles/CC | `AXCheckBox`, `Subtitles/closed captions unavailable` on this video. The control is identifiable, not evidence that Malayalam captions are available. |
 | Gear, speed and quality | `Settings` is `AXPopUpButton`. Speed and quality weren't exposed with the menu closed; no submenu was opened. |
 | Full screen | `AXButton`, `Full screen (f)`. |
-| Volume and seeking | `Mute (m)` is `AXButton`. Safari's raw AX tree had a `Volume` and a `Seek slider` (`AXSlider`), but the current reader excludes sliders. |
+| Volume and seeking | `Mute (m)` is `AXButton`. Safari exposes `Volume` and `Seek slider` as `AXSlider`; the follow-up below verifies both in the reader. |
 | Search and results | `Search` is both `AXComboBox` and a distinct submit `AXButton`; `Search with your voice` is separate. The public video title appears as an `AXHeading` and an `AXLink` on the results page. A few actions lacked labels (two on watch, one on results). |
 
 **Candidate parent tasks:** search for a Malayalam song and find the named result; find play/pause on the current video; go full screen; find the mute toggle. Changing playback speed or quality and enabling available captions need a separate read of those states before claiming support.
+
+**Player follow-up, live and read-only:** the reader now retains both sliders with labels and visible frames, without reading their values. Four watch-page reads took 88.1 ms median / 134.5 ms max and reported 199 below-fold controls. With Settings untouched, its `AXPopUpButton` advertised `AXPress`, reported `AXExpanded=false`, had no `AXMenu` and had zero children. No speed or quality action appeared elsewhere in the observed tree. That confirms a readable gear, not readable submenu items: a human-opened menu still needs an AX check. The current reader does not descend into popup buttons or retain `AXMenuItem`; sibling `AXButton` items would be eligible if YouTube adds them when opened.
 
 ## KSEB Quick Pay
 
@@ -54,8 +56,31 @@ Only fixed, allowlisted UI labels and aggregate role/geometry counts were retain
 
 Compose was opened only by the [requested new-compose URL](https://mail.google.com/mail/u/0/#inbox?compose=new). The first attempt exposed inbox only; the confirmed-open timings in the table are from a later attempt, with three reader misses before the successful samples. The raw compose check included an extra `AXComboBox`, but the reader did not return a confirmed, allowlisted To/Recipients target. Reply was not observed on either tested surface; no conversation was opened to check it. The compose window was closed without typing, pressing Send, or pressing Discard.
 
-**Candidate parent tasks:** find mail search; navigate standard folders such as Sent or Starred; find Compose; find Subject, message body or Attach files in an already-open composer. Treat these as candidates for a sandbox mailbox first. A deployed Gmail path needs a chrome-only gate before using the real account with the planner; the general reader still accepts arbitrary on-page labels. Reply and recipient entry need their own verification.
+**Candidate parent tasks:** find mail search; navigate standard folders such as Sent or Starred; find Compose; find To, Subject, message body or Attach files in an already-open composer. Treat these as candidates for a sandbox mailbox first; no guidance, recipient entry, reply or sending was exercised on the real account.
+
+### Gmail gate follow-up
+
+The production reader now uses a separate projection on `mail.google.com`. It emits only fixed chrome names, one structural message-list count, and `Open email` plus allowlisted actions on recognized conversation routes. It does not request field values or control IDs, descend into message rows, or derive scroll hints from them. Fake trees cover inbox rows, private header/body text, compose contents, and dispatch at the Gmail host. Neither raw mailbox snapshots nor conversation URLs were saved or logged.
+
+- **Inbox, live:** one `AXTable` labeled `Inbox: 50 messages`, plus 13 standard chrome controls. Four reads took 24.3 ms median / 49.1 ms max; below-fold count was 0. The first message row and its links yielded no conversation `AXURL`. No conversation was opened and Reply remains unverified live; a synthetic conversation test exposes it without the header or body.
+- **Compose, live:** the same direct new-compose URL exposed a labeled recipient `AXComboBox`, normalized to `To` from its recipient accessibility name. Four reads retained all five expected controls (To, Subject, Message Body, Attach files, Send), took 29.3 ms median / 141.6 ms max, and reported zero below-fold controls. The dedicated window was closed without entering anything or operating its controls.
 
 ## Reader cleanup and QA
 
 The reader drops labels consisting only of Private Use Area glyphs and filters numbered carousel dot actions such as `1 of 5`; if dots are the only retained content, it keeps one. A fake tree covers mixed Malayalam or ordinary text, normal pagination, and a dot-only page. `scripts/qa/run.py unit`: **118 unit tests passed**, one suite check passed, zero failed. Live QA was not run.
+
+Gmail gate and slider follow-up: `scripts/qa/run.py unit` passed **131 tests** (one suite check, zero failures). No paid requests or live QA were run.
+
+## Reader timeout follow-up
+
+The retest log had two AX messaging timeouts. Browser reads now have a shared **750 ms** deadline and at most **120 ms** per AX request. A timeout triggers one fresh traversal; it does not publish a partial snapshot. If both attempts time out, the reader may reuse a snapshot younger than **1.5 s** only after confirming the same browser scope, AX page, URL, viewport and any exposed scrollbar positions. It preserves the original snapshot ID and timestamp. An unverified or changed page still fails closed.
+
+**Live-machine:** 20 fresh reads per already-open site, nearest-rank p95, excluding page load. The error column counts unsuccessful reads during sampling; their causes were not classified. No natural cached reads occurred in these samples.
+
+| Site | Median | p95 | Max | Unsuccessful reads |
+| --- | ---: | ---: | ---: | ---: |
+| YouTube watch | 85.6 ms | 115.4 ms | 274.3 ms | 3 |
+| Gmail inbox, gated | 19.3 ms | 83.4 ms | 110.2 ms | 3 |
+| KSEB Quick Pay | 15.3 ms | 16.0 ms | 18.9 ms | 1 |
+
+Two injected traversal timeouts on each of the three live pages returned the original snapshot after a real AX identity check. This exercises fallback without claiming the original machine load was reproduced. Automated tests cover the retry with a simulated slow AX getter, rejection after page or scroll changes, cache expiry, and the remaining deadline. Unit QA: **138 tests passed**, zero failed. All probe windows were closed; no form controls were operated.
