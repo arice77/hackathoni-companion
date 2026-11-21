@@ -17,8 +17,8 @@ Status words: planned · building · in QA · in review · merged · demo-ready.
 | Bug | Cause | Fix | Owner | Status |
 |---|---|---|---|---|
 | Every question after the first got the same refusal | app reused the background answer on an unchanged screen, ignoring the new question | new question clears the result; late answers dropped | coordinator | fixed + live-verified |
-| Broad questions ("how do I use this site?", "help me fill this form") refused | planner policy too strict | orientation line + point at the first sensible step | Codex sol (planner) | briefed |
-| Pizza size: "select Small", "select Medium", back and forth | reader reports no radio state; planner picks an option for the user | reader: radio `filled` + `group` label + group control filled when any option selected; planner: point at the whole choice set, list the options, user decides, move on once any is chosen | Codex sol (reader) + Codex sol (planner) | briefed |
+| Broad questions ("how do I use this site?", "help me fill this form") refused | planner policy too strict | orientation line + point at the first sensible step | Codex sol (planner) | fixed (9a41569), eval pass; needs Abin retest |
+| Pizza size: "select Small", "select Medium", back and forth | reader reports no radio state; planner picks an option for the user | reader: radio `filled` + `group` label + group control filled when any option selected; planner: point at the whole choice set, list the options, user decides, move on once any is chosen | Codex sol (reader) + Codex sol (planner) | fixed (d6938df + 8182e86), 69/69 eval x2; needs Abin retest |
 
 ## Shared-Mac rule
 
@@ -84,6 +84,6 @@ Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime:
 | Sketch overlay | merged incl. taste pass (fc95633) | Codex astra | Offset rough strokes, 2° note with shadow, short arrow. Nit: Malayalam glyphs read slightly smaller than Latin |
 | Sarvam voice (Saaras v4 ml/en + translate, Bulbul, mic helper) | merged + wired into panel | Codex sol + coordinator | Live: Malayalam reply spoken on Safari practice page. Real mic needs Abin to allow the macOS prompt |
 | Language preference (panel + overlay + voice) | merged | coordinator | `--lang ml|en`, switch in panel |
-| Sarvam planner (LLM picks the control on any page) | merged (ccaa970) | Codex sol + coordinator (async in app) | 28/30 exact in 2 runs, 0 unknown ids, p50 ~550 ms; Safari practice walk 8/8 to complete; live on httpbin: Malayalam question → "Customer name:". Now: missing control → unsupported, ambiguous → clarify (all cases pass); 37/41 and 39/41; Wikipedia Search correct. Open: completion screens sometimes malformed (fix briefed) |
+| Sarvam planner (LLM picks the control on any page) | merged (ccaa970) | Codex sol + coordinator (async in app) | 28/30 exact in 2 runs, 0 unknown ids, p50 ~550 ms; Safari practice walk 8/8 to complete; live on httpbin: Malayalam question → "Customer name:". Now: missing control → unsupported, ambiguous → clarify (all cases pass); 37/41 and 39/41; Wikipedia Search correct. Completion detected locally (ae74bd1). Latest: 69/69 exact in 2 runs, 0 malformed, 0 unknown ids |
 | AIMS fixture | reference | coordinator | regression target in QA |
 | GST practice portal | parked | — | — |
