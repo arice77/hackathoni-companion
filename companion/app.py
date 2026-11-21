@@ -468,7 +468,7 @@ def main():
     ap.add_argument("--lang", default=os.environ.get("COMPANION_LANG", "ml"), choices=["ml", "en"])
     ap.add_argument("--question", help="pre-fill and ask (rehearsal/testing); normally typed or dictated")
     args = ap.parse_args()
-    args.planner = args.planner or ("sarvam" if args.task == "web_any" else "scripted")
+    args.planner = args.planner or ("sarvam" if args.task in ("web_any", "web_site") else "scripted")
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
     companion = Companion.alloc().initWithPlanner_task_lang_(args.planner, args.task, args.lang)
