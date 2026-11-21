@@ -52,15 +52,20 @@ Use the screen heading and ascending rank (top-to-bottom, then left-to-right):
   supports the requested action. If the named control, action, or output format is
   absent, return unsupported and say that it is not on this screen. A similarly named
   control, another file format, or an indirect workaround is not an acceptable target.
-- For general guidance on starting, filling, or continuing a form, point to the first
-  unfinished required field. Use unfinished_input_ids in rank order if required markers
-  are absent, even if the primary button is enabled. A filled field is already done:
-  select it only if the user specifically asks to find or edit that field.
+- Questions about how to use this site, what screen you can help with, or how to
+  fill this form ask for orientation on the current page. Describe the page from
+  visible evidence and point to a sensible first step, all on one line. For a form,
+  pick the first unfinished required field. Use unfinished_input_ids in rank order
+  if required markers are absent, even if the primary button is enabled. A filled
+  field is already done: select it only if the user asks to find or edit it.
 - When unfinished_input_ids is empty, satisfy any prerequisite shown by the status,
   then use the enabled primary action, such as Next, Continue, or Save. If an attachment
   is already shown as attached, advance to the primary action. A progress label or
   heading only describes the screen. Skip optional shortcuts such as sample autofill.
-- Return unsupported for off-topic requests or when this screen offers no suitable step.
+- Broad wording alone is in scope. Ask a short clarifying question if the page has
+  competing purposes and you need the user's goal to select a starting point.
+- Use unsupported for off-topic requests, a missing requested control, or a screen
+  with no usable controls.
 
 Use an actionable control ID only for point. For other kinds set control_id to null.
 Give one short sentence in Malayalam and its English equivalent. For point,
@@ -84,14 +89,23 @@ _POINT_TEMPLATES = {
     "AXButton": ("{label} അമർത്തുക.", "Click {label}."),
     "AXLink": ("{label} തുറക്കുക.", "Open {label}."),
 }
-_GENERAL_FORM_QUESTIONS = {
-    "ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം",
-    "ഈ ഫോറം എങ്ങനെ പൂരിപ്പിക്കാം",
-    "how do i fill this form",
-    "how do i fill in this form",
-    "how do i fill out this form",
-}
+_PAGE_WORD = r"(?:web\s?site|site|(?:web )?page|screen|form)"
+_HELP_ACTION = r"(?:use|fill(?: (?:in|out))?)"
+_GENERAL_HELP = re.compile(
+    rf"(?:(?:can|could|would) you (?:tell|show) me )?how (?:(?:do|can|should) i|to) {_HELP_ACTION} (?:this|the) {_PAGE_WORD}"
+    rf"|(?:can|could|would) you (?:please )?help me (?:{_HELP_ACTION} |with )(?:this|the) {_PAGE_WORD}"
+    rf"|(?:which|what) {_PAGE_WORD} can you help (?:me )?(?:use|with)"
+    r"|ഈ (?:വെബ്[\s\u200c]?സൈറ്റ്|സൈറ്റ്|പേജ്|സ്ക്രീൻ) (?:എങ്ങനെ ഉപയോഗിക്കാം|ഉപയോഗിക്കാൻ സഹായിക്കാമോ)"
+    r"|ഈ (?:ഫോം|ഫോറം) (?:എങ്ങനെ പൂരിപ്പിക്കാം|പൂരിപ്പിക്കാൻ സഹായിക്കാമോ)"
+    r"|ഏത് (?:സ്ക്രീനിൽ|പേജിൽ) (?:എന്നെ )?സഹായിക്കാനാകും"
+    r"|(?:ee|ii) (?:website|site|page|screen) engane use cheyyam"
+    r"|(?:ee|ii) form (?:engane (?:fill cheyyam|poorippikkam)|fill cheyyan sahayikkamo)"
+    r"|(?:ethu|eth) (?:screen|page)(?:il)? help cheyyan pattum"
+)
+_ENTRY_ROLES = {"AXTextField", "AXTextArea", "AXSearchField", "AXComboBox", "AXPopUpButton"}
 _PRIMARY_ACTIONS = {"next", "continue", "save"}
+_WEB_PRIMARY_ACTIONS = _PRIMARY_ACTIONS | {"save draft", "search", "submit order"}
+_REQUIRED_LABEL = re.compile(r"(?:\*|\(required\))\s*:?$", re.IGNORECASE)
 _DEICTIC_QUESTION = re.compile(
     r"(?:can|should|do) i (?:use|click|press|select|pick) (?:this|that)(?: one| button| option| control)?"
     r"|is (?:this|that) the right (?:one|button|option)"
@@ -210,12 +224,44 @@ def _requested_button_action(question: str) -> str | None:
     return None
 
 
-def _is_general_form_question(question: str) -> bool:
-    return any(_question_phrase(part) in _GENERAL_FORM_QUESTIONS for part in question.split(" / ", 1))
+def _is_general_help_question(question: str) -> bool:
+    return any(_GENERAL_HELP.fullmatch(_question_phrase(part)) for part in question.split(" / ", 1))
 
 
-def _point_ids(question: str, actionable: list[Control]) -> list[str]:
-    if not _is_general_form_question(question):
+def _general_web_help(snap: Snapshot, heading: str, actionable: list[Control]) -> Decision | None:
+    fields = [c for c in actionable if c.role in _ENTRY_ROLES and c.filled is False]
+    primary = [
+        c for c in actionable if c.role == "AXButton" and _label_key(c.label).rstrip(" »›") in _WEB_PRIMARY_ACTIONS
+    ]
+    if fields:
+        target = next((c for c in fields if _REQUIRED_LABEL.search(c.label)), fields[0])
+    elif len(primary) == 1:
+        target = primary[0]
+    else:
+        return None
+
+    if heading and len(heading) <= 72:
+        ml = f"ഇത് ‘{heading}’ പേജാണ്."
+        en = f"This is the ‘{heading}’ page."
+    elif any(_label_key(c.label) == "submit order" for c in primary):
+        ml, en = "ഇത് ഒരു ഓർഡർ ഫോമാണ്.", "This is an order form."
+    elif fields:
+        ml, en = "ഇത് ഒരു ഫോമാണ്.", "This is a form."
+    else:
+        ml, en = "നിങ്ങൾ ഇപ്പോഴുള്ള പേജിൽ സഹായിക്കാം.", "I can help with this page."
+
+    label = f"‘{target.label}’"
+    if _label_key(target.label) == "submit order":
+        ml += f" വിവരങ്ങൾ പരിശോധിച്ച ശേഷം തയ്യാറാണെങ്കിൽ {label} അമർത്തുക."
+        en += f" Review the details and use {label} if you’re ready."
+    else:
+        ml += f" {label} മുതൽ തുടങ്ങൂ."
+        en += f" Start with {label}."
+    return Decision("point", snap.snapshot_id, ml, en, target.id, "sarvam")
+
+
+def _point_ids(general_help: bool, actionable: list[Control]) -> list[str]:
+    if not general_help:
         return [c.id for c in actionable]
     pending = [c for c in actionable if c.filled is not True]
     if not any(c.filled is False for c in pending):
@@ -365,13 +411,14 @@ class SarvamPlanner:
         ordered = sorted(snap.controls, key=lambda c: (c.frame[1], c.frame[0]))
         heading = next(
             (c.label for c in ordered if c.label and (c.role == "AXHeading" or c.identifier == "screen-title")),
-            snap.window_title,
+            "",
         )
         actionable = [c for c in ordered if _pointable(c)]
         candidates = actionable
         requested_label = _requested_label(question)
         button_action = _requested_button_action(question)
         formats = _file_formats(question)
+        general_help = False
         if requested_label:
             candidates = [c for c in actionable if _label_key(c.label) == _label_key(requested_label)]
             if not candidates:
@@ -410,10 +457,19 @@ class SarvamPlanner:
                 "complete", snap.snapshot_id, "നന്നായി! പരിശീലനം പൂർത്തിയായി.",
                 "Well done! The practice task is complete.", source="sarvam",
             )
-        point_ids = _point_ids(question, candidates)
+        else:
+            general_help = _is_general_help_question(question)
+            if general_help and not actionable:
+                return _unsupported(snap, "ഈ സ്ക്രീനിൽ ഉപയോഗിക്കാവുന്ന നിയന്ത്രണങ്ങളില്ല.",
+                                    "This screen has no usable controls.")
+            if general_help and snap.viewport is not None:
+                decision = _general_web_help(snap, heading, actionable)
+                if decision is not None:
+                    return decision
+        point_ids = _point_ids(general_help, candidates)
         view = {
             "question": question,
-            "screen_title": heading,
+            "screen_title": heading or snap.window_title,
             "unfinished_input_ids": [c.id for c in actionable if c.filled is False],
             "controls": [
                 {"rank": rank, "id": c.id, "role": c.role, "label": c.label,

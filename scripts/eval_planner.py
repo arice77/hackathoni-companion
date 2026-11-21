@@ -20,7 +20,7 @@ from companion.validator import MAX_SNAPSHOT_AGE_S, validate
 from companion.voice import sarvam
 
 FIXTURES = ROOT / "tests" / "fixtures" / "planner"
-MAX_CALLS = 90
+MAX_CALLS = 126
 
 
 def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
@@ -38,7 +38,7 @@ def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
         window_title=record.get("host", name),
         window_frame=frame,
         controls=controls,
-        viewport=frame if record["origin"] == "public-safari-reader" else None,
+        viewport=frame if record["origin"] in {"safari-reader", "public-safari-reader"} else None,
     )
 
 
@@ -66,6 +66,16 @@ def _case(model: str, case: dict, screen: dict) -> dict:
     )
     expected = (case["kind"], case["control_id"])
     actual = (decision.kind, decision.control_id)
+    orientation_ok = None
+    if prefix := case.get("orientation_en"):
+        target = snap.control(case["control_id"])
+        quoted_label = f"‘{target.label}’"
+        orientation_ok = (
+            actual == expected
+            and decision.instruction_en.startswith(prefix)
+            and quoted_label in decision.instruction_en
+            and quoted_label in decision.instruction
+        )
     return {
         "id": case["id"],
         "origin": screen["origin"],
@@ -73,6 +83,7 @@ def _case(model: str, case: dict, screen: dict) -> dict:
         "expected": {"kind": expected[0], "control_id": expected[1]},
         "actual": asdict(decision),
         "correct": actual == expected,
+        "orientation_ok": orientation_ok,
         "decision_path": "provider" if cold_calls else "local",
         "cold_validator": {"valid": cold_valid, "reason": cold_reason},
         "stale_case": case.get("stale", False),
@@ -88,16 +99,21 @@ def _summary(rows: list[dict], total: int) -> dict:
     invalid = sum(call["outcome"] == "unknown_id" for call in calls)
     malformed = sum(call["outcome"] == "malformed" for call in calls)
     correct = sum(row["correct"] for row in rows)
+    orientations = [row["orientation_ok"] for row in rows if row["orientation_ok"] is not None]
     return {
         "correct": correct,
         "cases": len(rows),
         "expected_cases": total,
-        "met_target": len(rows) == total and correct * 17 >= total * 15 and invalid == malformed == 0,
+        "met_target": (
+            len(rows) == total and correct * 17 >= total * 15 and invalid == malformed == 0 and all(orientations)
+        ),
         "calls": len(calls),
         "local_decisions": sum(row["decision_path"] == "local" for row in rows),
         "invalid_ids": invalid,
         "invalid_id_rate": invalid / len(calls) if calls else None,
         "malformed_replies": malformed,
+        "orientations_correct": sum(orientations),
+        "orientation_cases": len(orientations),
         "label_fallbacks": sum(call["outcome"] == "local_label_fallback" for call in calls),
         "p50_ms": statistics.median(samples) if samples else None,
         "p95_ms": statistics.quantiles(samples, n=100, method="inclusive")[94] if len(samples) > 1

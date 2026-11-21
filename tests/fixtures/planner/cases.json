@@ -404,5 +404,185 @@
     "kind": "point",
     "control_id": "c07",
     "question_form": "english"
+  },
+  {
+    "id": "broad-httpbin-use-site-english",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Can you tell me how do I use this website?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "english",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-use-site-malayalam",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "ഈ വെബ്‌സൈറ്റ് എങ്ങനെ ഉപയോഗിക്കാം?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "malayalam",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-use-site-manglish",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Ee website engane use cheyyam?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "manglish",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-which-screen-english",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Which screen can you help me with?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "english",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-which-screen-malayalam",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "ഏത് സ്ക്രീനിൽ എന്നെ സഹായിക്കാനാകും?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "malayalam",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-which-screen-manglish",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Ethu screenil help cheyyan pattum?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "manglish",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-fill-form-english",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Can you help me fill this form?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "english",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-fill-form-malayalam",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "ഈ ഫോം പൂരിപ്പിക്കാൻ സഹായിക്കാമോ?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "malayalam",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-httpbin-fill-form-manglish",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Ee form fill cheyyan sahayikkamo?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "manglish",
+    "orientation_en": "This is an order form."
+  },
+  {
+    "id": "broad-practice-use-site-english",
+    "screen": "safari-business-empty",
+    "task": "web_practice",
+    "question": "Can you tell me how do I use this website?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "english",
+    "orientation_en": "This is the ‘Business Details’ page."
+  },
+  {
+    "id": "broad-practice-use-site-malayalam",
+    "screen": "safari-business-empty",
+    "task": "web_practice",
+    "question": "ഈ വെബ്‌സൈറ്റ് എങ്ങനെ ഉപയോഗിക്കാം?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "malayalam",
+    "orientation_en": "This is the ‘Business Details’ page."
+  },
+  {
+    "id": "broad-practice-use-site-manglish",
+    "screen": "safari-business-empty",
+    "task": "web_practice",
+    "question": "Ee website engane use cheyyam?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "manglish",
+    "orientation_en": "This is the ‘Business Details’ page."
+  },
+  {
+    "id": "broad-practice-which-screen-english",
+    "screen": "safari-review-ready",
+    "task": "web_practice",
+    "question": "Which screen can you help me with?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "english",
+    "orientation_en": "This is the ‘Review’ page."
+  },
+  {
+    "id": "broad-practice-which-screen-malayalam",
+    "screen": "safari-review-ready",
+    "task": "web_practice",
+    "question": "ഏത് സ്ക്രീനിൽ എന്നെ സഹായിക്കാനാകും?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "malayalam",
+    "orientation_en": "This is the ‘Review’ page."
+  },
+  {
+    "id": "broad-practice-which-screen-manglish",
+    "screen": "safari-review-ready",
+    "task": "web_practice",
+    "question": "Ethu screenil help cheyyan pattum?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "manglish",
+    "orientation_en": "This is the ‘Review’ page."
+  },
+  {
+    "id": "broad-practice-fill-form-english",
+    "screen": "safari-business-filled",
+    "task": "web_practice",
+    "question": "Can you help me fill this form?",
+    "kind": "point",
+    "control_id": "c09",
+    "question_form": "english",
+    "orientation_en": "This is the ‘Business Details’ page."
+  },
+  {
+    "id": "broad-practice-fill-form-malayalam",
+    "screen": "safari-business-filled",
+    "task": "web_practice",
+    "question": "ഈ ഫോം പൂരിപ്പിക്കാൻ സഹായിക്കാമോ?",
+    "kind": "point",
+    "control_id": "c09",
+    "question_form": "malayalam",
+    "orientation_en": "This is the ‘Business Details’ page."
+  },
+  {
+    "id": "broad-practice-fill-form-manglish",
+    "screen": "safari-business-filled",
+    "task": "web_practice",
+    "question": "Ee form fill cheyyan sahayikkamo?",
+    "kind": "point",
+    "control_id": "c09",
+    "question_form": "manglish",
+    "orientation_en": "This is the ‘Business Details’ page."
   }
 ]

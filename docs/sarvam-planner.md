@@ -12,6 +12,8 @@ The provider returns a strict schema with `kind`, `control_id`, `instruction_ml`
 
 **Ambiguity policy.** Return `clarify` with a short question in the user's language and no pointer. Recognized standalone references to “this” or “that” in Malayalam, English, and Manglish get a local question asking which control the user means. The planner also asks when a target cannot be rebound uniquely. The prompt asks the model to clarify broader requests with competing goals.
 
+**Broad web help.** Questions about using the site, which screen the companion can help with, or filling the form ask for a useful first step on the current page. For recognized English, Malayalam, and Manglish phrasing, the planner checks the visible browser controls locally. It prefers a marked required field, then the first unfinished entry field in reading order, then an unambiguous primary action such as Next or Save. The reply introduces the page and quotes the target in both languages. For example, the httpbin capture gives “This is an order form. Start with ‘Customer name:’.” The prompt follows the same policy when the model handles the question, and asks for clarification when competing goals make the first step unclear.
+
 **Practice completion.** The AIMS and Safari practice tasks declare their own completion prefixes, “Training draft complete” and “Training complete”. When the fixture's static `status` text starts with its prefix, followed by punctuation or the end of the text, the planner returns a short bilingual congratulation with a null control ID. This consumes zero chat calls and the panel hides the pointer. Review and a checked declaration alone still allow the next step. Explicit control requests retain their grounding checks, and public pages use the model's visible-status rule.
 
 For each active question, the planner caches decisions by window and the set of `(identifier or label, role, filled)` values. It also tracks visible label text, enabled states, and repeated controls. Safari uses status and enabled-state changes to mark progress after attachment and saving, so those changes need a fresh decision. On a cache hit the planner rebinds the target by identifier or by an unambiguous label and role and uses the current snapshot ID. Failed replies remain cached for that screen and question. Call logs in `runs/sarvam-planner-*.jsonl` contain model, timing, request ID, and outcome.
@@ -25,7 +27,7 @@ The default is **`sarvam-105b-conversations`** on `POST https://api.sarvam.ai/v1
 
 `tests/fixtures/planner/screens.json` contains six AIMS and nine Safari practice snapshots captured using the Accessibility reader on 21 November 2026, two public Safari snapshots, and six hand-made snapshots. The test driver used only the practice fixtures, with synthetic inputs and the worktree loopback URL for Safari. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot.
 
-The 45 cases cover progress through both practice fixtures, completion and still-actionable Review states, missing and present export controls, explicit labels, ambiguity, and public pages. Each public snapshot was captured in a new Safari window, using the reader's URL-prefix constraint. The capture only read the page and its Accessibility controls. The public replays include host-only titles and synthetic viewports. All four expected public targets have no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
+The 63 cases cover progress through both practice fixtures, completion and still-actionable Review states, missing and present export controls, explicit labels, ambiguity, and public pages. Each public snapshot was captured in a new Safari window, using the reader's URL-prefix constraint. The capture only read the page and its Accessibility controls. Safari replays have synthetic viewports and public replays have host-only titles. All 13 public cases expect targets with no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
 
 ```sh
 .venv/bin/python scripts/eval_planner.py
@@ -33,7 +35,24 @@ The 45 cases cover progress through both practice fixtures, completion and still
 .venv/bin/python scripts/qa/run.py
 ```
 
-The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 40/45 exact matches, zero unknown IDs, and zero malformed replies. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 56/63 exact matches, zero unknown IDs, and zero malformed replies. Each orientation case also checks the expected page description and quoted target in both languages. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+
+### Broad web help eval
+
+Each of the following phrasings runs on both the httpbin order form and the Safari practice fixture, for 18 cases. The public cases start at “Customer name:”. The practice cases use “Business Name” on a blank form, “Next” after the required fields are filled, and “Save” on Review.
+
+| English | Malayalam | Manglish |
+|---|---|---|
+| Can you tell me how do I use this website? | ഈ വെബ്‌സൈറ്റ് എങ്ങനെ ഉപയോഗിക്കാം? | Ee website engane use cheyyam? |
+| Which screen can you help me with? | ഏത് സ്ക്രീനിൽ എന്നെ സഹായിക്കാനാകും? | Ethu screenil help cheyyan pattum? |
+| Can you help me fill this form? | ഈ ഫോം പൂരിപ്പിക്കാൻ സഹായിക്കാമോ? | Ee form fill cheyyan sahayikkamo? |
+
+| Run | Exact | Orientations | Unknown IDs | Malformed | HTTP p50 | HTTP p95 | Chat calls |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 63/63 | 18/18 | 0 | 0 | 604 ms | 1,551 ms | 30 |
+| 2 | 62/63 | 18/18 | 0 | 0 | 683 ms | 14,113 ms | 30 |
+
+Both locked runs used `sarvam-105b-conversations` and spent zero chat calls on the 18 new cases. The only miss was the recurring AIMS loss-description case. Run 2 pointed at “Save »” too early. Both runs selected “Category” on the specific Safari shop-category question. All 105 unit tests passed. See `runs/sarvam-planner-eval-20261121T172227.891276Z.json`, `runs/sarvam-planner-eval-20261121T172345.551613Z.json`, and `runs/qa/20261121-225202/report.md`.
 
 ### Completion regression eval
 
@@ -102,5 +121,5 @@ All 19 planner mock tests and 84 unit tests passed. The stock locked QA run pass
 
 ### Open issues
 
-- The latest runs exposed unnecessary clarification for the shop category and one premature “Save »” on the AIMS loss-description question.
+- The AIMS loss-description question can still trigger a premature “Save »” suggestion.
 - Public-page evidence uses read-only captures. The end-to-end driver checks use the local practice fixtures. Malayalam instruction quality still needs a native-speaker review.

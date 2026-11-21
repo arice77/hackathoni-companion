@@ -352,19 +352,56 @@ class PlannerTests(unittest.TestCase):
 
     def test_typed_form_question_advances_after_attachment(self):
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
-        self.http.side_effect = [
-            _response(_choice(control_id="c03", label="Attach Sample Document")),
-            _response(_choice(control_id="c05", label="Next")),
-        ]
+        self.http.return_value = _response(_choice(control_id="c03", label="Attach Sample Document"))
         planner = SarvamPlanner("web_practice", log_calls=False)
         for name, target_id in (("safari-documents-empty", "c03"), ("safari-documents-attached", "c05")):
             snap = eval_planner._snapshot("Documents", screens[name], False)
             decision = planner.decide(TYPED_QUESTION, snap)
-            payload = json.loads(self.http.call_args.args[0].data)
-            schema = payload["response_format"]["json_schema"]["schema"]
-            self.assertEqual(schema["properties"]["control_id"]["enum"], [None, target_id])
             self.assertEqual((decision.kind, decision.control_id), ("point", target_id))
-        self.assertEqual(len(planner.calls), 2)
+        self.http.assert_called_once()
+
+    def test_broad_web_help_replays_all_orientations_without_http(self):
+        cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        broad_cases = [case for case in cases if case.get("orientation_en")]
+        self.assertEqual(len(broad_cases), 18)
+        for case in broad_cases:
+            with self.subTest(case=case["id"]):
+                row = eval_planner._case(DEFAULT_MODEL, case, screens[case["screen"]])
+                self.assertTrue(row["orientation_ok"])
+                self.assertTrue(row["cold_validator"]["valid"])
+                self.assertTrue(row["cache_ok"])
+                self.assertEqual(row["calls"], [])
+        self.http.assert_not_called()
+
+    def test_broad_help_prefers_unfinished_required_field_on_the_current_page(self):
+        name, save = self.snapshot.controls
+        optional = Control("c02", "AXTextField", "Nickname (not required)", (10, 30, 100, 10), filled=False)
+        email = Control("c03", "AXTextField", "E-mail (required)", (10, 40, 100, 10), filled=False)
+        snap = replace(self.snapshot, viewport=self.snapshot.window_frame, controls=(save, email, optional, name))
+        decision = self.planner.decide("ഈ പേജ് എങ്ങനെ ഉപയോഗിക്കാം? / How do I use this page?", snap)
+        self.assertEqual((decision.kind, decision.control_id), ("point", email.id))
+        self.assertEqual(decision.instruction_en, "This is a form. Start with ‘E-mail (required)’.")
+        self.http.assert_not_called()
+
+    def test_broad_web_help_does_not_reuse_off_topic_answer_or_guess_without_controls(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-form"], False)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        self.http.return_value = _response({
+            "kind": "unsupported", "control_id": None,
+            "instruction_en": "I can help with the page.", "instruction_ml": "ഈ പേജിൽ സഹായിക്കാം.",
+        })
+        self.assertEqual(planner.decide("Will it rain tomorrow?", snap).kind, "unsupported")
+        self.assertEqual(planner.decide("Where is the button labeled ‘Export PDF’?", snap).kind, "unsupported")
+        question = "Can you tell me how to use this website?"
+        decision = planner.decide(question, snap)
+        self.assertEqual(decision.instruction_en, "This is an order form. Start with ‘Customer name:’.")
+        no_controls = replace(snap, snapshot_id="read-only", controls=(
+            Control("h1", "AXHeading", "Read only", (10, 30, 100, 10)),
+        ))
+        self.assertEqual(planner.decide(question, no_controls).kind, "unsupported")
+        self.http.assert_called_once()
 
     def test_missing_quote_uses_a_local_instruction_for_the_valid_target(self):
         result = _choice()
@@ -448,7 +485,7 @@ class PlannerTests(unittest.TestCase):
         cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         self.assertTrue({TYPED_QUESTION, QUESTION} <= {case["question"] for case in cases})
-        self.assertEqual(len(cases), 45)
+        self.assertEqual(len(cases), 63)
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual(
             {case["question_form"] for case in cases},
@@ -460,7 +497,7 @@ class PlannerTests(unittest.TestCase):
             {"aims-reader", "safari-reader", "hand-made", "public-safari-reader"},
         )
         public_cases = [case for case in cases if screens[case["screen"]]["origin"] == "public-safari-reader"]
-        self.assertEqual(len(public_cases), 4)
+        self.assertEqual(len(public_cases), 13)
         for case in public_cases:
             snapshot = eval_planner._snapshot(case["screen"], screens[case["screen"]], False)
             self.assertIsNotNone(snapshot.viewport)
