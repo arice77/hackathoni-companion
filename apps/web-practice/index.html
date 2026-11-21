@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HackaThoni · Business Form Practice</title>
+  <link rel="stylesheet" href="/practice.css">
+  <script src="/practice.js" defer></script>
+</head>
+<body>
+  <header><div class="shell">Business Services <span class="badge">Training desk</span></div></header>
+  <div class="banner">PRACTICE · synthetic data · nothing is sent</div>
+  <main class="shell">
+    <nav aria-label="Form progress">
+      <ol>
+        <li aria-current="step">1. Business Details</li>
+        <li>2. Documents</li>
+        <li>3. Review</li>
+      </ol>
+    </nav>
+    <form class="panel" autocomplete="off">
+      <h1 id="screen-title">Business Details</h1>
+      <section data-screen="Business Details">
+        <p>Use made-up details to practice filling in a business form.</p>
+        <label for="business-name">Business Name</label>
+        <input id="business-name" type="text" maxlength="80" required>
+        <div class="columns">
+          <div>
+            <label for="district">District</label>
+            <select id="district" required>
+              <option value="">Select a district</option>
+              <option>Alappuzha</option><option>Ernakulam</option><option>Kottayam</option>
+            </select>
+          </div>
+          <div>
+            <label for="category">Category</label>
+            <select id="category" required>
+              <option value="">Select a category</option>
+              <option>Retail</option><option>Services</option><option>Manufacturing</option>
+            </select>
+          </div>
+        </div>
+        <button id="details-next" type="button">Next</button>
+        <button id="sample-details" class="secondary" type="button">Use Sample Details</button>
+      </section>
+      <section data-screen="Documents" hidden>
+        <p>Practice attaching a document without choosing a file from your device.</p>
+        <button id="attach-sample" class="secondary" type="button">Attach Sample Document</button>
+        <p class="muted" id="document-note" aria-live="polite">No sample attached</p>
+        <button id="documents-next" type="button" disabled>Next</button>
+      </section>
+      <section data-screen="Review" hidden>
+        <p>Your practice details and sample document are ready. Saving creates only a local training receipt.</p>
+        <label class="check"><input id="declaration" type="checkbox"> I used only synthetic data</label>
+        <button id="save" type="button" disabled>Save</button>
+      </section>
+      <p class="status" id="status" aria-live="polite">Ready for practice</p>
+    </form>
+  </main>
+</body>
+</html>

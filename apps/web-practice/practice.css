@@ -1,0 +1,29 @@
+:root {
+  color-scheme: light;
+  color: #14273c;
+  background: #edf2f6;
+  font: 16px/1.45 system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+.shell { width: min(100% - 2rem, 46rem); margin: auto; }
+header { padding: .8rem 0; background: #142f4d; color: white; font-weight: 700; }
+.badge { margin-left: .5rem; color: #bfd3e6; font-size: .85rem; }
+.banner { padding: .5rem 1rem; text-align: center; background: #ffe0ab; color: #5f3100; }
+ol { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; padding: 0; list-style: none; color: #455a70; }
+[aria-current="step"] { color: #163d63; font-weight: 700; border-bottom: 2px solid; }
+.panel { background: white; border: 1px solid #cdd8e1; border-radius: .6rem; padding: 1.3rem; }
+h1 { font-size: 1.6rem; margin: 0 0 .45rem; }
+section > p:first-child { margin-top: 0; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr)); gap: .75rem; }
+label { display: block; margin: .5rem 0 .25rem; font-weight: 600; }
+input[type="text"], select { width: 100%; padding: .5rem; border: 1px solid #7d90a1; border-radius: .3rem; background: white; }
+input, select, button { color: inherit; font: inherit; }
+button { margin-top: .75rem; padding: .5rem 1rem; background: #163d63; color: white; border: 1px solid #163d63; border-radius: .3rem; cursor: pointer; }
+.secondary { margin: 0; color: #163d63; background: #eff5fb; }
+button:disabled { color: #455a70; background: #e6edf3; border-color: #a1b1bf; cursor: default; }
+:focus-visible { outline: 3px solid #007c96; outline-offset: 3px; }
+.check { display: flex; align-items: center; gap: .5rem; width: fit-content; }
+.muted, .status { color: #455a70; }
+.status { margin: 1rem 0 0; padding-top: .5rem; border-top: 1px solid #d8e1e9; }
