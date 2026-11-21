@@ -75,13 +75,13 @@ class SarvamTests(unittest.TestCase):
         )
         result = sarvam.transcribe(self.wav)
         self.assertEqual(self.speech_fields(), {
-            "model": "saaras:v4", "language_code": "ml-IN", "mode": "transcribe",
+            "model": "saarika:v2.5", "language_code": "ml-IN",
         })
         self.assertIsInstance(result, Transcript)
         self.assertEqual(result.text, "നമസ്കാരം")
         self.assertEqual(result.language_code, "ml-IN")
         self.assertEqual(result.provider, "sarvam")
-        self.assertEqual(result.model, "saaras:v4")
+        self.assertEqual(result.model, "saarika:v2.5")
         self.assertEqual(result.request_id, "native-id")
         self.assertGreaterEqual(result.latency_ms, 0)
 
@@ -205,44 +205,77 @@ class SarvamTests(unittest.TestCase):
             status = sarvam_smoke.main(list(args))
         return status, output.getvalue(), errors.getvalue()
 
-    def test_smoke_default_writes_wav_and_report(self):
+    def test_smoke_default_writes_both_wavs_and_report(self):
         encoded = base64.b64encode(self.wav.read_bytes()).decode("ascii")
         self.http.side_effect = [
-            self.response(audios=[encoded], request_id="tts-id"),
-            self.response(transcript=sarvam_smoke.QUESTION, request_id="native-id"),
-            self.response(transcript="How do I file this month's GST return?", request_id="english-id"),
+            self.response(audios=[encoded], request_id="ml-tts"),
+            self.response(transcript=sarvam_smoke.QUESTIONS["ml-IN"], request_id="ml-stt"),
+            self.response(transcript=sarvam_smoke.QUESTIONS["en-IN"], request_id="ml-to-en"),
+            self.response(audios=[encoded], request_id="en-tts"),
+            self.response(transcript=sarvam_smoke.QUESTIONS["en-IN"], request_id="en-stt"),
         ]
         status, output, errors = self.run_smoke()
         self.assertEqual((status, errors), (0, ""))
         self.assertIn(sarvam_smoke.SYNTHETIC_NOTE, output)
-        for request_id in ("tts-id", "native-id", "english-id"):
+        for request_id in ("ml-tts", "ml-stt", "ml-to-en", "en-tts", "en-stt"):
             self.assertIn(request_id, output)
         [report_path] = (self.root / "runs").glob("sarvam-smoke-*.json")
         report = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(report["evidence"], "live")
-        self.assertEqual(report["audio_source"], "synthetic_tts")
-        self.assertEqual(report["character_similarity"], 1.0)
-        self.assertEqual((report_path.parent / report["generated_wav"]).read_bytes(), self.wav.read_bytes())
+        ml, en = report["checks"]
+        self.assertEqual([ml["preference"], en["preference"]], ["ml-IN", "en-IN"])
+        self.assertEqual(ml["transcription"]["english_translation"]["request_id"], "ml-to-en")
+        self.assertIsNone(en["transcription"]["english_translation"])
+        for check, tts_index, stt_index in ((ml, 0, 1), (en, 3, 4)):
+            self.assertEqual(check["audio_source"], "synthetic_tts")
+            self.assertEqual(check["character_similarity"], 1.0)
+            self.assertEqual((report_path.parent / check["saved_wav"]).read_bytes(), self.wav.read_bytes())
+            tts = self.http.call_args_list[tts_index].args[0]
+            self.assertEqual(json.loads(tts.data)["language_code"], check["preference"])
+            stt = self.http.call_args_list[stt_index].args[0]
+            language_part = f'name="language_code"\r\n\r\n{check["preference"]}\r\n'.encode()
+            self.assertIn(language_part, stt.data)
         self.assertNotIn(FAKE_KEY, report_path.read_text(encoding="utf-8"))
-        self.assertEqual(self.http.call_count, 3)
+        self.assertEqual(self.http.call_count, 5)
 
     def test_smoke_supplied_wav_skips_tts(self):
         self.http.side_effect = [
-            self.response(transcript=sarvam_smoke.QUESTION),
-            self.response(transcript="How do I file this month's GST return?"),
+            self.response(transcript=sarvam_smoke.QUESTIONS["en-IN"]),
         ]
-        status, _, errors = self.run_smoke("--wav", str(self.wav))
+        status, _, errors = self.run_smoke("--wav", str(self.wav), "--preference", "en-IN")
         self.assertEqual((status, errors), (0, ""))
         [report_path] = (self.root / "runs").glob("sarvam-smoke-*.json")
         report = json.loads(report_path.read_text(encoding="utf-8"))
-        self.assertEqual(report["audio_source"], "supplied_wav")
-        self.assertIsNone(report["tts"])
-        self.assertEqual(self.http.call_count, 2)
+        [check] = report["checks"]
+        self.assertEqual(check["audio_source"], "supplied_wav")
+        self.assertEqual(check["preference"], "en-IN")
+        self.assertIsNone(check["tts"])
+        self.assertEqual(self.http.call_count, 1)
         self.assertEqual(list(report_path.parent.glob("*.wav")), [])
 
     def test_smoke_missing_key_is_blocked_and_writes_no_live_report(self):
         del os.environ["SARVAM_API_KEY"]
-        status, output, errors = self.run_smoke()
-        self.assertEqual((status, output, errors), (2, "", "BLOCKED: no SARVAM_API_KEY\n"))
+        for args in ((), ("--record", "--preference", "en-IN"), ("--wav", str(self.wav))):
+            status, output, errors = self.run_smoke(*args)
+            self.assertEqual((status, output, errors), (2, "", "BLOCKED: no SARVAM_API_KEY\n"))
         self.assertFalse((self.root / "runs").exists())
         self.http.assert_not_called()
+
+    def test_smoke_records_one_preference_from_the_terminal(self):
+        self.http.return_value = self.response(transcript=sarvam_smoke.QUESTIONS["en-IN"])
+        with (
+            patch.object(sarvam_smoke.sys.stdin, "isatty", return_value=True),
+            patch("builtins.input", return_value=""),
+            patch.object(sarvam_smoke.voice, "record_push_to_talk") as start,
+            patch.object(sarvam_smoke.voice, "stop_recording", return_value=self.wav) as stop,
+        ):
+            status, _, errors = self.run_smoke("--record", "--preference", "en-IN")
+        self.assertEqual((status, errors), (0, ""))
+        start.assert_called_once_with()
+        stop.assert_called_once_with()
+        [report_path] = (self.root / "runs").glob("sarvam-smoke-*.json")
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        [check] = report["checks"]
+        self.assertEqual(check["audio_source"], "microphone")
+        self.assertEqual(check["preference"], "en-IN")
+        self.assertEqual(self.http.call_count, 1)

@@ -21,7 +21,8 @@ _TIMEOUT_SECONDS = 30
 _KEY_NAME = "SARVAM_API_KEY"
 _MALAYALAM = "ml-IN"
 _ENGLISH = "en-IN"
-_SPEECH_MODEL = "saaras:v4"
+_TRANSCRIPTION_MODEL = "saarika:v2.5"
+_SPEECH_TRANSLATION_MODEL = "saaras:v4"
 _TRANSLATE_MODEL = "sarvam-translate:v1"
 _TTS_MODEL = "bulbul:v3"
 _DEFAULT_SPEAKER = "shubh"
@@ -147,7 +148,7 @@ def _text_field(data: dict, name: str) -> str:
     return value
 
 
-def _speech(wav_path: str | Path, language_code: str, mode: str) -> Transcript:
+def _speech(wav_path: str | Path, language_code: str, model: str, mode: str | None = None) -> Transcript:
     key = _load_api_key()
     with Path(wav_path).open("rb") as audio:
         header = audio.read(12)
@@ -156,7 +157,9 @@ def _speech(wav_path: str | Path, language_code: str, mode: str) -> Transcript:
         wav_bytes = header + audio.read()
 
     boundary = uuid4().hex
-    fields = {"model": _SPEECH_MODEL, "mode": mode, "language_code": language_code}
+    fields = {"model": model, "language_code": language_code}
+    if mode is not None:
+        fields["mode"] = mode
     parts = [
         f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
         for name, value in fields.items()
@@ -175,7 +178,7 @@ def _speech(wav_path: str | Path, language_code: str, mode: str) -> Transcript:
         # Sarvam's language_code describes the input even in translate mode.
         language_code=_ENGLISH if mode == "translate" else data.get("language_code") or language_code,
         provider="sarvam",
-        model=_SPEECH_MODEL,
+        model=model,
         request_id=data.get("request_id") or "",
         latency_ms=latency,
     )
@@ -183,12 +186,12 @@ def _speech(wav_path: str | Path, language_code: str, mode: str) -> Transcript:
 
 def transcribe(wav_path: str | Path, language_code: str = _MALAYALAM) -> Transcript:
     """Transcribe a short WAV in the spoken language."""
-    return _speech(wav_path, language_code, "transcribe")
+    return _speech(wav_path, language_code, _TRANSCRIPTION_MODEL)
 
 
 def translate_speech_to_english(wav_path: str | Path) -> Transcript:
     """Translate a short Malayalam WAV directly to English."""
-    return _speech(wav_path, _MALAYALAM, "translate")
+    return _speech(wav_path, _MALAYALAM, _SPEECH_TRANSLATION_MODEL, mode="translate")
 
 
 def translate_text(text: str, source: str, target: str) -> str:
