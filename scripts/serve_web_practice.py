@@ -11,21 +11,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "apps" / "web-practice"
 RECEIPT = ROOT / "runs" / "web-practice-complete.json"
+PIZZA_RECEIPT = ROOT / "runs" / "pizza-complete.json"
 WORKSPACE_KEY = hashlib.sha256(os.fsencode(ROOT)).hexdigest().encode("ascii")
 ASSETS = {
     "/": ("index.html", "text/html"),
     "/practice.css": ("practice.css", "text/css"),
     "/practice.js": ("practice.js", "text/javascript"),
+    "/pizza": ("pizza.html", "text/html"),
+    "/pizza.css": ("pizza.css", "text/css"),
+    "/pizza.js": ("pizza.js", "text/javascript"),
 }
+# POST route -> (receipt file, task name). Receipts hold no form data.
+RECEIPTS = {"/receipt": (RECEIPT, "web_practice"), "/pizza-receipt": (PIZZA_RECEIPT, "pizza_practice")}
 
 
-def write_receipt() -> None:
-    RECEIPT.parent.mkdir(exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", dir=RECEIPT.parent, delete_on_close=False) as file:
-        json.dump({"task": "web_practice", "synthetic": True,
+def write_receipt(path: Path = RECEIPT, task: str = "web_practice") -> None:
+    path.parent.mkdir(exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete_on_close=False) as file:
+        json.dump({"task": task, "synthetic": True,
                    "completed_at": datetime.now(timezone.utc).isoformat()}, file)
         file.close()
-        os.replace(file.name, RECEIPT)
+        os.replace(file.name, path)
 
 
 class PracticeHandler(BaseHTTPRequestHandler):
@@ -54,7 +60,7 @@ class PracticeHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self) -> None:
-        if self.path != "/receipt":
+        if self.path not in RECEIPTS:
             self.send_error(404)
         elif self.headers.get("Host") != self.host or self.headers.get("Origin") != f"http://{self.host}":
             self.send_error(403)
@@ -62,7 +68,7 @@ class PracticeHandler(BaseHTTPRequestHandler):
             self.send_error(400, "Practice receipts must not contain form data")
         else:
             try:
-                write_receipt()
+                write_receipt(*RECEIPTS[self.path])
             except OSError:
                 self.send_error(500, "Could not save the local receipt")
             else:
