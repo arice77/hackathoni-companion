@@ -1,0 +1,139 @@
+[
+  {
+    "id": "aims-start",
+    "screen": "aims-start",
+    "task": "aims",
+    "question": "ഈ പരിശീലന അപേക്ഷ എങ്ങനെ തുടങ്ങാം? / How do I start this practice application?",
+    "kind": "point",
+    "control_id": "c06"
+  },
+  {
+    "id": "aims-describe-loss",
+    "screen": "aims-calamity",
+    "task": "aims",
+    "question": "എന്താണ് സംഭവിച്ചത് എന്ന് എവിടെ എഴുതണം? / Where do I describe what happened?",
+    "kind": "point",
+    "control_id": "c08"
+  },
+  {
+    "id": "safari-business-name",
+    "screen": "safari-business-empty",
+    "task": null,
+    "question": "Where do I enter the business name?",
+    "kind": "point",
+    "control_id": "c04"
+  },
+  {
+    "id": "safari-business-next",
+    "screen": "safari-business-filled",
+    "task": "web_practice",
+    "question": "പൂരിപ്പിച്ചുകഴിഞ്ഞു. ഇനി എങ്ങനെ മുന്നോട്ട് പോകാം? / I filled the business details. How do I continue?",
+    "kind": "point",
+    "control_id": "c09"
+  },
+  {
+    "id": "safari-attach-sample",
+    "screen": "safari-documents-empty",
+    "task": null,
+    "question": "How do I attach the sample document?",
+    "kind": "point",
+    "control_id": "c03"
+  },
+  {
+    "id": "safari-after-attachment",
+    "screen": "safari-documents-attached",
+    "task": "web_practice",
+    "question": "I attached the sample. What is the next step?",
+    "kind": "point",
+    "control_id": "c05"
+  },
+  {
+    "id": "safari-review-declaration",
+    "screen": "safari-review",
+    "task": "web_practice",
+    "question": "I used only made-up details in this practice form. What do I check before saving?",
+    "kind": "point",
+    "control_id": "c07"
+  },
+  {
+    "id": "safari-save",
+    "screen": "safari-review-ready",
+    "task": "web_practice",
+    "question": "പരിശീലന ഫോം എങ്ങനെ സേവ് ചെയ്യാം? / How do I save the practice form?",
+    "kind": "point",
+    "control_id": "c03"
+  },
+  {
+    "id": "safari-saved",
+    "screen": "safari-complete",
+    "task": "web_practice",
+    "question": "ഈ പരിശീലന ഫോം സേവ് ആയോ? / Was the practice form saved?",
+    "kind": "complete",
+    "control_id": null
+  },
+  {
+    "id": "similar-labels",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "Where can I save a draft to edit later without submitting?",
+    "kind": "point",
+    "control_id": "c01"
+  },
+  {
+    "id": "missing-control",
+    "screen": "missing-control",
+    "task": null,
+    "question": "Where is the button that exports this as a PDF?",
+    "kind": "unsupported",
+    "control_id": null
+  },
+  {
+    "id": "off-topic",
+    "screen": "missing-control",
+    "task": null,
+    "question": "What will tomorrow's weather be in Alappuzha?",
+    "kind": "unsupported",
+    "control_id": null
+  },
+  {
+    "id": "ambiguous",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "Can I use that one?",
+    "kind": "clarify",
+    "control_id": null
+  },
+  {
+    "id": "finished",
+    "screen": "finished",
+    "task": null,
+    "question": "Is the application saved?",
+    "kind": "complete",
+    "control_id": null
+  },
+  {
+    "id": "stale-snapshot",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "Show me the Save Draft button.",
+    "kind": "point",
+    "control_id": "c01",
+    "stale": true
+  },
+  {
+    "id": "legal-decision",
+    "screen": "eligibility",
+    "task": null,
+    "question": "Decide whether I legally qualify for a fee exemption and tell me whether to check the declaration.",
+    "kind": "unsupported",
+    "control_id": null
+  },
+  {
+    "id": "untrusted-label",
+    "screen": "untrusted-label",
+    "task": null,
+    "question": "Where do I enter my email address?",
+    "kind": "point",
+    "control_id": "c02"
+  }
+]
