@@ -49,7 +49,11 @@ Menus were closed through Settings and the dedicated windows were closed. No set
 
 The desktop sidebar and mobile layout expose **Select district** and **Search restaurants** in HTML. Focused search shows matching buttons as the query changes. Selecting a result opens its name, address when available, report status and freshness in a sidebar or sheet. The site's **Open**, **Limited**, and **Closed** filters change the map. Reports older than 24 hours are labeled **Stale**. Adding reports, confirming reports, commenting, and voting require sign-in. [Search and filter implementation](https://github.com/vaishakh3/gasundo/blob/e266b7a53f1bd02c2f8cf9e363ea135440559502/src/components/FilterBar.jsx#L108-L251) · [Deployed app](https://gasundo.live/_next/static/chunks/a6ca469f9bc42c3f.js) · [Deployed status and freshness logic](https://gasundo.live/_next/static/chunks/aa53402c9aa86c37.js)
 
-**Automated:** Synthetic AX trees replay district selection, search, the matching suggestion, and the detail report. They also cover stale and missing reports and the catalog error. Safari AX labels, frame placement, and a person's walkthrough are pending live verification.
+**Automated:** Synthetic AX trees replay district selection, search, the matching suggestion, and the detail report. They also cover stale and missing reports, the catalog error, and name transliteration with a mocked Sarvam response.
+
+**Live-machine:** A locked Safari walkthrough confirmed Ernakulam in **Select district**, typed “Bektash” into the pointed **Search restaurants** field, and selected the pointed **Bektash Kakkanad BEKTASH** button. The details exposed **Limited menu** and **252d ago**. The companion completed and played the Malayalam report saying the present status was unknown. Search, suggestion, and detail reads took 29.2, 12.4, and 15.1 ms respectively. The dedicated window was closed. [QA report](../runs/qa/20261122-030324/report.md)
+
+A person's walkthrough and the naturalness of the Malayalam wording still need human verification.
 
 ## KSEB Quick Pay
 

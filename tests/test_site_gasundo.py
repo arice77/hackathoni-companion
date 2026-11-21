@@ -43,10 +43,10 @@ class GasUndoTests(unittest.TestCase):
         steps = [
             (snapshot(district="Alappuzha"), "Select district: Alappuzha"),
             (snapshot(), "Search restaurants"),
-            (snapshot(("result", "AXButton", "Bektash Kakkanad select", (35, 294, 300, 42)),
+            (snapshot(("result", "AXButton", "Bektash Kakkanad BEKTASH select", (35, 294, 300, 42)),
                       ("another", "AXButton", "Bektash Edappally select", (35, 342, 300, 42)),
                       ("signin", "AXButton", "Sign in with Google", (35, 392, 300, 42)),
-                      search="private query"), "Bektash Kakkanad"),
+                      search="private query"), "Bektash Kakkanad BEKTASH"),
         ]
         with patch.object(sarvam, "_post", side_effect=AssertionError("Unexpected chat call")):
             for snap, label in steps:
@@ -93,9 +93,9 @@ class GasUndoTests(unittest.TestCase):
     def test_malayalam_name_transliterates_once_for_the_whole_replay(self):
         planner = SarvamPlanner("web_site", log_calls=False)
         question = "റഹ്മാനിയ ഹോട്ടൽ തുറന്നിട്ടുണ്ടോ എന്ന് അറിയണം"
-        with patch.object(sarvam, "transliterate_text", return_value="Rahmaniya Hotel") as transliterate:
+        with patch.object(sarvam, "transliterate_text", return_value="Rāhmaniya Hotel") as transliterate:
             answer = planner.decide(question, snapshot())
-            self.assertIn("Rahmaniya Hotel", answer.instruction_en)
+            self.assertIn("Rāhmaniya Hotel", answer.instruction_en)
             results = snapshot(("result", "AXButton", "Rahmaniya Hotel select", (35, 294, 300, 42)),
                                search="Rahmaniya")
             result = planner.decide(question, results)

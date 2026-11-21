@@ -54,7 +54,9 @@ _FRESHNESS = re.compile(r"when was (?:this|the) .*updated|how old is (?:this|the
 
 
 def _normalized_name(text: str) -> str:
-    return " ".join(re.sub(r"[^\w\s-]", " ", _phrase(text)).split())
+    decomposed = unicodedata.normalize("NFKD", _phrase(text))
+    unaccented = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return " ".join(re.sub(r"[^\w\s-]", " ", unaccented).split())
 
 
 def _district(text: str) -> str | None:

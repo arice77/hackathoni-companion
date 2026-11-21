@@ -63,6 +63,8 @@ The recommended opener uses Ernakulam and Bektash Kakkanad. The HTTP probe found
 
 For a name spoken in Malayalam, the guide first uses the Latin spelling from the English transcript when available. Otherwise it sends only the restaurant name to Sarvam for one Malayalam-to-English transliteration per question. Bektash Kakkanad has an offline spelling fallback.
 
+The opt-in Safari check runs through search, the result pointer, the report and Malayalam playback with `QA_LIVE_SARVAM=1 .venv/bin/python scripts/qa/run.py gasundo_follow_pointer_e2e`.
+
 ## Optional steps on general forms
 
 The planner offers optional fields and sets in reading order. It names the checkbox choices and leaves each selection with the user. The panel's Skip action and the colloquial commands “skip”, “next”, “no”, “വേണ്ട”, “ഒഴിവാക്കൂ”, “adutha”, and “venda” advance an optional pointer under the same question. Filling a later unit also skips earlier optional units observed in that plan. Later instructions begin with “Next” or “അടുത്തത്”. A primary button whose visible label contains a recognized action phrase can be selected when it is the only candidate.
