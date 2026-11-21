@@ -399,7 +399,9 @@ class Companion(NSObject):
         sig = screen_signature(snap)
         with self.plan_lock:
             result, running = self.plan_result, self.plan_thread is not None and self.plan_thread.is_alive()
-        if not running and (result is None or result[2] != sig):
+        retry_at = getattr(self.planner, "retry_at", None)  # planner-owned timed retry on an unchanged screen
+        due = retry_at is not None and time.monotonic() >= retry_at
+        if not running and (result is None or result[2] != sig or due):
             question = self.question
             question_version = self.question_version
 
