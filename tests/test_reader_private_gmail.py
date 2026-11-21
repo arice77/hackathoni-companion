@@ -39,14 +39,16 @@ class GmailPrivacyTests(unittest.TestCase):
     def test_open_email_keeps_chrome_without_quoting_header_or_body(self):
         nodes = {
             "page": {"AXRole": "AXWebArea", "AXChildren": ["main"]},
-            "main": {"AXRole": "AXGroup", "AXSubrole": "AXLandmarkMain", "AXChildren": ["heading", "text", "reply", "link"]},
+            "main": {"AXRole": "AXGroup", "AXSubrole": "AXLandmarkMain",
+                     "AXChildren": ["heading", "text", "reply", "link", "back"]},
             "heading": {"AXRole": "AXHeading", "AXTitle": "Family medical update"},
             "text": {"AXRole": "AXStaticText", "AXValue": "Dad's appointment is at 3 PM."},
             "reply": {"AXRole": "AXButton", "AXTitle": "Reply", "AXDescription": "Reply to Latha Nair"},
             "link": {"AXRole": "AXLink", "AXTitle": "Latha Nair <latha@example.test>"},
+            "back": {"AXRole": "AXButton", "AXDescription": "Back to Sent Mail"},
         }
-        controls = self.collect(nodes, INBOX + "/FMfcgzX0000000000")
-        self.assertEqual([control.label for control in controls], ["Reply", "Open email"])
+        controls = self.collect(nodes, INBOX.replace("#inbox", "#sent") + "/FMfcgzX0000000000")
+        self.assertEqual([control.label for control in controls], ["Reply", "Back", "Open email"])
         self.assertEqual(controls[0].frame, VIEWPORT)
         self.assertNotIn("Latha", repr(controls))
         self.assertNotIn("appointment", repr(controls))

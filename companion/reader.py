@@ -49,7 +49,8 @@ UNSUPPORTED_BROWSERS = {"com.apple.SafariTechnologyPreview", "com.google.Chrome"
 WEB_TEXT_NOTES = {"status", "document-note"}
 WEB_VALUE_ROLES = INPUT_ROLES | {"AXSearchField", "AXTimeField"}
 WEB_INPUT_ROLES = WEB_VALUE_ROLES | {"AXDateTimeArea"}
-WEB_ACTION_ROLES = (KEEP_ROLES | WEB_INPUT_ROLES | {"AXSlider"}) - {"AXStaticText"}
+WEB_MENU_ROLES = {"AXMenuItem", "AXMenuItemCheckbox", "AXMenuItemRadio"}
+WEB_ACTION_ROLES = (KEEP_ROLES | WEB_INPUT_ROLES | WEB_MENU_ROLES | {"AXSlider"}) - {"AXStaticText"}
 SECURE_ROLE = "AXSecureTextField"
 WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXSlider", "AXWebArea"}
 HTTP_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
@@ -64,7 +65,8 @@ GMAIL_ACTIONS = {"Compose", "Search mail", "Show search options", "Reply", "Repl
                  "Formatting options", "Newer", "Older"}
 GMAIL_ALIASES = {name.casefold(): name for name in GMAIL_FIELDS | GMAIL_FOLDERS | GMAIL_ACTIONS}
 GMAIL_ALIASES.update({"recipients": "To", "to recipients": "To", "add recipients": "To", "back to inbox": "Back",
-                      "discard draft": "Discard", "more options": "More", "more actions": "More", "send (⌘enter)": "Send"})
+                      "back to sent mail": "Back", "discard draft": "Discard", "more options": "More",
+                      "more actions": "More", "send (⌘enter)": "Send"})
 GMAIL_FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
 GMAIL_BUTTON_ROLES = {"AXButton", "AXMenuButton", "AXPopUpButton"}
 GMAIL_ROW_ROLES = {"AXRow", "AXLayoutRow"}
