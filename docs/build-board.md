@@ -20,6 +20,14 @@ Status words: planned · building · in QA · in review · merged · demo-ready.
 | Broad questions ("how do I use this site?", "help me fill this form") refused | planner policy too strict | orientation line + point at the first sensible step | Codex sol (planner) | fixed (9a41569), eval pass; needs Abin retest |
 | Pizza size: "select Small", "select Medium", back and forth | reader reports no radio state; planner picks an option for the user | reader: radio `filled` + `group` label + group control filled when any option selected; planner: point at the whole choice set, list the options, user decides, move on once any is chosen | Codex sol (reader) + Codex sol (planner) | fixed (d6938df + 8182e86), 69/69 eval x2; needs Abin retest |
 
+### Retest 21 Nov ~23:05 (httpbin pizza form, `web_any`, "Can you help me fill this form?")
+Failed: started at Delivery instructions, skipped Pizza Size, repeated "This is an order form" every step.
+Why our checks missed it: each fix was tested alone on single or replayed snapshots; nothing walked a whole
+real-shaped form by following the pointer. Orchestrator asked Abin to retest without running an integrated test first.
+**New rule:** a feature isn't ready for Abin until a follow-the-pointer walk on a local copy of the real page passes,
+run by the orchestrator. Fixes: planner (orientation once, one ordered step list incl. choice sets) + QA (local
+`/pizza` copy, `drive_follow_pointer.py`, `pizza_follow_pointer_e2e.py`).
+
 ## Shared-Mac rule
 
 Abin uses this Mac during the build. Live checks fail when he moves windows; rerun on an idle screen before calling a
