@@ -593,6 +593,39 @@ class PlannerTests(unittest.TestCase):
         self.assertIn("This is an order form.", first.instruction_en)
         self.http.assert_not_called()
 
+    def test_form_asks_to_scroll_after_last_visible_field_then_points_at_submit(self):
+        name = replace(self.snapshot.controls[0], filled=False)
+        submit = replace(self.snapshot.controls[1], label="Submit order")
+        snap = replace(self.snapshot, controls=(name,), viewport=self.snapshot.window_frame, below_fold_count=1)
+        question = "Can you help me fill this form?"
+        planner = SarvamPlanner("web_any", log_calls=False)
+        self.assertEqual(planner.decide(question, snap).control_id, name.id)
+        filled = replace(name, filled=True)
+        clipped = replace(snap, snapshot_id="clipped", controls=(filled,))
+        step = planner.decide(question, clipped)
+        self.assertEqual((step.kind, step.control_id, step.instruction_en), ("clarify", None, "Scroll down to continue."))
+        self.assertIn("താഴേക്ക്", step.instruction)
+        self.assertEqual(validate(step, clipped), (True, "ok"))
+        visible = replace(clipped, snapshot_id="visible", below_fold_count=0, controls=(submit,))
+        step = planner.decide(question, visible)
+        self.assertEqual((step.kind, step.control_id), ("point", submit.id))
+        self.assertNotIn("This is", step.instruction_en)
+        self.http.assert_not_called()
+
+    def test_scroll_step_recomputes_when_only_below_fold_count_changes(self):
+        heading = Control("title", "AXHeading", "Order form", (10, 5, 100, 20))
+        question = "What should I do next?"
+        for controls in ((), (heading,)):
+            with self.subTest(visible_controls=controls):
+                clipped = replace(self.snapshot, controls=controls, viewport=self.snapshot.window_frame, below_fold_count=1)
+                planner = SarvamPlanner("web_any", log_calls=False)
+                first = planner.decide(question, clipped)
+                self.assertEqual((first.kind, first.control_id, first.instruction_en),
+                                 ("clarify", None, "Scroll down to continue."))
+                changed = replace(clipped, snapshot_id="no-hidden-controls", below_fold_count=0)
+                self.assertEqual(planner.decide(question, changed).kind, "unsupported")
+        self.http.assert_not_called()
+
     def test_broad_web_help_does_not_reuse_off_topic_answer_or_guess_without_controls(self):
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         snap = eval_planner._snapshot("httpbin", screens["httpbin-order-form"], False)

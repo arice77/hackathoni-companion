@@ -331,11 +331,16 @@ def _choice_guidance(
 def _form_step(plan: FormPlan, session: GuidanceSession) -> Decision | None:
     unit = session.next_unit(plan)
     if unit is None:
+        if plan.snap.below_fold_count > 0:
+            return Decision(
+                "clarify", plan.snap.snapshot_id, "തുടരാൻ താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
+                "Scroll down to continue.", source="sarvam",
+            )
         return None
     target = unit.control
     label = f"‘{target.label}’"
     if label_key(target.label) == "submit order":
-        if not any(item.key in session.done_keys and not item.optional for item in plan.units):
+        if not session.done_keys:
             return Decision(
                 "clarify", plan.snap.snapshot_id, "ഫോമിന്റെ തുടക്കം കാണാൻ മുകളിലേക്ക് സ്ക്രോൾ ചെയ്ത് വീണ്ടും ചോദിക്കൂ.",
                 "Scroll up to the start of the form, then ask again.", source="sarvam",
@@ -513,12 +518,13 @@ class SarvamPlanner:
             )
         if _uses_unresolved_reference(question):
             return _clarify_target(snap)
-        if not snap.controls:
+        if not snap.controls and snap.below_fold_count <= 0:
             return _unsupported(snap, "ഈ സ്ക്രീനിൽ നിയന്ത്രണങ്ങൾ കാണുന്നില്ല.", "This screen exposes no controls.")
         with self._lock:
             plan = FormPlan.from_snapshot(snap)
             snap = plan.snap
-            screen = (snap.app_bundle_id, snap.app_pid, snap.window_title, _screen_signature(snap))
+            screen = (snap.app_bundle_id, snap.app_pid, snap.window_title,
+                      snap.below_fold_count, _screen_signature(snap))
             version = self._question_version
             if question != self._question or version != self._active_version:
                 self._cache.clear()
@@ -625,16 +631,17 @@ class SarvamPlanner:
                 "Well done! The practice task is complete.", source="sarvam",
             )
         else:
+            has_web_plan = snap.viewport is not None or snap.below_fold_count > 0 or bool(groups)
             general_help = bool(preferences or asked_optional) or _is_general_help_question(question) or (
-                (snap.viewport is not None or bool(groups)) and any(_NEXT_STEP.fullmatch(phrase) for phrase in phrases)
+                has_web_plan and any(_NEXT_STEP.fullmatch(phrase) for phrase in phrases)
             )
-            if general_help and not actionable:
-                return _unsupported(snap, "ഈ സ്ക്രീനിൽ ഉപയോഗിക്കാവുന്ന നിയന്ത്രണങ്ങളില്ല.",
-                                    "This screen has no usable controls.")
-            if general_help and (snap.viewport is not None or groups):
+            if general_help and has_web_plan:
                 decision = _form_step(plan, self._session)
                 if decision is not None:
                     return decision
+            if general_help and not actionable:
+                return _unsupported(snap, "ഈ സ്ക്രീനിൽ ഉപയോഗിക്കാവുന്ന നിയന്ത്രണങ്ങളില്ല.",
+                                    "This screen has no usable controls.")
         point_ids = _point_ids(general_help, candidates)
         if self._intent is not None:
             decision, target = self._intent

@@ -203,7 +203,7 @@ class GuidanceSession:
             self.last_key = None
             self.action_status = None
         for unit in plan.units:
-            if unit.filled is True:
+            if not unit.optional and unit.filled is True:
                 self.done_keys.add(unit.key)
             elif unit.filled is False:
                 self.done_keys.discard(unit.key)
