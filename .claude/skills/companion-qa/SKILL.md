@@ -40,6 +40,10 @@ The product never clicks or types for the person. QA drivers (`scripts/drive_*.p
 
 Fix a failing check only when the fix is inside QA files (checks, drivers, registry). Product bugs go back to the coordinator with the evidence: QA reports, the builder fixes.
 
+## Commits
+
+Plain commit messages: no `Co-Authored-By:` trailers and no "Generated with" lines.
+
 ## Registry
 
 `features/*.md`, one per feature, each holding status, claims, checks, human checklist and gaps. Read the ones touched by the change you are testing; `features/README.md` lists them all.

@@ -3,6 +3,20 @@
 Orchestrator: coordinator session (Opus) · Process: `/conductor-orchestrator` · QA: `companion-qa` skill.
 Status words: planned · building · in QA · in review · merged · demo-ready.
 
+## Product direction (Abin, 21 Nov ~23:45): Track 02 "Beyond English" (primary)
+
+Make websites usable for Malayalis who aren't comfortable with tech (parents, grandparents). Malayalam first; other
+languages mentioned in the demo only. Refine on three real sites, not "works on any website":
+
+| Site | Parent tasks (draft) | Limits for tests |
+|---|---|---|
+| YouTube | search, play, Malayalam subtitles, full screen, slower speed | search/play/menus only; no like/subscribe/comment (Safari is signed in to Abin's Google account) |
+| Gmail (Abin's real account) | read latest mail, reply, attach a photo | send only to Abin's own address; never delete/archive/mark; never log subjects, senders or bodies |
+| KSEB Quick Pay (wss.kseb.in) | open Quick Pay, enter consumer number, see bill | stop at the captcha; never submit or pay |
+
+Privacy note: on Gmail, on-screen subjects/senders become control labels and reach Sarvam in planner prompts.
+Site packs must summarise message lists instead of sending rows. Probe in progress (web builder, `docs/site-probes.md`).
+
 ## Current focus (Abin, 21 Nov 2026, later): get the basics right first
 
 1. The companion works on **web apps in a browser** (real tasks such as GST are websites). Safari is proven readable

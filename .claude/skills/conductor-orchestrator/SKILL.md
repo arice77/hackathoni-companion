@@ -51,7 +51,8 @@ Kerala small-business owner through English business software). Orchestrator: an
 
 First: git merge --no-edit arice77/hackathoni-companion-build-coordinate && ./scripts/bootstrap.sh
 Read: AGENTS.md, docs/build-board.md (your row), companion/contracts.py, <feature-specific files>.
-You own only: <paths>. Read-only: everything else. Commit on your branch; don't push or open PRs.
+You own only: <paths>. Read-only: everything else. Commit on your branch with plain messages (no Co-Authored-By or
+"Generated with" lines); don't push or open PRs.
 Goal: <one paragraph>.
 Acceptance: <checkable list>.
 Truth rules: label results live / mock / needs-human; synthetic data only; never print keys.
