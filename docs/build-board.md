@@ -1,7 +1,7 @@
 # Build board
 
 > **Snapshot 22 Nov 01:52 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes. YouTube ad handling,
-> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); QA rerun failed: home-page display ad read as a player ad (fix with planner).
+> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); Ad fix merged; YouTube Q1 passes with ads. Q2 needs a countdown on the speed "−" button (no 0.75 preset), building.
 > Panel revamp merged. Orchestrator state:
 > `.context/orchestrator-state.md`.
 
@@ -85,6 +85,9 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 Next: QA reruns `youtube_follow_pointer_e2e` once, then orchestrator reruns it before Abin retests.
 
 QA rerun 22 Nov ~01:53 (runs/qa/20261122-015201): **FAIL at step 1**. A home-page display ad's "My Ad Centre" button was read as a player ad, so the guide said "wait for the ad" and never pointed at Search. Fix routed to planner builder: ad handling only in player context; feed/results ads ignored.
+
+- 5652053 (planner) merged: ad handling only near the player. 4d215de (planner) merged: natural speed/captions/play/pause/full-screen phrases in Malayalam and English (61 replays / 152 decisions).
+- QA rerun ~02:00 (runs/qa/20261122-015556): **Q1 PASS with an ad** (Skip pointed and pressed). Q2: Settings → Playback speed OK, then stalled: YouTube's speed panel has **no 0.75 preset** (presets 1.0/1.25/1.5/2.0/3.0, ±0.05 buttons, unlabelled slider). Decision: point at "−" with a countdown ("press N more times"), never at the slider (dragging is hard for older users). Reader exposes the slider value as fixed "Playback speed slider <n>" (web builder); planner counts down (planner builder). QA driver fixed (aec2be7).
 
 ## Site packs (started 22 Nov ~00:15)
 
