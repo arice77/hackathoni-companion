@@ -39,6 +39,7 @@ class Snapshot:
     window_title: str
     window_frame: Rect
     controls: tuple[Control, ...] = field(default_factory=tuple)
+    viewport: Rect | None = None
 
     def control(self, control_id: str) -> Control | None:
         return next((c for c in self.controls if c.id == control_id), None)

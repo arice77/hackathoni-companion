@@ -2,6 +2,16 @@
 
 The fixture is a generic three-screen business form, not an implementation of any government service. Use synthetic data only. The companion reads Accessibility, validates a target from that snapshot, and points at it; only the person operates the form. The live checks below used test-only AXPress on the fixture, not product automation.
 
+## Ask about a web page
+
+Select the page in Safari's front window. The reader observes only that window's selected web area, not other windows, tabs, or browser chrome. The companion starts observing after a question, then re-checks while help is active. Click **Stop** before switching to a page you do not want read. Start the general task with `.venv/bin/python -m companion.app --task web_any --planner sarvam`; the scripted planner has no steps for this task and returns unsupported. Sarvam receives the retained control metadata and question, so use public or synthetic pages for the demo.
+
+For a one-shot read, run `.venv/bin/python -m companion.reader com.apple.Safari`. Pass `--page-title` for an exact front window title and/or `--page-url-prefix` for a URL prefix on the same origin. The Python equivalent is `snapshot(bundle_id, page_title=..., page_url_prefix=...)`. `Task.page_title` and `Task.page_url_prefix` are available for wiring at the app call site. The reader's constrained practice path is verified through the CLI; the app and practice task call sites are outside this patch.
+
+Generic snapshots retain interactive controls, headings and named form fieldsets, not page prose. `window_title` carries only the host for real sites; `viewport` is the visible web-area frame in screen points. Controls outside it are omitted, and partly visible controls are clipped. Password nodes are skipped before reading their attributes or children; other field values are reduced to filled flags. This does not prevent a site from independently echoing sensitive information into its own headings or control names.
+
+The reader visits at most 1,200 AX elements per traversal and retains at most 96 controls, including up to 12 headings/fieldsets. Web labels are limited to 160 characters. Browser AX requests have a 40 ms per-request timeout and a 300 ms traversal budget; on timeout the reader raises an error instead of returning a partial snapshot. Hitting a count cap can omit controls. Nested scroll panes, cross-origin frames, browser-specific widgets, and sites that render forms as graphics still need verification.
+
 ## Run in Safari
 
 ```sh
@@ -10,7 +20,7 @@ The fixture is a generic three-screen business form, not an implementation of an
 .venv/bin/python -m companion.app --task web_practice
 ```
 
-Run from an Accessibility-trusted terminal. The launcher may also prompt for macOS Automation permission to open a new Safari window. If that isn't available, run `.venv/bin/python scripts/serve_web_practice.py` and manually open `http://127.0.0.1:${CONDUCTOR_PORT:-8765}/` in a separate Safari window. Use the same `CONDUCTOR_PORT` for the server, reader and companion. The launcher starts or reuses the server for this workspace and clears the existing practice receipt. Keep just one matching practice window open to avoid ambiguity; the reader doesn't require it to have focus, but the practice tab must be selected in that window.
+Run from an Accessibility-trusted terminal. The launcher may also prompt for macOS Automation permission to open a new Safari window. If that isn't available, run `.venv/bin/python scripts/serve_web_practice.py` and manually open `http://127.0.0.1:${CONDUCTOR_PORT:-8765}/` in a separate Safari window. Use the same `CONDUCTOR_PORT` for the server, reader and companion. The launcher starts or reuses the server for this workspace and clears the existing practice receipt. Leave the practice tab selected in Safari's front window; Safari itself does not have to have keyboard focus.
 
 | Screen | Controls the companion points to | Progress evidence |
 | --- | --- | --- |
@@ -37,7 +47,7 @@ pid="$(ps -ww -axo pid=,command= | awk -v flag="--user-data-dir=$profile " \
 
 Wait for the practice tab to load before reading. A fresh unforced instance exposed no practice `AXWebArea` across 30 polls (~5 seconds). Its app and window reported `AXManualAccessibility` unsupported (`-25205`); `AXEnhancedUserInterface` reported settable on the app but unsupported on the window. Neither attribute was set in this probe. With `--force-renderer-accessibility=complete`, the page was readable ~0.6–0.8 seconds after launch in two runs, without mutating AX attributes. Chromium documents the flag and mode values in its [Accessibility Overview](https://chromium.googlesource.com/chromium/src.git/+/refs/heads/main/docs/accessibility/overview.md). The shipped task still defaults to Safari; Brave is verified as a reader target, not wired into `--task web_practice`.
 
-## Verification — 21 November 2026
+## Practice fixture baseline — 21 November 2026
 
 **Live-machine:** five CLI snapshots per row and browser. Timings in milliseconds, excluding Python startup; each cell is median / max.
 
@@ -54,6 +64,18 @@ All 40 snapshots found the expected IDs (including `screen-title` and `status`) 
 
 **Needs human:** Malayalam copy, voice input, visual pointer placement, and click-through on the browser page. No real portal, personal browser profile, third-party login, nested scroll pane, or iframe was tested. Scrolled-out controls are excluded rather than automatically revealed. An obscured practice window or a duplicate matching window is not disambiguated by the overlay.
 
-## Proposed contract changes
+## Public-page verification — 21 November 2026
 
-`Control.identifier` can already hold a DOM ID; update its description to say `AXIdentifier or AXDOMIdentifier`. Add an explicit browser target to the task or reader configuration (bundle, allowed origin/path, window-title matcher and optional isolated PID) when selecting the first real website. Consider a `Snapshot.viewport_frame` separate from the outer `window_frame`, plus a way for the planner to distinguish an off-screen control from a missing one. No shared contract files changed in this build.
+**Live-machine / read-only:** seven successful Safari CLI reads per page after load. Each public site was opened in a new dedicated window; no fields or buttons were used. All retained frames were positive and inside the reported viewport.
+
+| Page | Median / max | What Safari exposed |
+| --- | ---: | --- |
+| [httpbin pizza order form](https://httpbin.org/forms/post) | 70.3 / 72.1 ms | Name, phone, email, size radios, topping checkboxes, delivery time, instructions, submit button, and both named fieldsets. The native time picker is one labeled control; its segments and filled state are omitted. |
+| [Wikipedia home](https://www.wikipedia.org/) | 75.9 / 78.4 ms | Search field and button, language picker, heading and visible links. Page prose and links outside the viewport were omitted. |
+| Local practice, Business Details, strict title/URL | 69.8 / 71.7 ms | The expected fields, controls, `screen-title` and `status`. |
+
+No page path/query, browser chrome, or entered values appeared in the public-page snapshots. Safari can return no usable web area while a tab loads; retry after it settles. Password suppression was tested with both an AX secure role and a secure subrole in a fake tree, not on any login page. Live Sarvam guidance on the public pages was not tested.
+
+**Live-machine / regression:** five isolated Brave reads of the practice page in front-window mode gave 65.4 ms median / 67.0 ms max. The locked QA suite confirmed all three Safari practice screens and the AIMS flow through their local receipts. The reader prefers bundle paths under this worktree root. It does not fall back to another worktree for `in.hackathoni.*` fixtures; external apps such as Safari still use the first running instance when there's no local copy.
+
+**Automated:** `.venv/bin/python -m unittest discover` — 89 passed. `.venv/bin/python scripts/qa/run.py` — 18 passed, 0 failed, 1 blocked (opt-in Sarvam credits), 3 needs-human skips.

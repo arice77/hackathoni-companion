@@ -1,8 +1,12 @@
+import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from companion import reader
+from companion.contracts import Control, Snapshot
+from companion.planner import ScriptedPlanner
 from companion.reader import is_placeholder_choice
+from companion.tasks import load
 
 
 class PlaceholderTests(unittest.TestCase):
@@ -13,6 +17,36 @@ class PlaceholderTests(unittest.TestCase):
     def test_real_choices(self):
         for v in ["Flood", "Insurance & Calamity Relief Services", "Crop Insurance Compensation", "12-08-2026 (TEST FIR)"]:
             self.assertFalse(is_placeholder_choice(v), v)
+
+
+class NativeReaderTests(unittest.TestCase):
+    @staticmethod
+    def instance_at(path):
+        app = Mock()
+        app.bundleURL.return_value.path.return_value = str(path)
+        return app
+
+    def test_prefers_this_worktree_and_matches_path_components(self):
+        sibling = reader.REPO_ROOT.with_name(reader.REPO_ROOT.name + "-sibling")
+        other = self.instance_at(sibling / "apps/native-fixture/Fixture.app")
+        local = self.instance_at(reader.REPO_ROOT / "apps/native-fixture/Fixture.app")
+        finder = Mock()
+        finder.runningApplicationsWithBundleIdentifier_.return_value = [other, local]
+        with patch.object(reader, "NSRunningApplication", finder):
+            self.assertIs(reader.find_app("in.hackathoni.native-fixture"), local)
+            self.assertIs(reader.find_app("example.native-fixture"), local)
+            finder.runningApplicationsWithBundleIdentifier_.return_value = [other]
+            self.assertIsNone(reader.find_app("in.hackathoni.native-fixture"))
+
+    def test_external_apps_fall_back_to_first_instance(self):
+        safari = self.instance_at("/Applications/Safari.app")
+        alternate = self.instance_at("/Applications/Safari Alternate.app")
+        finder = Mock()
+        finder.runningApplicationsWithBundleIdentifier_.return_value = [safari, alternate]
+        with patch.object(reader, "NSRunningApplication", finder):
+            self.assertIs(reader.find_app(reader.SAFARI), safari)
+            finder.runningApplicationsWithBundleIdentifier_.return_value = []
+            self.assertIsNone(reader.find_app(reader.SAFARI))
 
 
 class WebReaderTests(unittest.TestCase):
@@ -26,33 +60,43 @@ class WebReaderTests(unittest.TestCase):
         self.assertEqual(reader._intersection((90, 70, 20, 20), viewport), (90, 80, 10, 10))
         self.assertIsNone(reader._intersection((0, 180, 20, 20), viewport))
 
-    def test_title_and_url_scope_the_selected_page(self):
+    def test_only_selected_front_page_and_optional_constraints(self):
         window_frame = (0, 0, 100, 120)
         viewport = (0, 35, 100, 85)
         url = "http://127.0.0.1:8765/"
         nodes = {
-            "app": {"AXWindows": ["other", "minimized", "practice"], "AXFocusedWindow": "other"},
-            "other": {"AXTitle": "Unrelated title"},
-            "minimized": {"AXTitle": reader.PRACTICE_TITLE, "AXMinimized": True},
+            "app": {"AXWindows": ["other", "practice"], "AXFocusedWindow": "practice"},
             "practice": {"AXRole": "AXWindow", "AXTitle": reader.PRACTICE_TITLE,
-                         "AXChildren": ["toolbar", "different-page", "page"]},
+                         "AXChildren": ["toolbar", "page"]},
             "toolbar": {"AXRole": "AXToolbar"},
-            "different-page": {"AXRole": "AXWebArea", "AXURL": "https://example.invalid/"},
             "page": {"AXRole": "AXWebArea", "AXURL": url, "AXParent": "scroll"},
             "scroll": {"AXRole": "AXScrollArea"},
         }
 
         def get(el, name):
-            if el in {"other", "minimized", "toolbar", "different-page"} and name == "AXChildren":
-                self.fail(f"Traversed an unrelated subtree: {el}")
+            if el == "other" or (el == "toolbar" and name == "AXChildren") or name == "AXWindows":
+                self.fail(f"Read outside the front page: {el} {name}")
             return nodes[el].get(name)
 
-        with patch.object(reader, "_frame", side_effect={"practice": window_frame, "page": (0, 20, 100, 150),
-                                                       "scroll": viewport}.get):
-            self.assertEqual(reader._practice_page("app", reader.PRACTICE_TITLE, url, get),
-                             ("page", window_frame, viewport))
-            with self.assertRaises(reader.ReaderError):
-                reader._practice_page("app", reader.PRACTICE_TITLE, "http://127.0.0.1:1234/", get)
+        frames = {"practice": window_frame, "page": (0, 20, 100, 150), "scroll": viewport}
+        with patch.object(reader, "_frame", side_effect=lambda el, get: frames[el]):
+            self.assertEqual(reader._selected_web_page("app", get), ("page", window_frame, viewport, url))
+            self.assertEqual(reader._selected_web_page("app", get, reader.PRACTICE_TITLE, url),
+                             ("page", window_frame, viewport, url))
+            with self.assertRaisesRegex(reader.ReaderError, "window doesn't match"):
+                reader._selected_web_page("app", get, "Unrelated title")
+            with self.assertRaisesRegex(reader.ReaderError, "page doesn't match"):
+                reader._selected_web_page("app", get, page_url_prefix="http://127.0.0.1:1234/")
+
+    def test_url_prefix_cannot_match_a_different_host(self):
+        self.assertFalse(reader._url_matches("https://example.test.evil.test/page", "https://example.test"))
+        self.assertTrue(reader._url_matches("https://example.test/page?private=1", "https://example.test/page"))
+        self.assertEqual(reader._host("https://someone:secret@example.test/page?private=1"), "example.test")
+
+    def test_elapsed_budget_fails_before_ax_call(self):
+        get = reader._web_getter(time.monotonic() - reader.WEB_READ_BUDGET_S)
+        with self.assertRaisesRegex(reader.ReaderError, "time budget"):
+            get("unreadable", "AXRole")
 
     def test_collection_clips_controls_and_keeps_only_filled_bit(self):
         nodes = {
@@ -75,6 +119,66 @@ class WebReaderTests(unittest.TestCase):
         for command in ("Brave Browser", "Brave Browser --user-data-dir=/tmp/other --force-renderer-accessibility=complete",
                         "Brave Browser" + flags + " --type=renderer", "Brave Browser" + flags + " --user-data-dir=other"):
             self.assertFalse(reader._launch_isolated_brave(command))
+
+    def test_secure_fields_are_not_collected_or_read_for_values(self):
+        nodes = {
+            "page": {"AXRole": "AXWebArea", "AXChildren": ["role-password", "subrole-password"]},
+            "role-password": {"AXRole": "AXSecureTextField"},
+            "subrole-password": {"AXRole": "AXTextField", "AXSubrole": "AXSecureTextField"},
+        }
+
+        def get(el, name):
+            if el != "page" and name not in {"AXRole", "AXSubrole"}:
+                self.fail(f"Accessed a password field's {name}")
+            return nodes[el].get(name)
+
+        self.assertEqual(reader._collect("page", get, 10, (0, 0, 100, 100)), ())
+
+    def test_generic_headings_and_labels_are_capped_and_prose_is_not_read(self):
+        nodes = {
+            "page": {"AXRole": "AXWebArea", "AXChildren": ["heading", "prose", "button", "long"]},
+            "heading": {"AXRole": "AXHeading", "AXTitle": "Go to https://example.test/page?secret=1"},
+            "prose": {"AXRole": "AXStaticText", "AXValue": "Private prose"},
+            "button": {"AXRole": "AXButton", "AXTitle": "Next"},
+            "long": {"AXRole": "AXLink", "AXTitle": "Details " * 100},
+        }
+
+        def get(el, name):
+            self.assertFalse(el == "prose" and name == "AXValue")
+            return nodes[el].get(name)
+
+        with patch.object(reader, "_frame", return_value=(0, 25, 50, 10)):
+            controls = reader._collect("page", get, 10, (0, 0, 100, 100))
+        self.assertEqual([control.id for control in controls], ["c00", "c01", "c02"])
+        self.assertEqual([control.label for control in controls[:2]], ["Go to example.test", "Next"])
+        self.assertEqual(len(controls[2].label), reader.MAX_WEB_LABEL_LENGTH)
+
+    def test_input_label_does_not_echo_value_even_if_title_does(self):
+        nodes = {
+            "page": {"AXRole": "AXWebArea", "AXChildren": ["input", "time"]},
+            "input": {"AXRole": "AXTextField", "AXTitle": "Internal reference", "AXValue": "Internal reference",
+                      "AXDescription": "Business Name"},
+            "time": {"AXRole": "AXDateTimeArea", "AXTitle": "Preferred delivery time:"},
+        }
+
+        def get(el, name):
+            self.assertFalse(el == "time" and name in {"AXValue", "AXChildren"})
+            return nodes[el].get(name)
+
+        with patch.object(reader, "_frame", return_value=(0, 25, 50, 10)):
+            field, time_picker = reader._collect("page", get, 10, (0, 0, 100, 100))
+        self.assertEqual((field.label, field.filled), ("Business Name", True))
+        self.assertEqual((time_picker.label, time_picker.filled), ("Preferred delivery time:", None))
+
+    def test_web_any_has_no_script_or_page_constraints(self):
+        task = load("web_any")
+        self.assertIsNone(task.page_title)
+        self.assertIsNone(task.page_url_prefix)
+        self.assertTrue(task.intent.search("എങ്ങനെ?"))
+        self.assertFalse(task.intent.search(" \n"))
+        status = Control("c00", "AXStaticText", "Training complete", (1, 1, 50, 24), identifier="status")
+        snapshot = Snapshot("sample", time.time(), task.bundle_id, 1, "example.test", (0, 0, 100, 100), (status,))
+        self.assertEqual(ScriptedPlanner(task).decide("How do I fill this?", snapshot).kind, "unsupported")
 
 
 if __name__ == "__main__":

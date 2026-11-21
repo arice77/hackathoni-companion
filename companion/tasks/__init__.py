@@ -40,6 +40,8 @@ class Task:
     unsupported_ml: str = "ഈ ജോലിക്ക് മാത്രമേ ഇപ്പോൾ സഹായിക്കാൻ കഴിയൂ."
     unsupported_en: str = "Right now I can only guide this one task."
     notes: dict = field(default_factory=dict)
+    page_title: str | None = None
+    page_url_prefix: str | None = None
 
 
 def load(name: str) -> Task:

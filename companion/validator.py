@@ -25,10 +25,10 @@ def validate(decision: Decision, snap: Snapshot, now: float | None = None) -> tu
     if not control.enabled:
         return False, "target control is disabled"
     x, y, w, h = control.frame
-    wx, wy, ww, wh = snap.window_frame
+    wx, wy, ww, wh = snap.viewport if snap.viewport is not None else snap.window_frame
     if w <= 0 or h <= 0:
         return False, "target has no visible size"
     cx, cy = x + w / 2, y + h / 2
     if not (wx <= cx <= wx + ww and wy <= cy <= wy + wh):
-        return False, "target centre is outside the app window"
+        return False, "target centre is outside the page viewport" if snap.viewport is not None else "target centre is outside the app window"
     return True, "ok"

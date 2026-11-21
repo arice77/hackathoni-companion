@@ -1,8 +1,8 @@
-"""Accessibility reader: one fresh native-window or practice-page snapshot.
+"""Accessibility reader: one fresh native-window or selected-browser-page snapshot.
 
 Our own implementation (the H Companion reader was studied, not copied). Privacy rule:
-editable inputs report only whether they are filled, never their content. Static text
-(screen titles, status lines, file notes) is UI text and is kept as the label.
+editable inputs report only whether they are filled, never their content. Browser
+snapshots omit password fields, page prose, and URL paths and queries.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ import subprocess
 import time
 import uuid
 from collections import deque
+from pathlib import Path
+from urllib.parse import urlsplit
 
 import ApplicationServices as AX
 from AppKit import NSRunningApplication, NSWorkspace
@@ -23,8 +25,14 @@ INPUT_ROLES = {"AXTextField", "AXTextArea", "AXComboBox", "AXPopUpButton", "AXCh
 KEEP_ROLES = INPUT_ROLES | {"AXButton", "AXStaticText", "AXLink", "AXRadioButton", "AXMenuButton"}
 MAX_ELEMENTS = 400
 MAX_WEB_ELEMENTS = 1200
-WEB_READ_BUDGET_S = 0.200
+MAX_WEB_CONTROLS = 96
+MAX_WEB_HEADINGS = 12
+MAX_WEB_LABEL_LENGTH = 160
+WEB_READ_BUDGET_S = 0.300
 WEB_AX_TIMEOUT_S = 0.040
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_BUNDLE_PREFIX = "in.hackathoni."
+TRAINING_BUNDLE = f"{FIXTURE_BUNDLE_PREFIX}crop-loss-training"
 PRACTICE_TITLE = "HackaThoni · Business Form Practice"
 SAFARI = "com.apple.Safari"
 BRAVE = "com.brave.Browser"
@@ -32,6 +40,11 @@ PRACTICE_TITLES = {SAFARI: PRACTICE_TITLE, BRAVE: f"{PRACTICE_TITLE} - Brave"}
 UNSUPPORTED_BROWSERS = {"com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.google.Chrome.canary",
                         "org.chromium.Chromium", "com.microsoft.edgemac", "org.mozilla.firefox"}
 WEB_TEXT_NOTES = {"status", "document-note"}
+WEB_VALUE_ROLES = INPUT_ROLES | {"AXSearchField", "AXTimeField", "AXRadioButton"}
+WEB_INPUT_ROLES = WEB_VALUE_ROLES | {"AXDateTimeArea"}
+SECURE_ROLE = "AXSecureTextField"
+WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXWebArea"}
+HTTP_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 
 class ReaderError(RuntimeError):
@@ -58,17 +71,17 @@ def _frame(el, get=_attr) -> Rect | None:
     return (float(p.x), float(p.y), float(s.width), float(s.height))
 
 
-def _label(el, role: str, get=_attr) -> str:
+def _label(el, role: str, get=_attr, exclude="") -> str:
     for name in ("AXTitle", "AXDescription", "AXLabel"):
         v = get(el, name)
-        if isinstance(v, str) and v.strip():
+        if isinstance(v, str) and v.strip() and v.strip() != exclude:
             return v.strip()
     if role == "AXStaticText":
         v = get(el, "AXValue")
         if isinstance(v, str):
             return v.strip()
     v = get(el, "AXPlaceholderValue")
-    return v.strip() if isinstance(v, str) else ""
+    return v.strip() if isinstance(v, str) and v.strip() != exclude else ""
 
 
 def is_placeholder_choice(value: str) -> bool:
@@ -77,17 +90,14 @@ def is_placeholder_choice(value: str) -> bool:
     return v == "" or v.startswith("select") or v.startswith("choose")
 
 
-def _filled(el, role: str, get=_attr) -> bool | None:
-    if role not in INPUT_ROLES:
-        return None
-    v = get(el, "AXValue")
-    if role == "AXCheckBox":
-        return bool(v)
+def _filled(value, role: str) -> bool:
+    if role in {"AXCheckBox", "AXRadioButton"}:
+        return bool(value)
     if role == "AXPopUpButton":
-        return isinstance(v, str) and not is_placeholder_choice(v)
+        return isinstance(value, str) and not is_placeholder_choice(value)
     if role == "AXDateField":
-        return v is not None
-    return isinstance(v, str) and v.strip() != ""
+        return value is not None
+    return isinstance(value, str) and value.strip() != ""
 
 
 def _identifier(el, get=_attr) -> str | None:
@@ -122,9 +132,12 @@ def _walk(start, get, limit, leaf_roles):
 def _web_getter(started):
     def get(el, name):
         if time.monotonic() - started >= WEB_READ_BUDGET_S:
-            raise ReaderError("Practice page Accessibility read exceeded its time budget.")
+            raise ReaderError("Browser Accessibility read exceeded its time budget.")
         AX.AXUIElementSetMessagingTimeout(el, WEB_AX_TIMEOUT_S)
-        return _attr(el, name)
+        err, value = AX.AXUIElementCopyAttributeValue(el, name, None)
+        if err == AX.kAXErrorCannotComplete:
+            raise ReaderError("Browser Accessibility did not respond in time. Try again once the page is ready.")
+        return value if err == 0 else None
     return get
 
 
@@ -150,7 +163,7 @@ def _browser_pid(bundle_id: str, pid: int | None) -> int:
                     return pid
             except subprocess.SubprocessError:
                 pass
-        raise ReaderError("Brave requires --pid for the isolated practice instance; see docs/web-support.md.")
+        raise ReaderError("Brave requires --pid for the isolated browser instance; see docs/web-support.md.")
     if pid is not None:
         raise ReaderError("Explicit pid is only supported for the isolated Brave instance.")
     app = find_app(bundle_id)
@@ -159,23 +172,44 @@ def _browser_pid(bundle_id: str, pid: int | None) -> int:
     return int(app.processIdentifier())
 
 
-def _practice_page(root, title: str, url: str, get):
-    for window in get(root, "AXWindows") or []:
-        if get(window, "AXTitle") != title or get(window, "AXMinimized"):
+def _host(url: str) -> str:
+    try:
+        return urlsplit(url).hostname or ""
+    except ValueError:
+        return ""
+
+
+def _url_matches(url: str, prefix: str) -> bool:
+    try:
+        actual, expected = urlsplit(url), urlsplit(prefix)
+        return bool(expected.hostname and actual.netloc == expected.netloc and url.startswith(prefix))
+    except ValueError:
+        return False
+
+
+def _selected_web_page(root, get, page_title=None, page_url_prefix=None):
+    window = get(root, "AXFocusedWindow") or get(root, "AXMainWindow")
+    if window is None or get(window, "AXMinimized"):
+        raise ReaderError("The browser has no readable front window.")
+    if page_title is not None and get(window, "AXTitle") != page_title:
+        raise ReaderError("The front browser window doesn't match this task. Open the task page in the front window.")
+    window_frame = _frame(window, get)
+    for el, role in _walk(window, get, MAX_WEB_ELEMENTS, WEB_LEAVES | {"AXToolbar"}):
+        if role != "AXWebArea":
             continue
-        for el, role in _walk(window, get, MAX_WEB_ELEMENTS, INPUT_ROLES | {"AXToolbar", "AXWebArea"}):
-            if role != "AXWebArea" or str(get(el, "AXURL")) != url:
-                continue
-            window_frame, frame = _frame(window, get), _frame(el, get)
-            viewport = _intersection(window_frame, frame) if window_frame and frame else None
-            parent = get(el, "AXParent")
-            if viewport and parent is not None and get(parent, "AXRole") == "AXScrollArea":
-                scroll_frame = _frame(parent, get)
-                if scroll_frame:
-                    viewport = _intersection(viewport, scroll_frame)
-            if viewport:
-                return el, window_frame, viewport
-    raise ReaderError("No visible practice page found. Open it with scripts/open_web_practice.sh.")
+        frame = _frame(el, get)
+        viewport = _intersection(window_frame, frame) if window_frame and frame else None
+        parent = get(el, "AXParent")
+        if viewport and parent is not None and get(parent, "AXRole") == "AXScrollArea":
+            scroll_frame = _frame(parent, get)
+            if scroll_frame:
+                viewport = _intersection(viewport, scroll_frame)
+        if viewport:
+            url = str(get(el, "AXURL") or "")
+            if page_url_prefix is not None and not _url_matches(url, page_url_prefix):
+                raise ReaderError("The selected page doesn't match this task. Select the task page in the front window.")
+            return el, window_frame, viewport, url
+    raise ReaderError("No visible page in the front browser window. Wait for the selected tab to load.")
 
 
 def _web_note(el, get) -> str:
@@ -185,15 +219,48 @@ def _web_note(el, get) -> str:
     return ""
 
 
-def _collect(start, get, limit, viewport=None) -> tuple[Control, ...]:
+def _web_label(el, role, get, value) -> str:
+    exclude = value.strip() if isinstance(value, str) else ""
+    label = _label(el, role, get, exclude=exclude)
+    if not label and role in WEB_INPUT_ROLES:
+        relation = get(el, "AXTitleUIElement")
+        if relation is not None and get(relation, "AXRole") == "AXStaticText":
+            label = _label(relation, "AXStaticText", get)
+            if label == exclude:
+                return ""
+    return label
+
+
+def _safe_web_text(text: str) -> str:
+    return HTTP_URL.sub(lambda match: _host(match.group()) or "[link]", text)[:MAX_WEB_LABEL_LENGTH]
+
+
+def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Control, ...]:
     controls = []
-    roles = KEEP_ROLES | {"AXHeading", "AXGroup"} if viewport else KEEP_ROLES
-    leaves = INPUT_ROLES | ({"AXWebArea", "AXScrollArea"} if viewport else set())
+    web = viewport is not None
+    roles = (KEEP_ROLES | WEB_INPUT_ROLES | {"AXHeading", "AXGroup"}) - {"AXStaticText"} if web else KEEP_ROLES
+    if web and practice:
+        roles |= {"AXStaticText"}
+    leaves = WEB_LEAVES | {"AXScrollArea"} if web else INPUT_ROLES | {SECURE_ROLE}
+    value_roles = WEB_VALUE_ROLES if web else INPUT_ROLES
+    headings = 0
     for el, role in _walk(start, get, limit, leaves):
         if role not in roles:
             continue
-        if role == "AXGroup":
-            ident = _identifier(el, get)
+        fieldset = role == "AXGroup" and not practice and get(el, "AXSubrole") == "AXFieldset"
+        context = role == "AXHeading" or fieldset
+        if (context and headings >= MAX_WEB_HEADINGS) or (role == "AXGroup" and not (practice or fieldset)):
+            continue
+        if role in {"AXTextField", "AXTextArea", "AXSearchField"} and get(el, "AXSubrole") == SECURE_ROLE:
+            continue
+        frame = _frame(el, get)
+        if viewport and frame:
+            frame = _intersection(frame, viewport)
+        if not frame or frame[2] <= 0 or frame[3] <= 0:
+            continue
+        ident = _identifier(el, get)
+        value = get(el, "AXValue") if role in value_roles else None
+        if role == "AXGroup" and practice:
             if ident not in WEB_TEXT_NOTES:
                 continue
             label = _web_note(el, get)
@@ -201,25 +268,34 @@ def _collect(start, get, limit, viewport=None) -> tuple[Control, ...]:
                 continue
             role = "AXStaticText"
         else:
-            ident, label = _identifier(el, get), None
-        frame = _frame(el, get)
-        if viewport and frame:
-            frame = _intersection(frame, viewport)
-        if not frame or frame[2] <= 0 or frame[3] <= 0:
+            label = _web_label(el, role, get, value) if web else _label(el, role, get)
+        if fieldset and not label:
             continue
+        if web:
+            label = _safe_web_text(label)
+            if ident and (len(ident) > MAX_WEB_LABEL_LENGTH or HTTP_URL.search(ident)):
+                ident = None
         enabled = get(el, "AXEnabled")
+        filled = _filled(value, role) if role in value_roles else None
         controls.append(Control(
-            id=f"c{len(controls):02d}", role=role,
-            label=_label(el, role, get) if label is None else label,
-            frame=frame, enabled=enabled is None or bool(enabled),
-            identifier=ident, filled=_filled(el, role, get),
+            id=f"c{len(controls):02d}", role=role, label=label, frame=frame,
+            enabled=not fieldset and (enabled is None or bool(enabled)), identifier=ident, filled=filled,
         ))
+        headings += context
+        if web and len(controls) >= MAX_WEB_CONTROLS:
+            break
     return tuple(controls)
 
 
 def find_app(bundle_id: str) -> NSRunningApplication | None:
+    """Prefer this worktree's app; never fall back to a sibling HackaThoni fixture."""
     apps = NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle_id)
-    return apps[0] if apps else None
+    for app in apps:
+        url = app.bundleURL()
+        path = url.path() if url is not None else None
+        if path and Path(path).resolve().is_relative_to(REPO_ROOT):
+            return app
+    return apps[0] if apps and not bundle_id.startswith(FIXTURE_BUNDLE_PREFIX) else None
 
 
 def frontmost_bundle_id() -> str | None:
@@ -227,7 +303,8 @@ def frontmost_bundle_id() -> str | None:
     return app.bundleIdentifier() if app else None
 
 
-def snapshot(bundle_id: str, *, pid: int | None = None) -> Snapshot:
+def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None = None,
+             page_url_prefix: str | None = None) -> Snapshot:
     started = time.monotonic()
     if not is_trusted():
         raise ReaderError("This process is not allowed to read other apps (Accessibility permission missing).")
@@ -235,10 +312,13 @@ def snapshot(bundle_id: str, *, pid: int | None = None) -> Snapshot:
         browser_pid = _browser_pid(bundle_id, pid)
         get = _web_getter(started)
         root = AX.AXUIElementCreateApplication(browser_pid)
-        title = PRACTICE_TITLES[bundle_id]
-        page, window_frame, viewport = _practice_page(root, title, _practice_url(), get)
-        controls = _collect(page, get, MAX_WEB_ELEMENTS, viewport)
-        return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame, controls)
+        page, window_frame, viewport, url = _selected_web_page(root, get, page_title, page_url_prefix)
+        practice = url == _practice_url()
+        controls = _collect(page, get, MAX_WEB_ELEMENTS, viewport, practice=practice)
+        if str(get(page, "AXURL") or "") != url:
+            raise ReaderError("The selected page changed while it was being read. Try again.")
+        title = PRACTICE_TITLES[bundle_id] if practice else _host(url) or "Browser page"
+        return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame, controls, viewport)
     if bundle_id in UNSUPPORTED_BROWSERS or pid is not None:
         raise ReaderError("This browser or pid is not a supported practice target.")
     app = find_app(bundle_id)
@@ -269,14 +349,17 @@ if __name__ == "__main__":
     import json
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("bundle_id", nargs="?", default="in.hackathoni.crop-loss-training")
-    parser.add_argument("--pid", type=int, help="PID of the isolated Brave practice instance")
+    parser.add_argument("bundle_id", nargs="?")
+    parser.add_argument("--pid", type=int, help="PID of the isolated Brave instance")
+    parser.add_argument("--page-title", help="require the exact title of the front browser window")
+    parser.add_argument("--page-url-prefix", help="require the selected page to match this URL prefix")
     args = parser.parse_args()
     t0 = time.perf_counter()
     try:
-        snap = snapshot(args.bundle_id, pid=args.pid)
+        snap = snapshot(args.bundle_id or TRAINING_BUNDLE, pid=args.pid,
+                        page_title=args.page_title, page_url_prefix=args.page_url_prefix)
     except ReaderError as exc:
         parser.exit(1, f"{exc}\n")
     ms = (time.perf_counter() - t0) * 1000
-    print(json.dumps({"snapshot_id": snap.snapshot_id, "window": snap.window_title, "ms": round(ms, 1),
+    print(json.dumps({"snapshot_id": snap.snapshot_id, "window": snap.window_title, "viewport": snap.viewport, "ms": round(ms, 1),
                       "controls": [c.__dict__ for c in snap.controls]}, indent=1, default=list))
