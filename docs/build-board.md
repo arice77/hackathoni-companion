@@ -196,3 +196,10 @@ mashi.guru (Malayalam fonts, Viswanatha). None tested in Safari / our reader yet
 | YouTube Abin's utterances | FLAKY: intent call unstable ("make it faster" → none 5/5), home feed "scroll down" then silent, a wrong pick ("Nagumo … Darshana") | …025345, …030011, …030234 → planner builder fixing (local phrases first, ask when unclear, home→Search, title-first ranking) |
 
 GasUndo pack merged (122ea48, 5ebe19e, 11a9b38); demo script now opens with GasUndo (71d6eb1). Pushed to GitHub main.
+
+## Devin bug-repair case (decided 22 Nov ~03:40, grill with recommended answers, Abin: "do whatever is best")
+Internal QA tool modelled on Player Two (outputs/devin-winning-code-study.md), not part of the companion app.
+Case: real baseline "make it faster" on a synthetic player screen fails at 329cc68 (no local intent; live intent call none 5/5), passes at 93c6dea.
+Flow: replay at base → developer approves the case → Devin adapter → PR into `devin-case/make-it-faster` (never main) → same replay at the PR head → review card in docs/devin-cases/. Merge stays manual.
+Mode: SIMULATED by default (a real PR with our builder's 93c6dea patch, labelled "[SIMULATED Devin]"); LiveDevin behind `--live`, after checking the current API and credits. No DEVIN_API_KEY yet.
+Builder: web builder (Codex sol), new files in tools/devin_case/. Hindi + Kannada languages: panel builder (Codex astra), offline only.
