@@ -65,16 +65,28 @@ class YouTubeLinkTests(unittest.TestCase):
         self.assertIsNone(snap.controls[-1].identifier)
         self.assertEqual(reads, ["video", "handle", "channel", "playlist", "outside"])
 
-    def test_watch_and_shorts_produce_the_same_marker_across_snapshots(self):
+    def test_watch_marker_is_stable_across_snapshots(self):
         first, _ = fake_snapshot("youtube.com", {
             "video": ("Title", VIDEO, f"/watch?t=9&v={VIDEO}&list={PLAYLIST}"),
         })
         second, _ = fake_snapshot("m.youtube.com", {
             "other": ("Channel", "placeholder", "/@other"),
-            "short": ("Title", "new-id", f"https://m.youtube.com/shorts/{VIDEO}?feature=shorts"),
+            "video": ("Title", "new-id", f"https://m.youtube.com/watch?v={VIDEO}&feature=related"),
         })
         self.assertNotEqual(first.controls[0].id, second.controls[1].id)
         self.assertEqual(first.controls[0].identifier, second.controls[1].identifier)
+
+    def test_unlabelled_short_has_its_own_prefix_and_the_same_video_hash(self):
+        short_url = f"https://m.youtube.com/shorts/{VIDEO}?feature=shorts"
+        snap, _ = fake_snapshot("m.youtube.com", {
+            "watch": ("Title", "video-title", f"/watch?v={VIDEO}"),
+            "short": ("", short_url, short_url),
+        })
+        watch, short = snap.controls
+        self.assertRegex(watch.identifier, rf"^{marker('watch', VIDEO)}:[0-9a-f]{{10}}$")
+        self.assertRegex(short.identifier, rf"^{marker('short', VIDEO)}:[0-9a-f]{{10}}$")
+        self.assertEqual(short.label, "")
+        self.assertNotIn(VIDEO, json.dumps(asdict(snap)))
 
     def test_title_and_thumbnail_have_distinct_keys_when_the_same_label_moves(self):
         video_url = f"/watch?v={VIDEO}"

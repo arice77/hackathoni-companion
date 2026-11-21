@@ -320,7 +320,7 @@ def _youtube_link_key(value) -> tuple[str, str] | None:
             return route, ids[0]
     elif len(segments) >= 2 and YOUTUBE_TOKEN.fullmatch(segments[1]):
         if route == "shorts" and len(segments) == 2:
-            return "watch", segments[1]
+            return "short", segments[1]
         if route == "channel":
             return "channel", segments[1]
     if route.startswith("@") and len(route) > 1 and not any(char.isspace() or char in "/?#" for char in route):
