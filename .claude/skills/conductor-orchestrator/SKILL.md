@@ -26,7 +26,12 @@ Abin decides direction. Ask him when a choice changes what the demo claims; deci
 4. **Review and taste.** Read the diff yourself. Check the brief's acceptance list, file ownership, and that every label in the UI or report says live, mock or needs-human truthfully. For anything visible, judge the feel against the approved style (Plum `#674064`, roughness 1.9, Shantell Sans, cream paper) and use the `craft` or `impeccable` skill on UI code.
 5. **Merge** the builder branch into the coordinator branch, rerun `scripts/qa/run.py` on the merged tree, update the board and `HANDOFF.md` with evidence paths. A feature is done when the merged suite is green and its `needs-human` checklist is handed to Abin.
 
-Concurrency: at most three agents running at once (builders + QA). Wait with `WaitForSessions`; read replies with `ListSessionMessages`.
+Concurrency: at most three agents running at once (builders + QA). Read replies with `ListSessionMessages`.
+
+**Stay subscribed.** Conductor sends no notification when an agent finishes, errors or waits for input. Right after
+the first launch, arm the Monitor tool with `scripts/watch_agents.sh <your session id>` (from `WhoAmI`; it covers every
+agent you start, including later ones) and re-arm it each time it expires (30 min). Act on each event: read the
+reply, review, merge or answer. `WaitForSessions` is only for a short blocking wait.
 
 ## Launching
 

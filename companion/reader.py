@@ -13,6 +13,7 @@ import subprocess
 import time
 import uuid
 from collections import deque
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -21,8 +22,9 @@ from AppKit import NSRunningApplication, NSWorkspace
 
 from .contracts import Control, Rect, Snapshot
 
-INPUT_ROLES = {"AXTextField", "AXTextArea", "AXComboBox", "AXPopUpButton", "AXCheckBox", "AXDateField"}
-KEEP_ROLES = INPUT_ROLES | {"AXButton", "AXStaticText", "AXLink", "AXRadioButton", "AXMenuButton"}
+CHOICE_ROLES = {"AXCheckBox", "AXRadioButton"}
+INPUT_ROLES = CHOICE_ROLES | {"AXTextField", "AXTextArea", "AXComboBox", "AXPopUpButton", "AXDateField"}
+KEEP_ROLES = INPUT_ROLES | {"AXButton", "AXStaticText", "AXLink", "AXMenuButton"}
 MAX_ELEMENTS = 400
 MAX_WEB_ELEMENTS = 1200
 MAX_WEB_CONTROLS = 96
@@ -40,7 +42,7 @@ PRACTICE_TITLES = {SAFARI: PRACTICE_TITLE, BRAVE: f"{PRACTICE_TITLE} - Brave"}
 UNSUPPORTED_BROWSERS = {"com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.google.Chrome.canary",
                         "org.chromium.Chromium", "com.microsoft.edgemac", "org.mozilla.firefox"}
 WEB_TEXT_NOTES = {"status", "document-note"}
-WEB_VALUE_ROLES = INPUT_ROLES | {"AXSearchField", "AXTimeField", "AXRadioButton"}
+WEB_VALUE_ROLES = INPUT_ROLES | {"AXSearchField", "AXTimeField"}
 WEB_INPUT_ROLES = WEB_VALUE_ROLES | {"AXDateTimeArea"}
 SECURE_ROLE = "AXSecureTextField"
 WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXWebArea"}
@@ -91,7 +93,7 @@ def is_placeholder_choice(value: str) -> bool:
 
 
 def _filled(value, role: str) -> bool:
-    if role in {"AXCheckBox", "AXRadioButton"}:
+    if role in CHOICE_ROLES:
         return bool(value)
     if role == "AXPopUpButton":
         return isinstance(value, str) and not is_placeholder_choice(value)
@@ -116,17 +118,18 @@ def _intersection(first: Rect, second: Rect) -> Rect | None:
 
 
 def _walk(start, get, limit, leaf_roles):
-    queue = deque([start])
+    """Yield each node, its role, and its parent's visit index, breadth first."""
+    queue = deque([(start, None)])
     for seen in range(limit):
         if not queue:
             return
-        el = queue.popleft()
+        el, parent = queue.popleft()
         role = get(el, "AXRole") or ""
-        yield el, role
+        yield el, role, parent
         remaining = limit - seen - len(queue) - 1
         if remaining > 0 and (seen == 0 or role not in leaf_roles):
             children = get(el, "AXChildren") or []
-            queue.extend(children[:remaining])
+            queue.extend((child, seen) for child in children[:remaining])
 
 
 def _web_getter(started):
@@ -194,7 +197,7 @@ def _selected_web_page(root, get, page_title=None, page_url_prefix=None):
     if page_title is not None and get(window, "AXTitle") != page_title:
         raise ReaderError("The front browser window doesn't match this task. Open the task page in the front window.")
     window_frame = _frame(window, get)
-    for el, role in _walk(window, get, MAX_WEB_ELEMENTS, WEB_LEAVES | {"AXToolbar"}):
+    for el, role, _parent in _walk(window, get, MAX_WEB_ELEMENTS, WEB_LEAVES | {"AXToolbar"}):
         if role != "AXWebArea":
             continue
         frame = _frame(el, get)
@@ -235,21 +238,59 @@ def _safe_web_text(text: str) -> str:
     return HTTP_URL.sub(lambda match: _host(match.group()) or "[link]", text)[:MAX_WEB_LABEL_LENGTH]
 
 
+def _is_choice_set(el, role, get) -> bool:
+    if role == "AXRadioGroup":
+        return True
+    if role != "AXGroup":
+        return False
+    if get(el, "AXSubrole") == "AXFieldset":
+        return True
+    description = get(el, "AXRoleDescription")
+    return isinstance(description, str) and "".join(description.casefold().split()) == "fieldset"
+
+
+@dataclass
+class _ChoiceSet:
+    label: str
+    parent: _ChoiceSet | None
+    filled: bool | None = None
+
+    def observe(self, selected: bool) -> None:
+        group = self
+        while group is not None and group.filled is not True:
+            group.filled = selected
+            group = group.parent
+
+
 def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Control, ...]:
-    controls = []
+    controls: list[Control] = []
+    ancestry: dict[int, _ChoiceSet] = {}
+    choice_rows: dict[str, _ChoiceSet] = {}
     web = viewport is not None
-    roles = (KEEP_ROLES | WEB_INPUT_ROLES | {"AXHeading", "AXGroup"}) - {"AXStaticText"} if web else KEEP_ROLES
+    roles = (KEEP_ROLES | WEB_INPUT_ROLES | {"AXHeading"}) - {"AXStaticText"} if web else KEEP_ROLES
     if web and practice:
-        roles |= {"AXStaticText"}
+        roles |= {"AXGroup", "AXStaticText"}
     leaves = WEB_LEAVES | {"AXScrollArea"} if web else INPUT_ROLES | {SECURE_ROLE}
     value_roles = WEB_VALUE_ROLES if web else INPUT_ROLES
     headings = 0
-    for el, role in _walk(start, get, limit, leaves):
-        if role not in roles:
+    for index, (el, role, parent) in enumerate(_walk(start, get, limit, leaves)):
+        enclosing_set = ancestry.get(parent)
+        is_set = _is_choice_set(el, role, get)
+        choice_set = None
+        if is_set:
+            label = _label(el, role, get)
+            choice_set = _ChoiceSet(_safe_web_text(label) if web else label, enclosing_set)
+        group = choice_set if is_set else enclosing_set
+        if group is not None:
+            ancestry[index] = group
+        grouped_option = enclosing_set is not None and role in CHOICE_ROLES
+        if grouped_option:
+            value = get(el, "AXValue")
+            enclosing_set.observe(_filled(value, role))
+        if role not in roles and not is_set:
             continue
-        fieldset = role == "AXGroup" and not practice and get(el, "AXSubrole") == "AXFieldset"
-        context = role == "AXHeading" or fieldset
-        if (context and headings >= MAX_WEB_HEADINGS) or (role == "AXGroup" and not (practice or fieldset)):
+        context = role == "AXHeading" or is_set
+        if web and context and headings >= MAX_WEB_HEADINGS:
             continue
         if role in {"AXTextField", "AXTextArea", "AXSearchField"} and get(el, "AXSubrole") == SECURE_ROLE:
             continue
@@ -259,8 +300,11 @@ def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Contr
         if not frame or frame[2] <= 0 or frame[3] <= 0:
             continue
         ident = _identifier(el, get)
-        value = get(el, "AXValue") if role in value_roles else None
-        if role == "AXGroup" and practice:
+        if not grouped_option:
+            value = get(el, "AXValue") if role in value_roles else None
+        if choice_set is not None:
+            label = choice_set.label
+        elif role == "AXGroup":
             if ident not in WEB_TEXT_NOTES:
                 continue
             label = _web_note(el, get)
@@ -269,22 +313,26 @@ def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Contr
             role = "AXStaticText"
         else:
             label = _web_label(el, role, get, value) if web else _label(el, role, get)
-        if fieldset and not label:
-            continue
         if web:
-            label = _safe_web_text(label)
+            if choice_set is None:
+                label = _safe_web_text(label)
             if ident and (len(ident) > MAX_WEB_LABEL_LENGTH or HTTP_URL.search(ident)):
                 ident = None
-        enabled = get(el, "AXEnabled")
+        enabled = get(el, "AXEnabled") if not is_set else False
         filled = _filled(value, role) if role in value_roles else None
-        controls.append(Control(
+        control = Control(
             id=f"c{len(controls):02d}", role=role, label=label, frame=frame,
-            enabled=not fieldset and (enabled is None or bool(enabled)), identifier=ident, filled=filled,
-        ))
+            enabled=enabled is None or bool(enabled), identifier=ident, filled=filled,
+            group=(enclosing_set.label or None) if grouped_option else None,
+        )
+        controls.append(control)
+        if choice_set is not None:
+            choice_rows[control.id] = choice_set
         headings += context
         if web and len(controls) >= MAX_WEB_CONTROLS:
             break
-    return tuple(controls)
+    return tuple(replace(control, filled=choice_rows[control.id].filled) if control.id in choice_rows else control
+                 for control in controls)
 
 
 def find_app(bundle_id: str) -> NSRunningApplication | None:

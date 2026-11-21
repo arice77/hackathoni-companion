@@ -10,6 +10,8 @@ For a one-shot read, run `.venv/bin/python -m companion.reader com.apple.Safari`
 
 Generic snapshots retain interactive controls, headings and named form fieldsets, not page prose. `window_title` carries only the host for real sites; `viewport` is the visible web-area frame in screen points. Controls outside it are omitted, and partly visible controls are clipped. Password nodes are skipped before reading their attributes or children; other field values are reduced to filled flags. This does not prevent a site from independently echoing sensitive information into its own headings or control names.
 
+Radio buttons and checkboxes report `filled` from their AX selection state on both web and native screens. Options inside an AX radio group or fieldset carry its label as `group`. The set itself is a non-clickable control with its own frame and an aggregate state: `false` when observed choices are all unselected, `true` when any is selected. A fieldset without observed choices has no aggregate state. Scrolled-out options aren't shown as pointer targets, but their selection can still count toward a visible set.
+
 The reader visits at most 1,200 AX elements per traversal and retains at most 96 controls, including up to 12 headings/fieldsets. Web labels are limited to 160 characters. Browser AX requests have a 40 ms per-request timeout and a 300 ms traversal budget; on timeout the reader raises an error instead of returning a partial snapshot. Hitting a count cap can omit controls. Nested scroll panes, cross-origin frames, browser-specific widgets, and sites that render forms as graphics still need verification.
 
 ## Run in Safari
@@ -76,6 +78,8 @@ All 40 snapshots found the expected IDs (including `screen-title` and `status`) 
 
 No page path/query, browser chrome, or entered values appeared in the public-page snapshots. Safari can return no usable web area while a tab loads; retry after it settles. Password suppression was tested with both an AX secure role and a secure subrole in a fake tree, not on any login page. Live Sarvam guidance on the public pages was not tested.
 
+**Choice sets / read-only:** a fresh httpbin window exposed three `Pizza Size` radios and four `Pizza Toppings` checkboxes. All seven were unselected, and both group controls reported `filled=false`, matching Safari's raw AX selection flags. Five CLI reads took 70.1 ms median / 70.8 ms max. No external controls were operated. Automated fake-tree tests cover selection transitions, the planner signature change, and a checked option outside the viewport.
+
 **Live-machine / regression:** five isolated Brave reads of the practice page in front-window mode gave 65.4 ms median / 67.0 ms max. The locked QA suite confirmed all three Safari practice screens and the AIMS flow through their local receipts. The reader prefers bundle paths under this worktree root. It does not fall back to another worktree for `in.hackathoni.*` fixtures; external apps such as Safari still use the first running instance when there's no local copy.
 
-**Automated:** `.venv/bin/python -m unittest discover` — 89 passed. `.venv/bin/python scripts/qa/run.py` — 18 passed, 0 failed, 1 blocked (opt-in Sarvam credits), 3 needs-human skips.
+**Automated:** `.venv/bin/python -m unittest discover` — 102 passed. `.venv/bin/python scripts/qa/run.py` — 18 passed, 0 failed, 1 blocked (opt-in Sarvam credits), 3 needs-human skips.
