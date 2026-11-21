@@ -326,7 +326,8 @@ class Companion(NSObject):
             return
         t0 = time.perf_counter()
         try:
-            snap = reader.snapshot(self.task.bundle_id)
+            snap = reader.snapshot(self.task.bundle_id, page_title=self.task.page_title,
+                                   page_url_prefix=self.task.page_url_prefix)
             self.last_snapshot = snap
         except reader.ReaderError as e:
             self.overlay.hide()
@@ -433,12 +434,14 @@ class Companion(NSObject):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--planner", default=os.environ.get("COMPANION_PLANNER", "scripted"), choices=["scripted", "sarvam"])
+    ap.add_argument("--planner", default=os.environ.get("COMPANION_PLANNER"), choices=["scripted", "sarvam"],
+                    help="default: sarvam for web_any (no step script), scripted otherwise")
     ap.add_argument("--task", default=os.environ.get("COMPANION_TASK", "aims"), help="companion/tasks/<name>.py")
     ap.add_argument("--mute", action="store_true", help="no spoken replies (QA, or to save Sarvam credits)")
     ap.add_argument("--lang", default=os.environ.get("COMPANION_LANG", "ml"), choices=["ml", "en"])
     ap.add_argument("--question", help="pre-fill and ask (rehearsal/testing); normally typed or dictated")
     args = ap.parse_args()
+    args.planner = args.planner or ("sarvam" if args.task == "web_any" else "scripted")
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
     companion = Companion.alloc().initWithPlanner_task_lang_(args.planner, args.task, args.lang)

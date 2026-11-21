@@ -23,6 +23,7 @@ Both Sarvam MCPs (`sarvam`, `sarvam-docs`) are installed at user scope for new C
 |---|---|---|
 | 21 Nov 20:10 | key verified with 1 chat call | orchestrator |
 | 21 Nov 20:40 | ~48 calls used so far: 1 chat (key check), 5 voice smoke, 1 TTS (panel test), 39 planner eval, ~2 planner live | agents' reports; Abin to post dashboard balance |
+| 21 Nov 21:15 | +68 planner calls, +5 voice smoke, +2 live httpbin (chat + TTS) | agents + orchestrator |
 | 21 Nov ~20:45 | **597 of 600 left** (~3 credits for ~48 calls: chat, STT, TTS are cheap; budget is not a constraint for testing) | Abin, dashboard |
 
 ## Parked: GST hero demo (decided earlier on 21 Nov, on hold)
@@ -65,10 +66,10 @@ Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime:
 |---|---|---|---|
 | Reader, scripted planner, validator, loop | merged | coordinator | QA green on merged tree (runs/qa/20261121-201515) |
 | QA skill + runner | merged, growing | Sonnet QA | Web, overlay, opt-in voice checks + machine-wide lock; merged suite 18 pass / 0 fail |
-| Web reader + practice web app (Safari; Brave isolated profile) | merged | Codex sol | Practice page only (title + local URL match). **Next: read any page in the front browser window when the user asks** |
+| Web reader (any page in the front Safari window, on request; Brave isolated) | merged (9ea4e8e) | Codex sol | httpbin form: 12 controls, ~66 ms; Wikipedia 23 controls ~74 ms; passwords skipped; URLs kept to host; worktree-scoped fixtures |
 | Sketch overlay | merged incl. taste pass (fc95633) | Codex astra | Offset rough strokes, 2° note with shadow, short arrow. Nit: Malayalam glyphs read slightly smaller than Latin |
 | Sarvam voice (Saaras v4 ml/en + translate, Bulbul, mic helper) | merged + wired into panel | Codex sol + coordinator | Live: Malayalam reply spoken on Safari practice page. Real mic needs Abin to allow the macOS prompt |
 | Language preference (panel + overlay + voice) | merged | coordinator | `--lang ml|en`, switch in panel |
-| Sarvam planner (LLM picks the control on any page) | merged; fixing | Codex sol + coordinator (async in app) | 10/17 exact on first eval; live: rejected a valid target over label wording. Fix + accuracy push briefed |
+| Sarvam planner (LLM picks the control on any page) | merged (c3f00dc) | Codex sol + coordinator (async in app) | 28/30 exact in 2 runs, 0 unknown ids, p50 ~550 ms; Safari practice walk 8/8 to complete; live on httpbin: Malayalam question → "Customer name:". Open: ambiguous → should clarify; missing control → points at a near alternative |
 | AIMS fixture | reference | coordinator | regression target in QA |
 | GST practice portal | parked | — | — |
