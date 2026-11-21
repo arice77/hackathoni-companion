@@ -22,7 +22,11 @@ def validate(decision: Decision, snap: Snapshot, now: float | None = None) -> tu
     control = snap.control(decision.control_id)
     if control is None:
         return False, f"unknown control id {decision.control_id}"
-    if not control.enabled:
+    group_outline = control.role in {"AXGroup", "AXRadioGroup"} and bool(control.label) and any(
+        option.group == control.label and option.role in {"AXRadioButton", "AXCheckBox"} and option.enabled
+        for option in snap.controls
+    )
+    if not control.enabled and not group_outline:
         return False, "target control is disabled"
     x, y, w, h = control.frame
     wx, wy, ww, wh = snap.viewport if snap.viewport is not None else snap.window_frame

@@ -28,6 +28,7 @@ from Foundation import NSMakeRect, NSObject, NSTimer
 
 from . import reader
 from .contracts import Decision
+from .guidance import with_choice_group_bounds
 from .planner import ScriptedPlanner
 from .tasks import load as load_task
 from .validator import validate
@@ -116,6 +117,7 @@ class Companion(NSObject):
         self.plan_lock = threading.Lock()
         self.plan_thread = None
         self.plan_result = None  # (decision, snapshot, signature, plan_ms) from the background planner
+        self.question_version = 0
         self.task = load_task(task_name)
         self.planner = make_planner(planner_name, task_name)
         self.background = getattr(self.planner, "name", "") == "sarvam"  # network planners must not block the UI
@@ -303,9 +305,13 @@ class Companion(NSObject):
 
     @objc.python_method
     def start_question(self, question: str, shown: str):
-        self.question = question
-        with self.plan_lock:  # a new question must never reuse the answer to the previous one
+        with self.plan_lock:
+            self.question = question
+            self.question_version += 1
             self.plan_result = None
+            reset_question = getattr(self.planner, "reset_question", None)
+            if reset_question is not None:
+                reset_question()
         self.last_spoken = None
         t = UI[self.lang]
         self.heard.setStringValue_(f"{t['heard']}: “{shown}”" if shown.strip() else t["nothing"])
@@ -330,6 +336,7 @@ class Companion(NSObject):
         try:
             snap = reader.snapshot(self.task.bundle_id, page_title=self.task.page_title,
                                    page_url_prefix=self.task.page_url_prefix)
+            snap = with_choice_group_bounds(snap)
             self.last_snapshot = snap
         except reader.ReaderError as e:
             self.overlay.hide()
@@ -391,8 +398,8 @@ class Companion(NSObject):
             self.status.setStringValue_(
                 "Verified: status text seen" + (" + fresh training receipt file" if fresh else " (no receipt file)"))
             self.active = False
-        elif decision.kind in ("clarify", "unsupported"):
-            self.active = False
+        elif decision.kind == "unsupported" or (decision.kind == "clarify" and not self.progressed):
+            self.active = False  # mid-task "clarify" (e.g. "scroll down to continue") keeps watching the screen
 
     @objc.python_method
     def background_decision(self, snap):
@@ -402,6 +409,7 @@ class Companion(NSObject):
             result, running = self.plan_result, self.plan_thread is not None and self.plan_thread.is_alive()
         if not running and (result is None or result[2] != sig):
             question = self.question
+            question_version = self.question_version
 
             def work():
                 t0 = time.perf_counter()
@@ -411,7 +419,7 @@ class Companion(NSObject):
                     d = Decision("unsupported", snap.snapshot_id, "സഹായി ഇപ്പോൾ ലഭ്യമല്ല.",
                                  f"Planner error: {e}", source="sarvam")
                 with self.plan_lock:
-                    if question == self.question:  # drop late answers to an earlier question
+                    if question_version == self.question_version:  # drop late answers to an earlier submission
                         self.plan_result = (d, snap, sig, 1000 * (time.perf_counter() - t0))
             self.plan_thread = threading.Thread(target=work, daemon=True)
             self.plan_thread.start()
