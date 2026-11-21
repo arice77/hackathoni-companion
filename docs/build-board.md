@@ -66,8 +66,8 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | Site | Result | Next |
 |---|---|---|
 | YouTube Q1 (Malayalam "play Darshana") | PASS (2nd run picks "Darshana - Official Video Song") | done |
-| YouTube Q2 ("play it slower") | FAIL ×2: now opens Settings, then menu items carry values ("Playback speed Normal") and the allowlist drops them | prefix-match menu labels (planner builder) |
-| Gmail compose → send | To/Subject/Body now advance (private filled flags, d7593e2); stuck at optional Attach: skip not routed to the site guide. 0 sends | route Skip / "Next" to the site guide (planner builder) |
+| YouTube Q2 ("play it slower") | FAIL ×3: opens Settings; menu reduced to 2 rows (likely during an ad) | ad-state guidance + reopen Settings if reduced (planner builder) |
+| Gmail compose → send | **PASS** live (runs/qa/20261122-012836): Compose → To → Subject → Body → Attach skipped → Send; 1 test mail to Abin | say "sent" when Gmail shows "Message sent" (web builder) |
 
 ## Site packs (started 22 Nov ~00:15)
 
@@ -82,7 +82,7 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 Commit messages: AI co-author trailers stripped from all local branches on 22 Nov 00:13 (message-only rewrite,
 trees unchanged, base still origin/main e542f90). Backup refs in refs/original until Abin confirms.
 
-## Panel revamp (decided 22 Nov ~01:25)
+## Panel revamp (decided 22 Nov ~01:25) — merged 22 Nov ~01:42 (b8f19c0, e9a49ce); default QA 20/0, live KSEB+pizza 21/21 with it
 
 Research: `.context/ui-research/` (3 mockups). Decision: **A "Paper note", with restraint**. Rough pen only on panel
 edge, mic, step card and primary action; flat cream inputs/Skip/Stop; 96 pt idle mic → 56 pt while guiding; step text
