@@ -114,9 +114,7 @@ class GmailWalk:
     def __init__(self, window, overlay):
         self.window = window
         self.overlay = overlay
-        self.guide = PACK.new_guide()
-        self.question = "എനിക്ക് ഒരു ഇമെയിൽ അയയ്ക്കണം"
-        self.revision = 0
+        self.guide = PACK.start_guidance("എനിക്ക് ഒരു ഇമെയിൽ അയയ്ക്കണം")
         self.pid = None
         self.draft_fields = []
 
@@ -173,8 +171,7 @@ class GmailWalk:
         raise WalkStopped("Did not reach the expected draft state.")
 
     def next(self, text="അടുത്തത്"):
-        self.revision += 1
-        self.question = text
+        self.guide.skip_current(text)
 
     def raw_controls(self):
         pid, root, area, viewport, url = self.page()
@@ -187,7 +184,7 @@ class GmailWalk:
         from Foundation import NSDate, NSRunLoop
 
         snap = self.wait(lambda current: expected.target(current) is not None)
-        decision = self.guide.decide(self.question, snap, revision=self.revision)
+        decision = self.guide.decide(snap)
         target = snap.control(decision.control_id)
         if not validate(decision, snap)[0] or target is None or not expected.matches(target):
             raise WalkStopped(f"The guide did not point at {expected.label} (decision: {decision.kind}).")

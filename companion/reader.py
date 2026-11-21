@@ -80,6 +80,9 @@ GMAIL_ALIASES.update({"recipients": "To", "to recipients": "To", "add recipients
 GMAIL_FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
 GMAIL_BUTTON_ROLES = {"AXButton", "AXMenuButton", "AXPopUpButton"}
 GMAIL_ROW_ROLES = {"AXRow", "AXLayoutRow"}
+GMAIL_RECIPIENT_CHIPS = {"AXToken", "AXChip"}
+GMAIL_RECIPIENT_CONTAINERS = {"AXComboBox", "AXGroup", "AXList"}
+GMAIL_RECIPIENT_LEAVES = (WEB_LEAVES - {"AXComboBox"}) | {"AXListBox", "AXMenu", "AXMenuItem", "AXTable", "AXLayoutTable"}
 GMAIL_THREAD = re.compile(
     r"(?:inbox|all|sent|starred|snoozed|spam|trash|important|drafts|(?:label|search)/[^/]+)/[a-z0-9_-]{12,}$", re.I,
 )
@@ -426,8 +429,41 @@ def _gmail_label(el, role, get) -> str | None:
     return None
 
 
+def _gmail_has_recipient_chip(el, get, frame: Rect) -> bool:
+    """Look in the compact recipient row, including siblings of the editable box."""
+    row = el
+    center = frame[1] + frame[3] / 2
+    for _ in range(3):
+        parent = get(row, "AXParent")
+        if parent is None or get(parent, "AXRole") not in GMAIL_RECIPIENT_CONTAINERS:
+            break
+        bounds = _frame(parent, get)
+        if bounds is None or not bounds[1] <= center <= bounds[1] + bounds[3] or bounds[3] > 85:
+            break
+        row = parent
+    for child, role, _ in _walk(row, get, 32, GMAIL_RECIPIENT_LEAVES):
+        if child == row or child == el:
+            continue
+        if role in GMAIL_RECIPIENT_CHIPS:
+            return True
+        if role in GMAIL_BUTTON_ROLES:
+            for name in ("AXTitle", "AXDescription", "AXLabel"):
+                text = get(child, name)
+                if isinstance(text, str) and re.match(r"^remove(?:\s|$)", text.strip(), re.IGNORECASE):
+                    return True
+    return False
+
+
+def _gmail_field_filled(el, get, label: str, frame: Rect) -> bool | None:
+    value = get(el, "AXValue")
+    filled = bool(value.strip()) if isinstance(value, str) else None
+    if not filled and label == "To" and _gmail_has_recipient_chip(el, get, frame):
+        return True
+    return filled
+
+
 def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
-    """Project only fixed UI names and structural counts; don't read values or identifiers."""
+    """Project fixed UI names, structural counts and field occupancy without retaining values."""
     controls: list[Control] = []
     clips: dict[int | None, Rect | None] = {}
     message_table: tuple[int, Rect] | None = None
@@ -461,7 +497,9 @@ def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
             continue
         label = _gmail_label(el, role, get)
         if label is not None and len(controls) < MAX_WEB_CONTROLS - 1:
-            controls.append(Control(f"c{len(controls):02d}", role, label, frame, enabled=_enabled(el, get)))
+            filled = _gmail_field_filled(el, get, label, frame) if role in GMAIL_FIELD_ROLES else None
+            controls.append(Control(f"c{len(controls):02d}", role, label, frame, enabled=_enabled(el, get),
+                                    filled=filled))
     if thread:
         controls.append(Control(f"c{len(controls):02d}", "AXStaticText", "Open email", main_frame, enabled=False))
     elif message_table is not None:
