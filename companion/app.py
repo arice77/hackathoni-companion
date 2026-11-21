@@ -18,14 +18,10 @@ import uuid
 from pathlib import Path
 
 import objc
-from AppKit import (
-    NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSBackingStoreBuffered, NSButton, NSColor,
-    NSFloatingWindowLevel, NSFont, NSLineBreakByWordWrapping, NSScreen, NSStackView, NSTextField, NSWindow,
-    NSWindowStyleMaskClosable, NSWindowStyleMaskTitled, NSUserInterfaceLayoutOrientationVertical,
-    NSSegmentedControl,
-)
-from Foundation import NSMakeRect, NSObject, NSTimer
+from AppKit import NSApplication, NSApplicationActivationPolicyRegular
+from Foundation import NSObject, NSTimer
 
+from .panel import PaperPanel
 from . import reader
 from .contracts import Decision
 from .guidance import with_choice_group_bounds
@@ -96,15 +92,6 @@ def make_planner(name: str, task: str):
     return ScriptedPlanner(task)
 
 
-def label(text: str, size: float, bold: bool = False, wrap: bool = False) -> NSTextField:
-    f = NSTextField.wrappingLabelWithString_(text) if wrap else NSTextField.labelWithString_(text)
-    f.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
-    if wrap:
-        f.setPreferredMaxLayoutWidth_(360)
-        f.cell().setLineBreakMode_(NSLineBreakByWordWrapping)
-    return f
-
-
 class Companion(NSObject):
     def initWithPlanner_task_lang_(self, planner_name, task_name, lang):
         self = objc.super(Companion, self).init()
@@ -142,58 +129,24 @@ class Companion(NSObject):
     # ---------- UI ----------
     @objc.python_method
     def build_window(self):
-        screen = NSScreen.mainScreen().visibleFrame()
-        w, h = 400, 320
-        rect = NSMakeRect(screen.origin.x + screen.size.width - w - 24, screen.origin.y + screen.size.height - h - 24, w, h)
-        win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            rect, NSWindowStyleMaskTitled | NSWindowStyleMaskClosable, NSBackingStoreBuffered, False)
-        win.setTitle_("Companion")
-        win.setLevel_(NSFloatingWindowLevel)
-        win.setReleasedWhenClosed_(False)
-
-        t = UI[self.lang]
-        self.lang_switch = NSSegmentedControl.segmentedControlWithLabels_trackingMode_target_action_(
-            ["മലയാളം", "English"], 0, self, "langChanged:")
-        self.lang_switch.setSelectedSegment_(0 if self.lang == "ml" else 1)
-        self.field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 360, 26))
-        self.field.setPlaceholderString_(t["placeholder"])
-        self.field.setTarget_(self)
-        self.field.setAction_("ask:")
-        self.ask_button = ask = NSButton.buttonWithTitle_target_action_(t["ask"], self, "ask:")
-        ask.setKeyEquivalent_("\r")
-        self.stop_button = stop = NSButton.buttonWithTitle_target_action_(t["stop"], self, "stop:")
-        self.skip_button = skip = NSButton.buttonWithTitle_target_action_(t["skip"], self, "skip:")
-        skip.setToolTip_("Skip this optional step")
-        skip.setAccessibilityIdentifier_("companion-skip")
-        self.mic_button = mic = NSButton.buttonWithTitle_target_action_("🎤 " + t["mic"], self, "mic:")
-        mic.setEnabled_(self.voice is not None)
-        mic.setToolTip_(None if self.voice else "Sarvam voice not connected yet (needs the voice module and SARVAM_API_KEY)")
-        self.heard = label("", 11)
-        self.heard.setTextColor_(NSColor.secondaryLabelColor())
-        self.instruction = label(t["start"], 18, bold=True, wrap=True)
-        self.subtitle = label("", 13, wrap=True)
-        self.status = label(f"planner: {self.planner.name} · pointer: {self.overlay_kind}", 11, wrap=True)
-        self.status.setTextColor_(NSColor.secondaryLabelColor())
-
-        buttons = NSStackView.stackViewWithViews_([ask, mic, skip, stop])
-        stack = NSStackView.stackViewWithViews_(
-            [self.lang_switch, self.field, buttons, self.heard, self.instruction, self.subtitle, self.status])
-        stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
-        stack.setAlignment_(1)  # leading
-        stack.setSpacing_(10)
-        stack.setEdgeInsets_((16, 16, 16, 16))
-        win.setContentView_(stack)
-        win.makeKeyAndOrderFront_(None)
-        self.window = win
+        self.panel = PaperPanel.alloc().initWithOwner_(self)
+        self.window = self.panel.window
+        self.lang_switch = self.panel.lang_switch
+        self.field, self.ask_button = self.panel.field, self.panel.ask_button
+        self.mic_button, self.stop_button = self.panel.mic_button, self.panel.stop_button
+        self.skip_button = self.panel.skip_button
+        self.instruction, self.heard, self.status = self.panel.instruction, self.panel.heard, self.panel.status
+        self.window.orderFrontRegardless()
 
     @objc.python_method
     def say(self, decision: Decision | None, ml: str = "", en: str = ""):
-        """Show one language only: the user's preference. Subtitle is reserved for system detail."""
-        if decision is not None:
+        if decision is None:
+            self.panel.set_state("page_error" if self.active else "idle", ml=ml, en=en)
+        else:
+            # tick_ supplies the validated screen label. A language switch
+            # reuses that same step and must also preserve stopped/error states.
             self.last_decision = decision
-            ml, en = decision.instruction, decision.instruction_en
-        self.instruction.setStringValue_(ml if self.lang == "ml" else (en or ml))
-        self.subtitle.setStringValue_("" if decision is not None else (en if self.lang == "ml" else ""))
+            self.panel.set_state("language")
 
     @objc.python_method
     def text_for(self, decision: Decision) -> str:
@@ -214,6 +167,7 @@ class Companion(NSObject):
             self.speak(self.last_decision)
         self.last_key = None  # redraw the pointer in the new language on the next tick
         self.shown_frame = None
+        self.panel.set_state("language")
         self.log("language", lang=self.lang)
 
     # ---------- voice (Sarvam) ----------
@@ -238,11 +192,13 @@ class Companion(NSObject):
             self.recording = True
             self.voice.stop_speaking()
             self.mic_button.setTitle_("🔴 " + t["listening"])
+            self.panel.set_state("listening")
             threading.Thread(target=self.record_worker, daemon=True).start()
         else:
             self.recording = False
             self.mic_button.setEnabled_(False)
             self.mic_button.setTitle_("… " + t["thinking"])
+            self.panel.set_state("transcribing")
             threading.Thread(target=self.transcribe_worker, args=(self.pref(), self.keyterms()), daemon=True).start()
 
     @objc.python_method
@@ -282,6 +238,7 @@ class Companion(NSObject):
     def voiceFailed_(self, message):
         self.reset_mic()
         self.status.setStringValue_(str(message))
+        self.panel.set_state("voice_error")
         self.log("voice_error", error=str(message))
 
     @objc.python_method
@@ -327,6 +284,7 @@ class Companion(NSObject):
         self.active, self.last_key, self.started = True, None, time.time()
         self.shown_frame, self.panel_thinking = None, False
         self.progressed, self.unsure = False, 0
+        self.panel.set_state("question", heard=shown)
         self.log("question", text=self.question, chars=len(self.question))
         self.tick_(None)
 
@@ -401,6 +359,7 @@ class Companion(NSObject):
             self.overlay.hide()
             self.shown_frame = None
         t3 = time.perf_counter()
+        self.panel.set_state("decision", decision=decision, target=target.label if ok and target else "")
         if not changed and self.panel_thinking:  # same step after a re-plan: restore the text quietly
             self.say(decision)
         self.panel_thinking = False
@@ -461,6 +420,7 @@ class Companion(NSObject):
                 self.overlay.hide()
                 self.shown_frame = None
                 self.instruction.setStringValue_(UI[self.lang]["thinking"])
+                self.panel.set_state("thinking")
                 self.panel_thinking = True
             return None, None
         decision = rebind(result[0], result[1], snap)
