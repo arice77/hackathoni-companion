@@ -49,6 +49,8 @@ WEB_ACTION_ROLES = (KEEP_ROLES | WEB_INPUT_ROLES) - {"AXStaticText"}
 SECURE_ROLE = "AXSecureTextField"
 WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXWebArea"}
 HTTP_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+CAROUSEL_DOT = re.compile(r"(?:(?:go to )?slide\s+)?(\d+)\s+of\s+(\d+)", re.IGNORECASE)
+CAROUSEL_ROLES = {"AXButton", "AXLink", "AXRadioButton"}
 
 
 class ReaderError(RuntimeError):
@@ -253,6 +255,16 @@ def _safe_web_text(text: str) -> str:
     return HTTP_URL.sub(lambda match: _host(match.group()) or "[link]", text)[:MAX_WEB_LABEL_LENGTH]
 
 
+def _icon_only(label: str) -> bool:
+    glyphs = [char for char in label if not char.isspace() and char not in "\u200d\ufe0e\ufe0f"]
+    return bool(glyphs) and all("\ue000" <= char <= "\uf8ff" for char in glyphs)
+
+
+def _is_carousel_dot(label: str, role: str) -> bool:
+    match = CAROUSEL_DOT.fullmatch(label) if role in CAROUSEL_ROLES else None
+    return bool(match and 1 <= int(match[1]) <= int(match[2]) and int(match[2]) > 1)
+
+
 def _is_choice_set(el, role, get) -> bool:
     if role == "AXRadioGroup":
         return True
@@ -283,13 +295,9 @@ class _Collection:
     below_fold_count: int
 
 
-@dataclass(frozen=True)
-class _ReaderSnapshot(Snapshot):
-    below_fold_count: int = 0
-
-
 def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None) -> _Collection:
     controls: list[Control] = []
+    first_dot: Control | None = None
     ancestry: dict[int | None, _ChoiceSet] = {}
     choice_rows: dict[str, _ChoiceSet] = {}
     scroll_clips: dict[int | None, Rect | None] = {}
@@ -355,18 +363,29 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
                 label = _safe_web_text(label)
             if ident and (len(ident) > MAX_WEB_LABEL_LENGTH or HTTP_URL.search(ident)):
                 ident = None
+        if _icon_only(label):
+            continue
+        dot = web and _is_carousel_dot(label, role)
+        if dot and first_dot is not None:
+            continue
         filled = _filled(value, role) if role in value_roles else None
+        group_label = enclosing_set.label if grouped_option else ""
         control = Control(
             id=f"c{len(controls):02d}", role=role, label=label, frame=visible_frame,
             enabled=not is_set and _enabled(el, get), identifier=ident, filled=filled,
-            group=(enclosing_set.label or None) if grouped_option else None,
+            group=group_label if group_label and not _icon_only(group_label) else None,
         )
+        if dot:
+            first_dot = control
+            continue
         controls.append(control)
         if choice_set is not None:
             choice_rows[control.id] = choice_set
         headings += context
         if web and len(controls) >= MAX_WEB_CONTROLS:
             break
+    if not controls and first_dot is not None:
+        controls.append(first_dot)
     controls_with_groups = tuple(
         replace(control, filled=choice_rows[control.id].filled) if control.id in choice_rows else control
         for control in controls
@@ -396,7 +415,7 @@ def frontmost_bundle_id() -> str | None:
 
 
 def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None = None,
-             page_url_prefix: str | None = None) -> _ReaderSnapshot:
+             page_url_prefix: str | None = None) -> Snapshot:
     started = time.monotonic()
     if not is_trusted():
         raise ReaderError("This process is not allowed to read other apps (Accessibility permission missing).")
@@ -410,8 +429,8 @@ def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None =
         if str(get(page, "AXURL") or "") != url:
             raise ReaderError("The selected page changed while it was being read. Try again.")
         title = PRACTICE_TITLES[bundle_id] if practice else _host(url) or "Browser page"
-        return _ReaderSnapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame,
-                               collected.controls, viewport, below_fold_count=collected.below_fold_count)
+        return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame,
+                        collected.controls, viewport, below_fold_count=collected.below_fold_count)
     if bundle_id in UNSUPPORTED_BROWSERS or pid is not None:
         raise ReaderError("This browser or pid is not a supported practice target.")
     app = find_app(bundle_id)
@@ -427,7 +446,7 @@ def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None =
 
     window_frame = _frame(window)
     collected = _collect(window, _attr, MAX_ELEMENTS, window_frame=window_frame)
-    return _ReaderSnapshot(
+    return Snapshot(
         snapshot_id=uuid.uuid4().hex[:12],
         taken_at=time.time(),
         app_bundle_id=bundle_id,
