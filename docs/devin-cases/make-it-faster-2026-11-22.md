@@ -60,3 +60,68 @@ The replay blocks Sarvam requests. Intent calls count attempts, including the bl
   }
 }
 ```
+
+---
+
+# Repair case make-it-faster
+
+Mode **LIVE**
+
+[Open pull request for manual review](https://github.com/arice77/hackathoni-companion/pull/2)
+
+Checked PR head `68090ec006f241e8f20e4b581b33b840cb6680f8`
+
+| Replay | Revision | Result | Intent calls |
+| --- | --- | --- | --- |
+| Before | `329cc68aceb40097e6f45e131e7fb5224b15977f` | FAIL | 1 |
+| After | `68090ec006f241e8f20e4b581b33b840cb6680f8` | PASS | 0 |
+
+The replay blocks Sarvam requests. Intent calls count attempts, including the blocked baseline attempt.
+
+**Replay evidence**
+
+```json
+{
+  "before": {
+    "revision": "329cc68aceb40097e6f45e131e7fb5224b15977f",
+    "passed": false,
+    "actual": {
+      "kind": "clarify",
+      "target_label": null,
+      "local_intent": null
+    },
+    "expected": {
+      "kind": "point",
+      "target_label": "Settings",
+      "local_intent": {
+        "action": "speed",
+        "speed": "1.25"
+      },
+      "intent_calls": 0
+    },
+    "intent_calls": 1
+  },
+  "after": {
+    "revision": "68090ec006f241e8f20e4b581b33b840cb6680f8",
+    "passed": true,
+    "actual": {
+      "kind": "point",
+      "target_label": "Settings",
+      "local_intent": {
+        "action": "speed",
+        "speed": "1.25"
+      }
+    },
+    "expected": {
+      "kind": "point",
+      "target_label": "Settings",
+      "local_intent": {
+        "action": "speed",
+        "speed": "1.25"
+      },
+      "intent_calls": 0
+    },
+    "intent_calls": 0
+  }
+}
+```

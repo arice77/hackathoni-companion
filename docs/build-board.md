@@ -209,3 +209,7 @@ PR #1 [SIMULATED Devin] https://github.com/arice77/hackathoni-companion/pull/1 (
 Replay `make-it-faster`: 329cc68 FAIL (clarify, no target, 1 intent call) → PR head edd27ae PASS (Settings pointer, local 1.25×, 0 intent calls). Re-verified independently by the orchestrator.
 Record: docs/devin-cases/make-it-faster-2026-11-22.md. Live run pending: Abin confirms the GitHub repo connection in Devin + credits, then types the live approval himself.
 Also merged: Hindi + Kannada (fa1f7e0, offline-tested), pitch script docs/pitch-script.md (0c7e84c + 21b5dcb), YouTube utterances: zero intent calls in all runs; last run 3/3 pairs pass.
+
+### Devin case: LIVE run 22 Nov ~03:48 (Abin approved; repo connected, $20 credit, 5-ACU cap)
+Devin session devin-7ce62d4e… (API v1) opened PR #2 https://github.com/arice77/hackathoni-companion/pull/2 by `app/devin-ai-integration`, about 1 minute after start. +16/-1: adds "make it faster" to the local faster phrases + a unit test.
+Replay `make-it-faster`: 329cc68 FAIL (1 intent call) → PR head 68090ec PASS (Settings pointer, local 1.25×, 0 intent calls). Re-verified independently by the orchestrator. Open for Abin's review/merge into `devin-case/make-it-faster`.
