@@ -1,46 +1,56 @@
 # Start here in Conductor
 
-State as of 21 Nov 2026, ~21:15 IST. Coordinator branch: `arice77/hackathoni-companion-build-coordinate` (local only, not pushed).
-Process: `/conductor-orchestrator` (Opus orchestrates and reviews; Codex Sol/Astra build; Sonnet QA). QA: `companion-qa` skill.
-Live plan and owners: [docs/build-board.md](docs/build-board.md).
+State as of **22 Nov 2026, 01:47 IST**. Coordinator branch `arice77/hackathoni-companion-build-coordinate`
+(local only, not pushed). Orchestrator detail (agents, session ids, what to review next):
+`.context/orchestrator-state.md` (git-ignored, in the coordinator worktree). Ledger of features, bugs, decisions
+and credits: [docs/build-board.md](docs/build-board.md). Process: `/conductor-orchestrator` skill (Opus
+orchestrates and reviews; Codex Sol/Astra build; Sonnet QA with the `companion-qa` skill).
 
-## Direction (Abin)
+## What we're building
 
-Get the basics right before choosing the problem: the companion guides a person **on websites**, they ask by **voice in
-Malayalam or English**, and the overlay text and spoken reply follow their language preference. The GST GSTR-3B demo
-(Kerala shop owner, regular scheme, under ₹5 crore, monthly filer) is parked until the basics work.
+Track 02 "Voice & Language: Beyond English" (HackaThoni, Alappuzha). A macOS companion that makes websites
+usable for **Malayalis who aren't comfortable with tech (parents, grandparents)**:
 
-## What works (with evidence)
+1. They ask by voice, in Malayalam or English (Sarvam Saaras v4 speech-to-text; Malayalam → English translate).
+2. The Accessibility reader reads the page in Safari (no typed values, no passwords, URLs reduced to host;
+   Gmail reduced to UI chrome only).
+3. Site packs (KSEB, YouTube, Gmail) plus a form planner plan the steps in code; the Sarvam LLM handles
+   intent and wording only.
+4. A hand-drawn Plum overlay points at the exact control, and a cream "paper note" panel shows the step. Bulbul
+   speaks it in the chosen language.
+5. The person clicks. The companion re-reads the screen and moves on.
+
+## What works (evidence)
 
 | Piece | Evidence | Label |
 |---|---|---|
-| Accessibility reader, native apps | `scripts/qa/checks/aims_reader_live.py`, green | live-machine |
-| Reader on web pages | Any page in the front Safari window, on request: httpbin form 12 controls ~66 ms, Wikipedia 23 ~74 ms, practice page; passwords skipped, URLs kept to host (`docs/web-support.md`) | live-machine |
-| Brave | Readable only in an isolated profile launched with `--force-renderer-accessibility=complete` | live-machine |
-| Scripted planner + validator + loop | AIMS e2e: 15 steps, every pointer validated, completion via status text + fresh receipt; green 3× in a row | live-machine (driver clicks) |
-| Sketch overlay (Plum, Shantell Sans, Malayalam Sangam MN fallback) | click-through and alignment asserted on a self-owned window; renders in `docs/overlay-renders/` | live-machine + automated |
-| Sarvam voice | Key verified (chat reply in Malayalam). Saaras v4 transcribe/translate + Bulbul round trip, both languages (`docs/sarvam-voice.md`) | live (synthetic audio) |
-| Voice in the panel | Spoken Malayalam instruction on the Safari practice page, sketch pointer on "Business Name" (1 TTS call) | live-machine |
-| Sarvam planner (any page) | 28/30 exact in 2 eval runs, 0 invented ids, p50 ~550 ms; Safari practice walk to complete; httpbin: Malayalam question → "Customer name:" (`docs/sarvam-planner.md`) | live |
-| Language switch | `--lang ml|en` and a panel switch; one language shown and spoken | live-machine |
+| KSEB Quick Pay pack | follow-the-pointer on the practice copy, 2× green (runs/qa/20261122-014339) | live-machine (practice copy) |
+| Generic forms (pizza) | optional units offered, Skip, "Next…", complete (same run) | live-machine |
+| Gmail compose → send | passed on Abin's real account (runs/qa/20261122-012836); 1 test mail to his own address | live |
+| YouTube "play <song>" (Malayalam) | official Darshana video found and playing (runs/qa/20261122-012637) | live |
+| New panel (Direction A "Paper note") | 12 renders in `docs/panel-renders/`; Safari keeps focus; QA green with it | live-machine |
+| Sarvam voice | Saaras/Bulbul round trip in both languages; mic helper | live (synthetic audio) |
+| Default QA suite | 20 pass / 0 fail on the coordinator branch | automated + live-machine |
 
-## Not yet verified / open issues
+## Not done / open
 
-- **No person has used it yet.** Real microphone (needs Abin to allow the macOS prompt), pointer alignment by eye, click-through by hand, Malayalam wording by a native speaker.
-- **Planner edge cases:** an ambiguous question returns unsupported instead of asking back; a missing control can be swapped for a near alternative. Being fixed.
-- **Overlay nit:** Malayalam glyphs read slightly smaller than Latin.
-- **Hackathon rule risk:** the field guide says "build a project with Devin" (`.context/hackathon-brief.md`). Confirm with the organisers.
-- Utter dictation into the panel field is untested.
+- **YouTube "make it slower"** (and subtitles/quality): Settings opens, but the menu appears reduced during ads.
+  Planner + reader fixes in progress, then a QA rerun.
+- Gmail should say "Your email was sent" when Gmail shows "Message sent" (in progress).
+- No person has done the full flows yet with the real mic. Malayalam wording needs a native speaker's review.
+- **Devin rule**: the field guide says "build a project with Devin". Abin to confirm with the organisers.
+- Demo script and pitch not written.
 
 ## Run it
 
 ```sh
-./scripts/bootstrap.sh                                   # once per worktree
-./scripts/open_web_practice.sh                           # Safari practice page
-.venv/bin/python -m companion.app --task web_practice    # add --lang en, --mute, --planner sarvam
-.venv/bin/python -m companion.app --task web_any         # any page in the front Safari window (Sarvam planner)
-.venv/bin/python scripts/qa/run.py                       # full QA (silent: spends no credits)
+./scripts/bootstrap.sh                                    # once per worktree
+.venv/bin/python -m companion.app --task web_site         # KSEB / YouTube / Gmail in the front Safari window
+.venv/bin/python -m companion.app --task web_practice     # local practice form (./scripts/open_web_practice.sh)
+.venv/bin/python scripts/qa/run.py                        # default QA (no Sarvam calls)
+QA_LIVE_SARVAM=1 .venv/bin/python scripts/qa/run.py kseb_follow pizza_follow   # live walks
 ```
 
-Run from an Accessibility-trusted process (a Conductor terminal on this Mac). `SARVAM_API_KEY` lives in the git-ignored
-`.env`; never print or commit it. Credits: track on the board.
+Run from an Accessibility-trusted process (a Conductor terminal on this Mac). Secrets live only in the
+git-ignored `.env` (`SARVAM_API_KEY`, `QA_GMAIL_TO`, `QA_GMAIL_ALLOWED`). Commit messages are plain: no AI
+co-author lines.
