@@ -75,6 +75,15 @@ class YouTubeTests(unittest.TestCase):
         decision = guide.decide(snapshot("results"))
         self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
 
+    def test_prefers_the_regular_video_even_if_a_collection_has_more_title_cues(self):
+        results = snapshot("song_results")
+        for collection in ("mix", "playlist", "short"):
+            with self.subTest(collection=collection):
+                guide = PACK.start_guidance("Play the Darshana song")
+                controls = tuple(results.control(c) for c in ("filters", collection, "plain"))
+                decision = guide.decide(replace(results, controls=controls))
+                self.assertEqual(decision.control_id, "plain")
+
     def test_uses_the_title_anchor_for_a_verified_video(self):
         snap = snapshot("results")
         best = snap.control("best")
@@ -111,6 +120,8 @@ class YouTubeTests(unittest.TestCase):
         self.assertIsNone(pack_for(replace(snapshot("watch"), window_title="www.youtube.com.example.net")))
         safe = PACK.privacy.filter_snapshot(snapshot("results"))
         self.assertEqual({c.id for c in safe.controls}, {"search", "go"})
+        paused = snapshot("watch_paused")
+        self.assertEqual(PACK.privacy.filter_snapshot(paused).control("play"), paused.control("play"))
         self.assertIsNone(PACK.start_guidance("Edit my profile photo"))
 
     def test_braces_in_spoken_title_are_literal(self):
@@ -144,7 +155,9 @@ class YouTubeTests(unittest.TestCase):
                 decision = planner.decide(question, snapshot(screen))
                 self.assertEqual(decision.control_id, control_id)
             self.assertEqual(decision.kind, "complete")
-            self.assertEqual(planner.decide("Play it slower", snapshot("watch")).control_id, "gear")
+            waiting = planner.decide("Play it slower", snapshot("generic_player_loading"))
+            self.assertEqual((waiting.kind, waiting.control_id), ("clarify", None))
+            self.assertEqual(planner.decide("Play it slower", snapshot("watch_paused")).control_id, "gear")
             self.assertEqual(planner.decide("Play it slower", snapshot("menu")).control_id, "speed")
             self.assertEqual(planner.decide("Play it slower", snapshot("speed_menu")).control_id, "slow")
             post.assert_not_called()

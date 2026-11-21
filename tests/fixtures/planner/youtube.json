@@ -29,6 +29,29 @@
       {"id": "first-heading", "role": "AXHeading", "label": "Darshana reaction"},
       {"id": "first", "role": "AXLink", "label": "Darshana reaction", "identifier": "youtube-watch:reaction"}
     ],
+    "mix_only_more": [
+      {"id": "filters", "role": "AXButton", "label": "Search filters"},
+      {"id": "mix", "role": "AXLink", "label": "Mix – Darshana Rajendran", "identifier": "youtube-watch:mix"}
+    ],
+    "song_results": [
+      {"id": "filters", "role": "AXButton", "label": "Search filters"},
+      {"id": "channel", "role": "AXLink", "label": "Darshana Rajendran", "identifier": "youtube-channel:person"},
+      {"id": "mix", "role": "AXLink", "label": "Mix – Darshana Rajendran", "identifier": "youtube-watch:mix"},
+      {"id": "playlist", "role": "AXLink", "label": "Darshana Hridayam Song Playlist", "identifier": "youtube-watch:playlist-entry"},
+      {"id": "short", "role": "AXLink", "label": "Darshana Hridayam Official Video Song #Shorts", "identifier": "youtube-watch:short"},
+      {"id": "wrong", "role": "AXLink", "label": "Hridayam | Onakka Munthiri | Official Video Song", "identifier": "youtube-watch:other-song"},
+      {"id": "plain", "role": "AXLink", "label": "Darshana Hridayam", "identifier": "youtube-watch:unmarked-song"},
+      {"id": "best", "role": "AXLink", "label": "Darshana | Hridayam | Official Video Song", "identifier": "youtube-watch:official"}
+    ],
+    "generic_player_loading": [
+      {"id": "search", "role": "AXComboBox", "label": "Search"},
+      {"id": "title", "role": "AXHeading", "label": "Darshana | Hridayam | Official Video Song"}
+    ],
+    "only_player_sliders": [
+      {"id": "title", "role": "AXHeading", "label": "Darshana | Hridayam | Official Video Song"},
+      {"id": "seek", "role": "AXSlider", "label": "Seek slider"},
+      {"id": "volume", "role": "AXSlider", "label": "Volume"}
+    ],
     "watch": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
       {"id": "go", "role": "AXButton", "label": "Search"},
@@ -53,7 +76,7 @@
       {"id": "cc", "role": "AXCheckBox", "label": "Subtitles/closed captions (c)", "filled": true},
       {"id": "volume", "role": "AXSlider", "label": "Volume"},
       {"id": "seek", "role": "AXSlider", "label": "Seek slider"},
-      {"id": "play", "role": "AXButton", "label": "Play (k)"}
+      {"id": "play", "role": "AXButton", "label": "Play keyboard shortcut k"}
     ],
     "fullscreen": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
@@ -230,6 +253,12 @@
       {"id": "seek", "role": "AXSlider", "label": "Seek slider"},
       {"id": "waiting", "role": "AXButton", "label": "Skip ad in 5", "enabled": false}
     ],
+    "ad_skip_plain": [
+      {"id": "skip", "role": "AXButton", "label": "Skip"}
+    ],
+    "ad_skip_plural": [
+      {"id": "skip", "role": "AXButton", "label": "Skip ads"}
+    ],
     "unmatched_more": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
       {"id": "go", "role": "AXButton", "label": "Search"},
@@ -245,7 +274,7 @@
       {"id": "filters", "role": "AXButton", "label": "Search filters"}
     ]
   },
-  "below_fold_counts": {"unmatched_more": 160, "no_links_yet": 160},
+  "below_fold_counts": {"unmatched_more": 160, "no_links_yet": 160, "mix_only_more": 160},
   "cases": [
     {"id": "search-en", "language": "english", "question": "Find and play Darshana Hridayam", "walk": [["home", "point", "search"], ["typed", "point", "go"], ["results", "point", "best"], ["watch", "complete", null, "playing"]]},
     {"id": "search-ml", "language": "malayalam", "question": "എനിക്ക് ഹൃദയം ദർശന പാട്ട് കേൾക്കണം", "walk": [["home", "point", "search"], ["typed", "point", "go"], ["results", "point", "best"], ["watch", "complete", null, "playing"]]},
@@ -272,8 +301,12 @@
     {"id": "pathukke", "language": "manglish", "question": "Pathukke", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "speed-kurakku", "language": "manglish", "question": "Speed kurakku", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "faster-english", "language": "english", "question": "Faster", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "clarify", null, "1.25"]]},
-    {"id": "title-with-articles", "language": "english", "question": "Play the Darshana song", "walk": [["home", "point", "search", "Type ‘darshana’"], ["typed", "point", "go"], ["results", "point", "first"]]},
-    {"id": "title-with-malayalam-filler", "language": "malayalam", "question": "ദർശന പാട്ട് ഒന്ന് പ്ലേ ചെയ്യൂ", "walk": [["home", "point", "search", "Type ‘ദർശന’"], ["typed", "point", "go"], ["results", "point", "first"]]},
+    {"id": "title-with-articles", "language": "english", "question": "Play the Darshana song", "walk": [["home", "point", "search", "Type ‘darshana song’"], ["typed", "point", "go"], ["results", "point", "best"]]},
+    {"id": "title-with-malayalam-filler", "language": "malayalam", "question": "ദർശന പാട്ട് ഒന്ന് പ്ലേ ചെയ്യൂ", "walk": [["home", "point", "search", "Type ‘darshana song’"], ["typed", "point", "go"], ["results", "point", "best"]]},
+    {"id": "short-malayalam-song-request", "language": "malayalam", "question": "ദർശന പാട്ട്", "walk": [["home", "point", "search", "Type ‘darshana song’"], ["typed", "point", "go"], ["mix_only_more", "clarify", null, "Scroll down to see more results"], ["song_results", "point", "best"]]},
+    {"id": "multiword-song-over-mixes-playlists-and-shorts", "language": "english", "question": "Play the Darshana Hridayam song", "walk": [["home", "point", "search", "Type ‘darshana hridayam song’"], ["typed", "point", "go"], ["song_results", "point", "best"], ["watch_paused", "point", "play"], ["watch", "complete", null, "playing"]]},
+    {"id": "speed-after-player-controls-reappear", "language": "english", "question": "Play it slower", "walk": [["generic_player_loading", "clarify", null, "Waiting for YouTube’s player controls"], ["only_player_sliders", "clarify", null, "Move the pointer over the video"], ["watch_paused", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
+    {"id": "ad-skip-label-variants", "language": "english", "question": "Play it slower", "walk": [["ad_skip_plain", "point", "skip"], ["ad_skip_plural", "point", "skip"], ["watch_paused", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "scroll-to-find-a-match", "language": "english", "question": "Find and play Darshana Hridayam", "walk": [["home", "point", "search"], ["typed", "point", "go"], ["unmatched_more", "clarify", null, "Scroll down to see more results"], ["results", "point", "best"]]},
     {"id": "scroll-before-searching-again", "language": "manglish", "question": "Darshana Hridayam paattu play cheyyu", "walk": [["no_links_yet", "clarify", null, "Scroll down to see more results"], ["unmatched", "clarify", null, "search again"]]}
   ]
