@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from textwrap import shorten
 from time import monotonic
 
 from ..contracts import Control, Decision, Snapshot
@@ -35,7 +37,8 @@ _CONTROL_KEYS = {
                    "വീഡിയോ വലുതാക്കി കാണണം", "വലുതാക്കി കാണിക്കൂ", "വലുതാക്കൂ", "video valuthakkam",
                    "full screen aakkam", "full screen ആക്കൂ"),
     "exit_fullscreen": ("exit full screen", "exit fullscreen", "how do i exit full screen",
-                        "ഫുൾ സ്ക്രീനിൽ നിന്ന് എങ്ങനെ പുറത്തു വരാം", "full screen engane ozhivakkam"),
+                        "ഫുൾ സ്ക്രീനിൽ നിന്ന് എങ്ങനെ പുറത്തു വരാം", "ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തു വരൂ",
+                        "full screen engane ozhivakkam"),
     "pause": ("pause", "pause this video", "pause the video", "നിർത്തൂ", "വീഡിയോ നിർത്തൂ", "video pause cheyyu"),
     "play": ("play", "play this video", "resume", "resume the video", "പ്ലേ ചെയ്യൂ", "വീഡിയോ വീണ്ടും പ്ലേ ചെയ്യൂ",
              "video play cheyyu"),
@@ -45,26 +48,28 @@ _CONTROL_KEYS = {
     "captions": ("subtitles", "show captions", "malayalam subtitles", "show malayalam subtitles",
                  "turn on malayalam subtitles", "മലയാളം സബ്ടൈറ്റിൽ", "മലയാളം സബ്ടൈറ്റിൽ വേണം", "സബ്ടൈറ്റിൽ ഇടൂ",
                  "അക്ഷരങ്ങൾ കാണിക്കൂ", "malayalam subtitle venam", "malayalam subtitles venam"),
-    "slower": ("slower", "play it slower", "slow down", "slow it down", "make it slower", "make the video slower",
+    "slower": ("slower", "play it slower", "slow down", "slow down the video", "slow it down", "make it slower", "make the video slower",
                "play this video slower", "play slowly", "reduce the speed", "too fast", "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ",
                "പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ", "പതുക്കെ ആക്കൂ", "വേഗം കുറയ്ക്കൂ", "സ്പീഡ് കുറയ്ക്കൂ", "വേഗത കുറയ്ക്കൂ",
-               "സാവധാനം", "slow ആക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
+               "സാവധാനം", "സ്ലോ", "സ്ലോ ആക്കൂ", "slow ആക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
     "faster": ("faster", "play it faster", "speed up", "speed it up", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
 }
 _SPEED_DEFAULTS = {"slower": Decimal("0.75"), "faster": Decimal("1.25")}
+INTENT_ACTIONS = ("find", *_CONTROL_KEYS)
+INTENT_TITLE_LIMIT = 60
 _SHORTCUT = re.compile(r"(?:\s*\([a-z]\)|\s+keyboard shortcut\s+[a-z])$")
 _SEARCH_PATTERNS = (
     re.compile(r"(?:(?:can you|please) )?(?:find(?: and play)?|search(?: for)?|look for|play|show me) (?P<title>.+)"),
     re.compile(r"i (?:want|would like) to (?:watch|hear|find|play|listen to) (?P<title>.+)"),
-    re.compile(r"(?:എനിക്ക് )?(?P<title>.+?)\s+(?:കണ്ടെത്തൂ|തിരയൂ|കേൾക്കണം|കാണണം|പ്ലേ ചെയ്യൂ|കാണിക്കൂ)"),
-    re.compile(r"(?P<title>.+?)\s+(?:play cheyyu|search cheyyu|thirayoo|kaanam|kelkkanam)"),
+    re.compile(r"(?:എനിക്ക് )?(?P<title>.+?)\s+(?:കണ്ടെത്തൂ|തിരയൂ|കേൾക്കണം|കാണണം|വേണം|വെക്കൂ|പ്ലേ ചെയ്യൂ|കാണിക്കൂ)"),
+    re.compile(r"(?:enikku? )?(?P<title>.+?)\s+(?:play cheyyu|search cheyyu|thirayoo|kaanam|kaananam|kaanan|kelkkanam|venam|vekku)"),
 )
 _TITLE_PREFIX = re.compile(r"^(?:the|a|an|please|(?:song|video) (?:called|named)|ഒന്ന്|യൂട്യൂബിൽ)\s+")
 _TITLE_SUFFIX = re.compile(r"\s+(?:on youtube|please|ഒന്ന്|എന്ന)$")
 _MEDIA_SUFFIX = re.compile(r"\s+(?:song|video|paattu|പാട്ട്|വീഡിയോ)$")
 _GENERIC_TITLE = {
     "", "a", "a song", "a video", "music", "something", "song", "video", "a malayalam", "malayalam",
-    "പാട്ട്", "വീഡിയോ", "paattu", "oru paattu",
+    "പാട്ട്", "വീഡിയോ", "paattu", "oru paattu", "oru", "ഒരു",
 }
 _TOKENS = re.compile(r"(?:[^\W_]|[\u0d00-\u0d03\u0d3b-\u0d4d\u0d57\u200c\u200d])+", re.UNICODE)
 _ROMAN_NAMES = {"ദർശന": "darshana", "ദര്‍ശന": "darshana", "ഹൃദയം": "hridayam"}
@@ -72,6 +77,7 @@ _QUERY_ALIASES = {**_ROMAN_NAMES, "പാട്ട്": "song", "paattu": "song"
 _MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
 _RESULT_SIGNALS = {"song", "official", "video"}
 _COLLECTION = re.compile(r"^mix\s*[-–—:]|\bplaylists?\b|\bshorts\b")
+_DERIVATIVE_WORDS = {"cover", "reaction", "karaoke", "remix"}
 _PLAYER_SHORTCUTS = {
     "play": "k", "pause": "k", "mute": "m", "unmute": "m", "full screen": "f", "exit full screen": "f",
 }
@@ -102,6 +108,12 @@ _PLAYER_SHORTCUT_LABELS = {
     for variant in (f"{label} ({key})", f"{label} keyboard shortcut {key}")
 }
 _VIDEO_LINK_PREFIX = "youtube-watch:"
+_RESULTS_LABELS = {"filters", "search filters", "search results"}
+_MAIN_PLAYER_KEYS = {
+    ("AXPopUpButton", "settings"), ("AXButton", "settings"),
+    ("AXButton", "full screen"), ("AXButton", "exit full screen"), ("AXSlider", "seek slider"),
+}
+ResultScore = tuple[bool, int, bool, int, int, int]
 
 
 @dataclass(frozen=True)
@@ -111,15 +123,44 @@ class Intent:
     speed: Decimal | None = None
 
 
+def _control_intent(action: str) -> Intent:
+    if action in _SPEED_DEFAULTS:
+        return Intent("speed", speed=_SPEED_DEFAULTS[action])
+    return Intent(action)
+
+
+def extracted_intent(data: object) -> Intent | None:
+    if not isinstance(data, dict) or data.keys() != {"action", "title"}:
+        return None
+    action, title = data["action"], data["title"]
+    if action not in INTENT_ACTIONS or not isinstance(title, str) or len(title) > INTENT_TITLE_LIMIT:
+        return None
+    if action != "find":
+        return _control_intent(action)
+    title = " ".join(title.split())
+    return Intent("find", (title,) if title else ())
+
+
 def _command_phrase(text: str) -> str:
     # Normalize short commands independently of the text used as a video title.
     phrase = _phrase(text.replace("ല്‍", "ൽ").replace("ര്‍", "ർ").translate(_COMMAND_PUNCTUATION))
     return _POLITE_PREFIX.sub("", phrase).removesuffix(" please")
 
 
+def _command_variants(text: str) -> Iterator[str]:
+    phrase = _command_phrase(text)
+    short = phrase.removesuffix(" a bit")
+    for prefix in ("i need to ", "i want to ", "എനിക്ക് ", "വീഡിയോ ", "ഇച്ചിരി ", "ഇത്തിരി ", "കുറച്ച് ", "കുറച്ചു "):
+        short = short.removeprefix(prefix)
+    for command in dict.fromkeys((phrase, short)):
+        yield command
+        if command.endswith("ണം"):
+            yield command.removesuffix("ണം") + "ൂ"
+
+
 def parse_intent(question: str) -> Intent | None:
     parts = tuple(_POLITE_PREFIX.sub("", _phrase(part)) for part in question.split(" / ", 1))
-    for part in map(_command_phrase, parts):
+    for part in (variant for text in parts for variant in _command_variants(text)):
         rate = _EXPLICIT_SPEED.fullmatch(part)
         if rate is None and _SPEED_CONTEXT.search(part):
             rate = _NAMED_SPEED.search(part)
@@ -129,9 +170,7 @@ def parse_intent(question: str) -> Intent | None:
             return Intent("speed", speed=Decimal(rate.group(1)))
         for action, phrases in _CONTROL_KEYS.items():
             if part in phrases:
-                if action in _SPEED_DEFAULTS:
-                    return Intent("speed", speed=_SPEED_DEFAULTS[action])
-                return Intent(action)
+                return _control_intent(action)
     titles = []
     for part in parts:
         for pattern in _SEARCH_PATTERNS:
@@ -252,36 +291,57 @@ def _video_key(control: Control) -> str:
     return ""
 
 
-def _result_id(control: Control) -> str:
-    return _video_key(control) or _phrase(control.label)
+def _is_title_anchor(control: Control) -> bool:
+    parts = (control.identifier or "").split(":", 2)
+    return len(parts) == 3 and parts[2].startswith("a")  # reader's title-anchor prefix
 
 
 def _result_links(controls: tuple[Control, ...]) -> tuple[Control, ...]:
     # Channel cards also have both a heading and a link. Only the reader can verify a watch URL.
     titles = {_phrase(c.label) for c in controls if c.role == "AXHeading" and c.label}
+
+    def rank(control: Control) -> tuple[bool, bool]:
+        return _is_title_anchor(control), _phrase(control.label) in titles
+
     links = {}
     for c in controls:
         if c.role != "AXLink" or not c.enabled or not c.label or not (key := _video_key(c)):
             continue
         earlier = links.get(key)
-        if earlier is None or (_phrase(earlier.label) not in titles and _phrase(c.label) in titles):
+        if earlier is None or rank(c) > rank(earlier):
             links[key] = c
     return tuple(links.values())
 
 
-def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> Control | None:
-    if not titles:
-        return min(links, key=lambda link: bool(_COLLECTION.search(_phrase(link.label))), default=None)
+def _looks_like_results(controls: tuple[Control, ...], links: tuple[Control, ...]) -> bool:
+    if any(c.role in {"AXButton", "AXHeading", "AXPopUpButton"} and _phrase(c.label) in _RESULTS_LABELS
+           for c in controls):
+        return True
+    return len(links) >= 3 and not any(_key(c) in _MAIN_PLAYER_KEYS for c in controls)
+
+
+def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> tuple[ResultScore, Control] | None:
     queries = [(_title_words(_MEDIA_SUFFIX.sub("", title)), _title_words(title)) for title in titles]
     matches = []
     for link in links:
         label, words = _phrase(link.label), _title_words(link.label)
+        regular = not _COLLECTION.search(label)
+        if not queries:
+            matches.append(((regular, 0, False, 0, 0, 0), link))
         for wanted, query in queries:
             if wanted and wanted <= words:
-                score = (not _COLLECTION.search(label), len(wanted), query <= words,
-                         len(_RESULT_SIGNALS & words), len(query), -len(words))
+                signals = len(_RESULT_SIGNALS & words) - 3 * bool((words & _DERIVATIVE_WORDS) - wanted)
+                score = (regular, len(wanted), query <= words, signals, len(query), -len(words))
                 matches.append((score, link))
-    return max(matches, key=lambda row: row[0])[1] if matches else None
+    return max(matches, key=lambda row: row[0], default=None)
+
+
+@dataclass(frozen=True)
+class ResultChoice:
+    video_key: str
+    title: str
+    score: ResultScore
+    title_anchor: bool
 
 
 def ad_marker_name(label: str) -> str | None:
@@ -330,9 +390,10 @@ def _player_ad_controls(controls: tuple[Control, ...]) -> tuple[Control, ...]:
 @dataclass
 class YouTubeGuide:
     intent: Intent
+    start_in_search: bool = False
     search_phase: str = "start"
     prior_results: tuple[tuple[str, str], ...] = ()
-    result_label: str | None = None
+    chosen_result: ResultChoice | None = None
     replacing_search: bool = False
     had_player: bool = False
     last_key: tuple[str, str] | None = None
@@ -342,13 +403,15 @@ class YouTubeGuide:
     def decide(self, snap: Snapshot) -> Decision:
         controls = tuple(sorted(snap.controls, key=_rank))
         deadline, self.retry_at = self.retry_at, None
-        if ad := _ad(snap, controls):
+        links = _result_links(controls)
+        results_ui = _looks_like_results(controls, links)
+        if not results_ui and (ad := _ad(snap, controls)):
             return ad
         if self.intent.action == "exit_fullscreen":
             return _decision(snap, "clarify", "ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തുവരാൻ Esc അമർത്തൂ.",
                              "Press Esc to leave full screen.")
         if self.intent.action == "find":
-            decision = self._find(snap, controls)
+            decision = self._find(snap, controls, links, results_ui)
         elif self.intent.action == "speed":
             decision = self._speed(snap, controls, deadline)
         elif self.intent.action == "captions":
@@ -384,22 +447,14 @@ class YouTubeGuide:
         return _point(snap, gear, "{label} അമർത്തി അടച്ചിട്ട് വീണ്ടും തുറക്കൂ.",
                       "Close {label}, then open it again.")
 
-    def _find(self, snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
+    def _find(self, snap: Snapshot, controls: tuple[Control, ...], links: tuple[Control, ...],
+              results_ui: bool) -> Decision:
         search = _target(controls, _SEARCH, "search")
         submit = _target(controls, {"AXButton"}, "search")
-        links = _result_links(controls)
         fingerprint = tuple((c.role, _video_key(c)) for c in links)
-        result = _best_result(links, self.intent.titles)
-        if result is not None and snap.below_fold_count > 0 and _COLLECTION.search(_phrase(result.label)):
-            result = None
         play = _target(controls, {"AXButton"}, "play")
         pause = _target(controls, {"AXButton"}, "pause")
-        player_visible = _has_player(controls)
-        results_ui = any(
-            c.role in {"AXButton", "AXHeading", "AXPopUpButton"}
-            and _phrase(c.label) in {"filters", "search filters", "search results"}
-            for c in controls
-        )
+        player_visible = _has_player(controls) and not results_ui
         if self.search_phase == "watch":
             on_watch = player_visible and (
                 not self.had_player or fingerprint != self.prior_results
@@ -410,14 +465,15 @@ class YouTubeGuide:
                 return _point(snap, play, "വീഡിയോ തുടങ്ങാൻ {label} അമർത്തൂ.", "Use {label} to start the video.")
             if on_watch:
                 return _await_player(snap, controls)
-            if result is not None and _result_id(result) == self.result_label:
-                return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
         elif self.search_phase == "start":
-            if not player_visible and (results_ui or (links and search and search.filled is True)):
+            if not self.start_in_search and not player_visible and (results_ui or (links and search and search.filled is True)):
                 self.search_phase = "results"
             elif search is not None:
                 self.search_phase, self.prior_results = "typing", fingerprint
                 self.replacing_search = search.filled is True
+            elif self.start_in_search:
+                return _decision(snap, "clarify", "വീഡിയോയുടെ പേര് നൽകാൻ Search ബോക്സ് കാണിക്കൂ.",
+                                 "Show the Search box so you can type the video name.")
         if self.search_phase == "typing" and search is not None:
             if fingerprint != self.prior_results and links and not player_visible:
                 self.search_phase = "results"
@@ -431,13 +487,8 @@ class YouTubeGuide:
                 self.search_phase = "results"
             elif submit is not None:
                 return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
-        # Match the chosen video by its URL hash, not its label (YouTube rewrites labels on hover), and re-pick
-        # the best visible result while no player is open (Abin's live test, 22 Nov 02:25: stuck on "scroll").
-        if result is not None and (self.search_phase != "watch" or self.result_label == _result_id(result)
-                                   or not player_visible):
-            self.search_phase, self.result_label, self.prior_results = "watch", _result_id(result), fingerprint
-            self.had_player = player_visible
-            return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
+        if decision := self._choose_result(snap, links, fingerprint, results_ui, player_visible):
+            return decision
         if self.search_phase in {"results", "watch"} and snap.below_fold_count > 0:
             return _decision(snap, "clarify", "കൂടുതൽ ഫലങ്ങൾ കാണാൻ താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
                              "Scroll down to see more results.")
@@ -455,6 +506,33 @@ class YouTubeGuide:
             return self._type_into(snap, search)
         return _decision(snap, "clarify", "തിരച്ചിൽ ഫലം വരുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
                          "Wait for YouTube to show the search results or video.")
+
+    def _choose_result(self, snap: Snapshot, links: tuple[Control, ...],
+                       fingerprint: tuple[tuple[str, str], ...], results_ui: bool, player_visible: bool) -> Decision | None:
+        chosen = self.chosen_result
+        visible = next((c for c in links if chosen and _video_key(c) == chosen.video_key), None)
+        if visible is not None and chosen is not None:
+            if chosen.title_anchor and not _is_title_anchor(visible):
+                return _decision(snap, "clarify", "വീഡിയോയുടെ പേര് കാണുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
+                                 "Wait for the video title to appear.")
+            if _is_title_anchor(visible) and not chosen.title_anchor:
+                self.chosen_result = replace(chosen, title_anchor=True)
+            return _point(snap, visible, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
+        if self.search_phase == "watch" and player_visible:
+            return None
+        candidate = _best_result(links, self.intent.titles)
+        if candidate is not None and snap.below_fold_count > 0 and not candidate[0][0]:
+            candidate = None
+        if chosen is not None and (links or results_ui) and (candidate is None or candidate[0] < chosen.score):
+            title = shorten(chosen.title, width=60, placeholder="…")
+            return _decision(snap, "clarify", f"‘{title}’ കാണാൻ വീണ്ടും മുകളിലേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
+                             f"Scroll back up to ‘{title}’.")
+        if candidate is None:
+            return None
+        score, result = candidate
+        self.chosen_result = ResultChoice(_video_key(result), result.label, score, _is_title_anchor(result))
+        self.search_phase, self.prior_results, self.had_player = "watch", fingerprint, player_visible
+        return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
 
     def _type_into(self, snap: Snapshot, search: Control) -> Decision:
         if self.intent.titles:
@@ -564,7 +642,8 @@ class YouTubeGuide:
 
 class YouTubePrivacy(PrivacyProfile):
     def filter_snapshot(self, snap: Snapshot) -> Snapshot:
-        player_ads = {c.id for c in _player_ad_controls(snap.controls)}
+        results_ui = _looks_like_results(snap.controls, _result_links(snap.controls))
+        player_ads = set() if results_ui else {c.id for c in _player_ad_controls(snap.controls)}
         controls = []
         for control in snap.controls:
             if (name := _setting_name(control)) in _SHARED_SETTINGS:

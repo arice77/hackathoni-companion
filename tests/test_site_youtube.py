@@ -88,9 +88,9 @@ class YouTubeTests(unittest.TestCase):
     def test_uses_the_title_anchor_for_a_verified_video(self):
         snap = snapshot("results")
         best = snap.control("best")
-        title = replace(best, identifier="youtube-watch:official:title")
-        thumbnail = replace(best, id="thumbnail", label="Image or duration", frame=(20, 2, 160, 25),
-                            identifier="youtube-watch:official:thumbnail")
+        title = replace(best, identifier="youtube-watch:official:a123")
+        thumbnail = replace(best, id="thumbnail", frame=(20, 2, 160, 25),
+                            identifier="youtube-watch:official:c123")
         snap = replace(snap, controls=(
             thumbnail, *(title if c.id == title.id else c for c in snap.controls),
         ))
@@ -98,6 +98,40 @@ class YouTubeTests(unittest.TestCase):
         guide.decide(snapshot("home"))
         guide.decide(snapshot("typed"))
         self.assertEqual(guide.decide(snap).control_id, "best")
+        hovered = replace(title, id="fresh-title", label="Play video", identifier="youtube-watch:official:a456")
+        changed = replace(snap, controls=tuple(hovered if c == title else c for c in snap.controls))
+        self.assertEqual(guide.decide(changed).control_id, "fresh-title")
+        only_thumbnail = replace(changed, controls=tuple(c for c in changed.controls if c != hovered))
+        self.assertIsNone(guide.decide(only_thumbnail).control_id)
+        self.assertEqual(guide.decide(changed).control_id, "fresh-title")
+
+    def test_scroll_keeps_the_selected_result_until_an_equally_good_one_is_visible(self):
+        guide = PACK.start_guidance("Play the Darshana song")
+        results = snapshot("song_results")
+        self.assertEqual(guide.decide(results).control_id, "best")
+        best = results.control("best")
+        cover = replace(best, id="cover", label="Darshana Official Video Song Hindi Cover",
+                        identifier="youtube-watch:cover:a001")
+        lower = replace(results, controls=(results.control("filters"), cover), below_fold_count=20)
+        step = guide.decide(lower)
+        self.assertEqual((step.kind, step.control_id), ("clarify", None))
+        self.assertIn("Scroll back up to ‘Darshana", step.instruction_en)
+        self.assertIn("മുകളിലേക്ക്", step.instruction)
+        self.assertEqual(guide.decide(results).control_id, "best")
+        alternate = replace(best, id="alternate", identifier="youtube-watch:alternate:a001")
+        self.assertEqual(guide.decide(replace(lower, controls=(*lower.controls, alternate))).control_id, "alternate")
+
+    def test_results_preview_player_does_not_wait_for_ad_or_claim_watch_playback(self):
+        for labeled in (True, False):
+            with self.subTest(labeled=labeled):
+                guide = PACK.start_guidance("Find and play Darshana Hridayam")
+                results = snapshot("song_results")
+                links = tuple(c for c in results.controls if labeled or c.id != "filters")
+                preview = replace(results, controls=(*links, *snapshot("ad_skip_plain").controls))
+                self.assertEqual(guide.decide(preview).control_id, "best")
+                self.assertEqual(guide.decide(preview).control_id, "best")
+                self.assertEqual(guide.decide(snapshot("ad_skip_plain")).control_id, "skip")
+                self.assertEqual(guide.decide(snapshot("watch")).kind, "complete")
 
     def test_existing_search_text_can_be_replaced_without_reading_it(self):
         guide = PACK.start_guidance("Find and play Darshana Hridayam")
@@ -284,47 +318,82 @@ class YouTubeTests(unittest.TestCase):
             self.assertEqual(planner.decide("Play it slower", snapshot("speed_menu")).control_id, "slow")
             post.assert_not_called()
 
-    def test_unknown_youtube_intent_uses_safe_provider_context_once(self):
+    def test_malformed_manglish_uses_one_intent_call_with_only_the_question(self):
         planner = SarvamPlanner("web_site", log_calls=False)
-        reply = {
-            "kind": "unsupported", "control_id": None,
-            "instruction_ml": "സഹായിക്കാൻ കഴിയില്ല.", "instruction_en": "I can’t help with that.",
-        }
+        reply = {"action": "find", "title": "Darshana"}
         response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(reply)}}]}
         with (
             patch.object(sarvam, "_load_api_key", return_value="test-key"),
             patch.object(sarvam, "_post", return_value=(response, 1.0)) as post,
         ):
-            question = "What is my username?"
-            self.assertEqual(planner.decide(question, snapshot("results")).kind, "unsupported")
-            self.assertEqual(planner.decide(question, snapshot("watch")).kind, "unsupported")
+            question = "Enikku darshana kaaranam"
+            search = planner.decide(question, snapshot("home"))
+            self.assertEqual(search.control_id, "search")
+            self.assertIn("Darshana", search.instruction_en)
+            self.assertEqual(planner.decide(question, snapshot("typed")).control_id, "go")
+            self.assertEqual(planner.decide(question, snapshot("results")).control_id, "best")
         post.assert_called_once()
-        view = json.loads(json.loads(post.call_args.args[2])["messages"][1]["content"])
-        self.assertIn("Guide YouTube search", view["task_goal"])
-        self.assertNotIn("Account private display name", view["controls"])
-        self.assertNotIn("Darshana", view["controls"])
+        request = json.loads(post.call_args.args[2])
+        self.assertEqual(request["messages"][1]["content"], question)
+        self.assertNotIn("Account private display name", str(request))
+        schema = request["response_format"]["json_schema"]["schema"]
+        self.assertEqual(set(schema["required"]), {"action", "title"})
+        self.assertEqual(schema["properties"]["title"]["maxLength"], 60)
 
-    def test_provider_sees_fixed_menu_names_and_pointer_binds_to_live_row(self):
-        planner = SarvamPlanner("web_site", log_calls=False)
-        reply = {"kind": "point", "control_id": "speed",
-                 "instruction_ml": "വേഗം മാറ്റാൻ അമർത്തൂ.", "instruction_en": "Open the playback settings."}
-        response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(reply)}}]}
-        screen = snapshot("settings_values")
-        new_controls = tuple(replace(c, id=f"fresh-{c.id}") for c in screen.controls if c.id != "timer")
-        refreshed = replace(screen, snapshot_id="refreshed", controls=new_controls)
-        with (
-            patch.object(sarvam, "_load_api_key", return_value="test-key"),
-            patch.object(sarvam, "_post", return_value=(response, 1.0)) as post,
+    @patch.object(sarvam, "_load_api_key", side_effect=AssertionError("Known phrases must stay local"))
+    def test_native_and_romanized_search_suffixes_stay_local(self, load_key):
+        questions = [f"Enikku Darshana {suffix}" for suffix in
+                     ("kaananam", "kaanam", "kaanan", "kelkkanam", "venam", "vekku", "play cheyyu")]
+        questions += [f"എനിക്ക് ദർശന {suffix}" for suffix in ("കാണണം", "കേൾക്കണം", "വേണം", "വെക്കൂ")]
+        questions.append("Darshana kaananam")
+        for question in questions:
+            with self.subTest(question=question):
+                decision = SarvamPlanner("web_site", log_calls=False).decide(question, snapshot("home"))
+                self.assertEqual(decision.control_id, "search")
+                self.assertIn("Type ‘darshana’", decision.instruction_en)
+        load_key.assert_not_called()
+
+    @patch.object(sarvam, "_load_api_key", side_effect=AssertionError("Known commands must stay local"))
+    def test_natural_bilingual_speed_and_malayalam_request_forms_stay_local(self, load_key):
+        slower = (
+            "എനിക്ക് വീഡിയോ ഇച്ചിരി സ്ലോ ആക്കണം. / I need to slow down the video a bit.",
+            "എനിക്ക് വീഡിയോ ഇച്ചിരി സ്ലോ ആക്കണം.", "സ്ലോ ആക്കണം", "സ്ലോ ആക്കൂ", "ഇച്ചിരി സ്ലോ", "കുറച്ച് സ്ലോ",
+            "Slow down the video", "Slow down the video a bit", "I need to slow down", "I want to slow down",
+            "പതുക്കെ ആക്കണം", "വേഗം കുറയ്ക്കണം", "സ്പീഡ് കുറയ്ക്കണം",
+            "വീഡിയോ കുറിച്ച് പറയൂ / I need to slow down the video a bit.",
+        )
+        for question in slower:
+            with self.subTest(question=question):
+                planner = SarvamPlanner("web_site", log_calls=False)
+                for screen, target in (("watch", "gear"), ("settings_values", "speed"), ("speed_menu", "slow")):
+                    self.assertEqual(planner.decide(question, snapshot(screen)).control_id, target)
+        for question, screen, target in (
+            ("പ്ലേ ചെയ്യണം", "watch_paused", "play"), ("നിർത്തണം", "watch", "pause"),
+            ("വലുതാക്കണം", "watch", "full"), ("ശബ്ദം ഓഫ് ചെയ്യണം", "watch", "mute"),
+            ("ശബ്ദം തിരിച്ചു കൊണ്ടുവരണം", "muted", "unmute"), ("അക്ഷരങ്ങൾ കാണിക്കണം", "cc_off", "cc"),
+            ("വേഗം കൂട്ടണം", "speed_menu", "fast"), ("ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തു വരണം", "fullscreen", None),
         ):
-            question = "Where are the advanced options?"
-            for snap, target in ((screen, "speed"), (refreshed, "fresh-speed")):
-                decision = planner.decide(question, snap)
-                self.assertEqual((decision.kind, decision.control_id), ("point", target))
-                self.assertEqual(validate(decision, snap), (True, "ok"))
-                self.assertIn("‘Playback speed Normal’", decision.instruction_en)
-        post.assert_called_once()
-        view = json.loads(json.loads(post.call_args.args[2])["messages"][1]["content"])
-        for label in ("Playback speed", "Subtitles/CC", "Quality"):
-            self.assertIn(f'"{label}"', view["controls"])
-        for suffix in ("Normal", "English", "720p", "Sleep timer"):
-            self.assertNotIn(suffix, view["controls"])
+            with self.subTest(question=question):
+                decision = SarvamPlanner("web_site", log_calls=False).decide(question, snapshot(screen))
+                self.assertEqual(decision.control_id, target)
+                self.assertEqual(decision.kind, "point" if target else "clarify")
+        load_key.assert_not_called()
+
+    def test_unrecognized_model_intents_stay_in_youtube_search(self):
+        for reply in ({"action": None, "title": ""}, {"action": "delete", "title": ""},
+                      {"action": "find", "title": "x" * 61}):
+            with (self.subTest(reply=reply), patch.object(sarvam, "_load_api_key", return_value="test-key"),
+                  patch.object(sarvam, "_post") as post,
+                  patch("companion.planner_sarvam.FormPlan.from_snapshot", side_effect=AssertionError("generic plan"))):
+                planner = SarvamPlanner("web_any", log_calls=False)
+                post.return_value = ({"choices": [{"finish_reason": "stop",
+                                                   "message": {"content": json.dumps(reply)}}]}, 1.0)
+                for screen in ("results", "typed"):
+                    step = planner.decide("Something unclear", snapshot(screen))
+                    self.assertEqual(step.control_id, "search")
+                    self.assertIn("Type the name", step.instruction_en)
+                post.assert_called_once()
+
+    def test_privacy_keeps_fixed_menu_names(self):
+        safe = PACK.privacy.filter_snapshot(snapshot("settings_values"))
+        self.assertEqual({c.label for c in safe.controls}, {"Settings", "Playback speed", "Subtitles/CC", "Quality"})
