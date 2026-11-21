@@ -578,6 +578,40 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(planner.is_skip_phrase("What comes next?"))
         self.http.assert_not_called()
 
+    def test_site_guide_receives_panel_and_spoken_skips_during_gmail_compose(self):
+        editor = (
+            Control("to", "AXComboBox", "To", (20, 20, 140, 20), filled=False),
+            Control("subject", "AXTextField", "Subject", (20, 45, 140, 20), filled=False),
+            Control("body", "AXTextArea", "Message Body", (20, 70, 140, 100), filled=False),
+            Control("attach", "AXPopUpButton", "Attach files", (50, 175, 30, 20)),
+            Control("send", "AXButton", "Send", (20, 175, 30, 20)),
+        )
+        base = replace(self.snapshot, window_title="mail.google.com", viewport=self.snapshot.window_frame,
+                       controls=(Control("compose", "AXButton", "Compose", (20, 20, 80, 20)),))
+        question = "How do I write a new email?"
+        for skip in (None, "Next", "skip", "അടുത്തത്", "ഒഴിവാക്കൂ / Skip", "aduthathu"):
+            with self.subTest(skip=skip):
+                planner = SarvamPlanner("web_site", log_calls=False)
+                self.assertEqual(planner.decide(question, base).control_id, "compose")
+                for index, target in enumerate(("to", "subject", "body", "attach")):
+                    snap = replace(base, snapshot_id=target, controls=tuple(
+                        replace(control, filled=True) if i < index else control for i, control in enumerate(editor)
+                    ))
+                    self.assertEqual(planner.decide(question, snap).control_id, target)
+                if skip is None:
+                    self.assertTrue(planner.skip_current())
+                    active_question = question
+                else:
+                    planner.reset_question()  # The panel submits typed and spoken questions through this path.
+                    self.assertFalse(planner.skip_current())  # The earlier question is no longer current.
+                    active_question = skip
+                for _ in range(2):
+                    decision = planner.decide(active_question, snap)
+                    self.assertEqual((decision.kind, decision.control_id), ("point", "send"))
+                    self.assertEqual(validate(decision, snap), (True, "ok"))
+                self.assertFalse(planner.skip_current())
+        self.http.assert_not_called()
+
     def test_two_named_actions_without_a_goal_ask_locally(self):
         question = "I see Save Draft and Save and Submit. Which one fits my goal?"
         decision = self.planner.decide(question, self.snapshot)
