@@ -36,12 +36,19 @@ def scenario(fn):
     return fn
 
 
+def straight_to_send(w, screen):
+    """Abin's decision, 22 Nov 04:15: the compose walk goes straight from Message Body to Send. Attach is NOT offered here (it stays its
+    own 'attach a photo' goal); Send is next and says to press it only when ready."""
+    d = w.step(screen, "point", "Send", not_text="attach")
+    assert "only when you" in d.instruction_en, d.instruction_en
+
+
 QUESTION = "എന്റെ മകന് ഒരു ഇമെയിൽ അയയ്ക്കണം"
 
 
 @scenario
 def s_compose_walk_ends_in_complete_your_email_was_sent():
-    """Compose -> To -> Subject -> Body -> (optional Attach, skipped) -> Send -> 'Message sent' with the composer gone = complete."""
+    """Compose -> To -> Subject -> Body -> Send (no Attach step) -> 'Message sent' with the composer gone = complete."""
     with blocked_network():
         w = Walk(QUESTION)
         w.step(gm("Compose"), "point", "Compose")
@@ -49,9 +56,7 @@ def s_compose_walk_ends_in_complete_your_email_was_sent():
         w.step(gm(*COMPOSER, filled=("To",), empty=("Subject", "Message Body")), "point", "Subject")
         w.step(gm(*COMPOSER[1:], filled=("Subject",), empty=("Message Body",)), "point", "Message Body")
         ready = gm(*COMPOSER[1:], filled=("Subject", "Message Body"))
-        w.step(ready, "point", "Attach files", text="skip")
-        assert w.pl.skip_current(), "the panel's Skip did not reach the Gmail guide"
-        w.step(ready, "point", "Send", text="only when you")
+        straight_to_send(w, ready)
         w.step(gm("Compose", "Sending…"), "clarify")  # sent, not yet confirmed
         d = w.step(gm("Compose", "Message sent"), "complete", text="Your email was sent")
         assert d.instruction, "no Malayalam completion line"
@@ -94,6 +99,13 @@ def s_reply_on_a_sent_conversation():
 
 
 @scenario
+def s_attach_stays_available_as_its_own_request():
+    """'Attach a photo' (its own request) still points at Attach files even though the compose walk no longer offers it."""
+    with blocked_network():
+        Walk("Attach a photo").step(gm("Attach files"), "point", "Attach files")
+
+
+@scenario
 def s_search_points_at_search_mail():
     with blocked_network():
         Walk("Find an email").step(gm("Compose", "Search mail"), "point", "Search mail", text="Enter")
@@ -128,7 +140,7 @@ def s_natural_phrasings_start_the_compose_guide():
 @scenario
 def s_collapsed_to_box_is_done_and_the_guide_does_not_bounce_back():
     """After the address is typed and Subject is clicked, Gmail collapses To into a recipients summary (no To control, or one read
-    as empty). That, or any later field filled, means To is done: To -> Subject -> Body -> Attach (skip) -> Send, To pointed once."""
+    as empty). That, or any later field filled, means To is done: To -> Subject -> Body -> Send (no Attach), To pointed once."""
     with blocked_network():
         for q in PHRASINGS[:2]:
             w = Walk(q)
@@ -141,9 +153,7 @@ def s_collapsed_to_box_is_done_and_the_guide_does_not_bounce_back():
             # Gmail re-renders To as an empty-looking field while Subject is filled: still done
             w.step(gm(*COMPOSER, filled=("Subject",), empty=("To", "Message Body")), "point", "Message Body")
             ready = gm(*COMPOSER, filled=("Subject", "Message Body"), empty=("To",))
-            w.step(ready, "point", "Attach files", text="skip")
-            assert w.pl.skip_current()
-            w.step(ready, "point", "Send")
+            straight_to_send(w, ready)
             targets = [e.split(":")[1] for e in w.log if e.startswith("point")]
             assert targets.count("To") == 1, f"To was pointed at {targets.count('To')} times: {targets}"
             w.step(gm("Compose", "Sending…"), "clarify")

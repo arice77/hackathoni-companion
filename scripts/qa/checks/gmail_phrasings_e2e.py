@@ -4,7 +4,7 @@ Hand test 22 Nov found two bugs the one-phrase check missed: natural sentences (
 "എനിക്കൊരു ഇമെയിൽ അയക്കണം.", "I want to write a mail") got "I can help write…" with no steps, and after typing the address and clicking
 Subject Gmail collapses To into a recipients summary, so the guide bounced between To and Subject.
 
-Each phrasing is one walk: Compose -> To -> Subject -> Message Body -> (Attach files, skipped with Next) -> Send. Only the LAST phrasing
+Each phrasing is one walk: Compose -> To -> Subject -> Message Body -> Send (no Attach step since Abin's 22 Nov 04:15 decision). Only the LAST phrasing
 presses Send (one message to the allowlisted address, "Message sent", then complete "Your email was sent"); every earlier walk stops AT
 the Send pointer (held, not pressed) and discards its own draft. At most one send per run.
 Driver option A (default, human-like): type the address, do NOT press Return, move straight on to Subject. Option B: QA_GMAIL_TO_RETURN=1

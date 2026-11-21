@@ -133,12 +133,15 @@ def assess(records, driver_rc, driver_err, privacy_hits, send_allowed, started, 
     add("every pointer validated", not invalid and bool(decisions),
         f"unvalidated decisions {invalid}" if invalid else f"{len(decisions)} decisions, sources {sorted({r.get('source') for r in decisions})}")
 
-    other = [r["index"] for r in pts if r.get("target_label") not in {s[0] for s in STEPS} | {"Attach files"}]
+    other = [r["index"] for r in pts if r.get("target_label") not in {s[0] for s in STEPS}]
     add("gated snapshot privacy: no private text in the session log, only fixed names pointed at",
         not privacy_hits and not other,
         f"private text categories found in the session log: {privacy_hits}; pointed at non-compose controls in decisions {other}"
         if privacy_hits or other else "no address, typed text or e-mail-shaped text in any session log line; every target is a fixed Gmail name")
 
+    attach = [r["index"] for r in pts if (r.get("target_label") or "").startswith("Attach")]
+    add("no Attach step in the compose walk (Message Body goes straight to Send; attaching is its own request)", not attach,
+        f"Attach files was pointed at in decisions {attach}" if attach else "Message Body was followed by Send")
     refused = [(r["index"], r.get("action")) for r in decisions if str(r.get("action", "")).startswith(("refused", "no matching"))]
     add("pointer stayed on the compose path (never at other mail, archive, delete, labels)", not refused,
         f"driver refused or could not match: {refused}" if refused else "no refusals")
