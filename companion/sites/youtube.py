@@ -16,9 +16,11 @@ _SPEED_PRESET = re.compile(r"(\d+(?:\.\d+)?)\s*[x×]?")
 _SPEED_VALUE = re.compile(r"(?:(?:playback speed|speed)\s*:?\s*)?(\d+(?:\.\d+)?)\s*[x×]?")
 _NAMED_SPEED = re.compile(r"(?<!\w)(\d+(?:\.\d+)?)(?:\s*[x×]|\s+(?:speed|vegathayil|വേഗത്തിൽ))(?!\w)")
 _EXPLICIT_SPEED = re.compile(r"(?:set |change )?(?:playback )?speed (?:to |at )?(\d+(?:\.\d+)?)\s*[x×]?")
+_SPEED_CONTEXT = re.compile(r"\b(?:play at|speed|slower|faster|vegathayil)\b|വേഗത്തിൽ")
 _MALAYALAM_CHOICE = re.compile(r"(?:malayalam|മലയാളം)(?:\s*\([^)]*\))?")
+_POLITE_PREFIX = re.compile(r"^(?:(?:can|could|would) you(?: please)?|please|how (?:do|can) i) ")
 _CONTROL_KEYS = {
-    "fullscreen": ("full screen", "fullscreen", "make the video bigger", "make it bigger",
+    "fullscreen": ("full screen", "fullscreen", "go full screen", "bigger screen", "make the video bigger", "make it bigger",
                    "വീഡിയോ വലുതാക്കി കാണണം", "വലുതാക്കി കാണിക്കൂ", "video valuthakkam", "full screen aakkam"),
     "exit_fullscreen": ("exit full screen", "exit fullscreen", "how do i exit full screen",
                         "ഫുൾ സ്ക്രീനിൽ നിന്ന് എങ്ങനെ പുറത്തു വരാം", "full screen engane ozhivakkam"),
@@ -65,9 +67,14 @@ class Intent:
 
 
 def parse_intent(question: str) -> Intent | None:
-    parts = tuple(_phrase(part) for part in question.split(" / ", 1))
+    parts = tuple(_POLITE_PREFIX.sub("", _phrase(part)) for part in question.split(" / ", 1))
     for part in parts:
-        if rate := _EXPLICIT_SPEED.fullmatch(part) or _NAMED_SPEED.search(part):
+        rate = _EXPLICIT_SPEED.fullmatch(part)
+        if rate is None and _SPEED_CONTEXT.search(part):
+            rate = _NAMED_SPEED.search(part)
+        if rate is None and ("." in part or part.endswith(("x", "×"))):
+            rate = _SPEED_PRESET.fullmatch(part)
+        if rate:
             return Intent("speed", speed=Decimal(rate.group(1)))
         for action, phrases in _CONTROL_KEYS.items():
             if part in phrases:
@@ -321,9 +328,14 @@ class YouTubeGuide:
                 snap, "unsupported", "ഈ വീഡിയോയ്ക്ക് സബ്‌ടൈറ്റിൽ ലഭ്യമല്ല.",
                 "Subtitles are unavailable for this video.",
             )
+        language_list = any(
+            c.role in _MENU and _phrase(c.label) in {"off", "auto-translate", "auto translate"}
+            for c in controls
+        )
+        requested_menu = self.last_key is not None and self.last_key[1].startswith("subtitles/cc")
         malayalam = next((
             c for c in controls if c.role in _MENU and c.enabled
-            and _MALAYALAM_CHOICE.fullmatch(_phrase(c.label))
+            and (language_list or requested_menu) and _MALAYALAM_CHOICE.fullmatch(_phrase(c.label))
         ), None)
         if malayalam is not None:
             if malayalam.filled is True:
@@ -331,10 +343,6 @@ class YouTubeGuide:
             return _point(snap, malayalam, "മലയാളം സബ്‌ടൈറ്റിലിന് {label} തിരഞ്ഞെടുക്കൂ.",
                           "Choose {label} for Malayalam subtitles.")
         caption_menu = _menu(controls, "subtitles/cc")
-        language_list = any(
-            c.role in _MENU and _phrase(c.label) in {"off", "auto-translate", "auto translate"}
-            for c in controls
-        )
         if language_list:
             return _decision(
                 snap, "unsupported", "ഈ വീഡിയോയുടെ സബ്‌ടൈറ്റിൽ പട്ടികയിൽ മലയാളം കാണുന്നില്ല.",
