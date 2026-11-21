@@ -15,8 +15,9 @@ import unicodedata
 import uuid
 from collections import deque
 from dataclasses import dataclass, replace
+from hashlib import sha256
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import ApplicationServices as AX
 from AppKit import NSRunningApplication, NSWorkspace
@@ -56,6 +57,12 @@ WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXSlider", "AXWebArea"}
 HTTP_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 CAROUSEL_DOT = re.compile(r"(?:(?:go to )?slide\s+)?(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 CAROUSEL_ROLES = {"AXButton", "AXLink", "AXRadioButton"}
+YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
+YOUTUBE_TOKEN = re.compile(r"[A-Za-z0-9_-]+")
+YOUTUBE_LINK_TEXT = re.compile(
+    r"(?<![\w.])(?:https?://)?(?:(?:www|m)\.)?youtube\.com/[^\s<>\"']*"
+    r"|(?<!\w)/(?:watch\?|shorts/|@|channel/|playlist\?)[^\s<>\"']+", re.IGNORECASE,
+)
 GMAIL_HOST = "mail.google.com"
 GMAIL_FIELDS = {"Search mail", "To", "Cc", "Bcc", "Subject", "Message Body"}
 GMAIL_FOLDERS = {"Inbox", "Starred", "Snoozed", "Sent", "Drafts", "Important", "All Mail", "Spam", "Trash",
@@ -286,6 +293,49 @@ def _safe_web_text(text: str) -> str:
     return HTTP_URL.sub(lambda match: _host(match.group()) or "[link]", text)[:MAX_WEB_LABEL_LENGTH]
 
 
+def _youtube_link_key(value) -> tuple[str, str] | None:
+    """Classify an AXURL using its canonical YouTube target, without tracking data."""
+    try:
+        url = urlsplit(str(value or ""))
+        if url.netloc:
+            if url.scheme not in {"", "http", "https"} or url.hostname not in YOUTUBE_HOSTS:
+                return None
+        elif url.scheme or not url.path.startswith("/"):
+            return None
+    except ValueError:
+        return None
+
+    segments = [unquote(part) for part in url.path.strip("/").split("/")]
+    route = segments[0]
+    if len(segments) == 1 and route in {"watch", "playlist"}:
+        field = "v" if route == "watch" else "list"
+        ids = parse_qs(url.query).get(field, [])
+        if len(ids) == 1 and YOUTUBE_TOKEN.fullmatch(ids[0]):
+            return route, ids[0]
+    elif len(segments) >= 2 and YOUTUBE_TOKEN.fullmatch(segments[1]):
+        if route == "shorts" and len(segments) == 2:
+            return "watch", segments[1]
+        if route == "channel":
+            return "channel", segments[1]
+    if route.startswith("@") and len(route) > 1 and not any(char.isspace() or char in "/?#" for char in route):
+        return "channel", route
+    return None
+
+
+def _youtube_link(value, label: str) -> tuple[str | None, str]:
+    label = YOUTUBE_LINK_TEXT.sub("", label)
+    if (target := _youtube_link_key(value)) is None:
+        return None, label.strip()
+    kind, key = target
+    # Safari may use the destination itself (or just the ID or handle) as a label.
+    handle = key.startswith("@")
+    label = re.sub(r"@?" + re.escape(key[1:]) if handle else re.escape(key), "", label,
+                   flags=re.IGNORECASE if handle else 0)
+    canonical = key.casefold() if handle else key
+    marker = sha256(canonical.encode("utf-8")).hexdigest()[:10]
+    return f"youtube-{kind}:{marker}", label.strip()
+
+
 def _icon_only(label: str) -> bool:
     glyphs = [char for char in label if not char.isspace() and char not in "\u200d\ufe0e\ufe0f"]
     return bool(glyphs) and all("\ue000" <= char <= "\uf8ff" for char in glyphs)
@@ -401,7 +451,7 @@ def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
     return _Collection(tuple(controls), 0)
 
 
-def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None) -> _Collection:
+def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None, youtube=False) -> _Collection:
     controls: list[Control] = []
     first_dot: Control | None = None
     ancestry: dict[int | None, _ChoiceSet] = {}
@@ -450,7 +500,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
                     and _enabled(el, get)):
                 below_fold_count += 1
             continue
-        ident = _identifier(el, get)
+        youtube_link = youtube and role == "AXLink"
+        ident = None if youtube_link else _identifier(el, get)
         if not grouped_option:
             value = get(el, "AXValue") if role in value_roles else None
         if choice_set is not None:
@@ -465,6 +516,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         else:
             label = _web_label(el, role, get, value) if web else _label(el, role, get)
         if web:
+            if youtube_link:
+                ident, label = _youtube_link(get(el, "AXURL"), label)
             if choice_set is None:
                 label = _safe_web_text(label)
             if ident and (len(ident) > MAX_WEB_LABEL_LENGTH or HTTP_URL.search(ident)):
@@ -560,7 +613,8 @@ def _read_web_snapshot(view: _WebView, bundle_id: str, browser_pid: int, get) ->
     if host == GMAIL_HOST:
         collected = _gmail_collect(view.page, get, view.viewport, view.url)
     else:
-        collected = _collect(view.page, get, MAX_WEB_ELEMENTS, view.viewport, practice=practice)
+        collected = _collect(view.page, get, MAX_WEB_ELEMENTS, view.viewport, practice=practice,
+                             youtube=host in YOUTUBE_HOSTS)
     if str(get(view.page, "AXURL") or "") != view.url:
         raise ReaderError("The selected page changed while it was being read. Try again.")
     title = PRACTICE_TITLES[bundle_id] if practice else host or "Browser page"
