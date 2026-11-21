@@ -27,6 +27,8 @@ Pages: Think Music's official [Darshana video from *Hridayam*](https://www.youtu
 | Volume and seeking | `Mute (m)` is `AXButton`. Safari exposes `Volume` and `Seek slider` as `AXSlider`; the follow-up below verifies both in the reader. |
 | Search and results | `Search` is both `AXComboBox` and a distinct submit `AXButton`; `Search with your voice` is separate. The public video title appears as an `AXHeading` and an `AXLink` on the results page. A few actions lacked labels (two on watch, one on results). |
 
+**Shorts markers, automated:** visible Shorts links use `youtube-short:<video-hash>:<anchor-hash>`, including when Safari exposes no label. Watch links use `youtube-watch:` and share the video hash for the same video. Link URLs and raw IDs stay internal to the reader.
+
 **Candidate parent tasks:** search for a Malayalam song and find the named result; find play/pause on the current video; go full screen; find the mute toggle. Changing playback speed or quality and enabling available captions need a separate read of those states before claiming support.
 
 **Closed-menu baseline, live and read-only:** the reader retained both sliders with labels and visible frames, without reading their values. Four watch-page reads took 88.1 ms median / 134.5 ms max and reported 199 below-fold controls. With Settings untouched, its `AXPopUpButton` advertised `AXPress`, reported `AXExpanded=false`, had no `AXMenu` and had zero children. No speed or quality action appeared elsewhere in the closed tree.
