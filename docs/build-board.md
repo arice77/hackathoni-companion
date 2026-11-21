@@ -28,6 +28,18 @@ real-shaped form by following the pointer. Orchestrator asked Abin to retest wit
 run by the orchestrator. Fixes: planner (orientation once, one ordered step list incl. choice sets) + QA (local
 `/pizza` copy, `drive_follow_pointer.py`, `pizza_follow_pointer_e2e.py`).
 
+## Prior-art decisions (21 Nov ~23:15, report: `.context/prior-art-report.md`)
+
+| # | Finding | Decision | Owner |
+|---|---|---|---|
+| 1 | Form plan + guidance session in code (units, stable keys, done on `filled` flip, intro once, separate completion) | adopt now | planner builder (`companion/guidance.py`) |
+| 2 | Reading-order serialization with headings, nested choice sets, change markers | adopt now | planner builder |
+| 3 | Visible-bbox clipping + "scroll down" signal (macapptree idea, MIT) | adopt now | web builder |
+| 8 | Union-rect choice-set highlight + "Step 2 of 6" counter | next, after #1 | coordinator / overlay |
+| 4 | Saaras `codemix` mode | next, after Abin's real-voice test | voice |
+| 5–7 | Streaming barge-in, AXObserver window tracking, Chrome `AXManualAccessibility` | deferred | — |
+| — | Shepherd / Intro.js / Skyvern code | idea-only (AGPL) | — |
+
 ## Shared-Mac rule
 
 Abin uses this Mac during the build. Live checks fail when he moves windows; rerun on an idle screen before calling a
