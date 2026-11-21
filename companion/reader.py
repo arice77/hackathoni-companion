@@ -32,6 +32,7 @@ MAX_WEB_HEADINGS = 12
 MAX_WEB_LABEL_LENGTH = 160
 WEB_READ_BUDGET_S = 0.300
 WEB_AX_TIMEOUT_S = 0.040
+EMPTY_BOUNDS: Rect = (0.0, 0.0, 0.0, 0.0)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_BUNDLE_PREFIX = "in.hackathoni."
 TRAINING_BUNDLE = f"{FIXTURE_BUNDLE_PREFIX}crop-loss-training"
@@ -44,6 +45,7 @@ UNSUPPORTED_BROWSERS = {"com.apple.SafariTechnologyPreview", "com.google.Chrome"
 WEB_TEXT_NOTES = {"status", "document-note"}
 WEB_VALUE_ROLES = INPUT_ROLES | {"AXSearchField", "AXTimeField"}
 WEB_INPUT_ROLES = WEB_VALUE_ROLES | {"AXDateTimeArea"}
+WEB_ACTION_ROLES = (KEEP_ROLES | WEB_INPUT_ROLES) - {"AXStaticText"}
 SECURE_ROLE = "AXSecureTextField"
 WEB_LEAVES = WEB_INPUT_ROLES | {SECURE_ROLE, "AXWebArea"}
 HTTP_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
@@ -115,6 +117,19 @@ def _intersection(first: Rect, second: Rect) -> Rect | None:
     right = min(first[0] + first[2], second[0] + second[2])
     bottom = min(first[1] + first[3], second[1] + second[3])
     return (left, top, right - left, bottom - top) if left < right and top < bottom else None
+
+
+def _scroll_clip(el, role, inherited: Rect | None, get) -> Rect | None:
+    bounds = _frame(el, get) if role == "AXScrollArea" else None
+    if bounds is None:
+        return inherited
+    return bounds if inherited is None else _intersection(inherited, bounds) or EMPTY_BOUNDS
+
+
+def _below_fold(frame: Rect, viewport: Rect) -> bool:
+    x, y, width, _height = frame
+    left, top, page_width, page_height = viewport
+    return y >= top + page_height and x < left + page_width and x + width > left
 
 
 def _walk(start, get, limit, leaf_roles):
@@ -197,16 +212,16 @@ def _selected_web_page(root, get, page_title=None, page_url_prefix=None):
     if page_title is not None and get(window, "AXTitle") != page_title:
         raise ReaderError("The front browser window doesn't match this task. Open the task page in the front window.")
     window_frame = _frame(window, get)
-    for el, role, _parent in _walk(window, get, MAX_WEB_ELEMENTS, WEB_LEAVES | {"AXToolbar"}):
+    if window_frame is None:
+        raise ReaderError("The front browser window has no readable bounds.")
+    clips = {}
+    for index, (el, role, parent) in enumerate(_walk(window, get, MAX_WEB_ELEMENTS, WEB_LEAVES | {"AXToolbar"})):
+        ancestor_clip = _scroll_clip(el, role, clips.get(parent, window_frame), get)
+        clips[index] = ancestor_clip
         if role != "AXWebArea":
             continue
         frame = _frame(el, get)
-        viewport = _intersection(window_frame, frame) if window_frame and frame else None
-        parent = get(el, "AXParent")
-        if viewport and parent is not None and get(parent, "AXRole") == "AXScrollArea":
-            scroll_frame = _frame(parent, get)
-            if scroll_frame:
-                viewport = _intersection(viewport, scroll_frame)
+        viewport = _intersection(ancestor_clip, frame) if frame else None
         if viewport:
             url = str(get(el, "AXURL") or "")
             if page_url_prefix is not None and not _url_matches(url, page_url_prefix):
@@ -262,18 +277,34 @@ class _ChoiceSet:
             group = group.parent
 
 
-def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Control, ...]:
+@dataclass(frozen=True)
+class _Collection:
+    controls: tuple[Control, ...]
+    below_fold_count: int
+
+
+@dataclass(frozen=True)
+class _ReaderSnapshot(Snapshot):
+    below_fold_count: int = 0
+
+
+def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None) -> _Collection:
     controls: list[Control] = []
-    ancestry: dict[int, _ChoiceSet] = {}
+    ancestry: dict[int | None, _ChoiceSet] = {}
     choice_rows: dict[str, _ChoiceSet] = {}
+    scroll_clips: dict[int | None, Rect | None] = {}
     web = viewport is not None
-    roles = (KEEP_ROLES | WEB_INPUT_ROLES | {"AXHeading"}) - {"AXStaticText"} if web else KEEP_ROLES
+    outer_clip = viewport if web else window_frame
+    roles = WEB_ACTION_ROLES | {"AXHeading"} if web else KEEP_ROLES
     if web and practice:
         roles |= {"AXGroup", "AXStaticText"}
-    leaves = WEB_LEAVES | {"AXScrollArea"} if web else INPUT_ROLES | {SECURE_ROLE}
+    leaves = WEB_LEAVES if web else INPUT_ROLES | {SECURE_ROLE}
     value_roles = WEB_VALUE_ROLES if web else INPUT_ROLES
     headings = 0
+    below_fold_count = 0
     for index, (el, role, parent) in enumerate(_walk(start, get, limit, leaves)):
+        scroll_clip = _scroll_clip(el, role, scroll_clips.get(parent), get)
+        scroll_clips[index] = scroll_clip
         enclosing_set = ancestry.get(parent)
         is_set = _is_choice_set(el, role, get)
         choice_set = None
@@ -295,9 +326,15 @@ def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Contr
         if role in {"AXTextField", "AXTextArea", "AXSearchField"} and get(el, "AXSubrole") == SECURE_ROLE:
             continue
         frame = _frame(el, get)
-        if viewport and frame:
-            frame = _intersection(frame, viewport)
+        if frame is not None and scroll_clip is not None:
+            frame = _intersection(frame, scroll_clip)
         if not frame or frame[2] <= 0 or frame[3] <= 0:
+            continue
+        visible_frame = _intersection(frame, outer_clip) if outer_clip is not None else frame
+        if visible_frame is None:
+            if (viewport is not None and role in WEB_ACTION_ROLES and _below_fold(frame, viewport)
+                    and _enabled(el, get)):
+                below_fold_count += 1
             continue
         ident = _identifier(el, get)
         if not grouped_option:
@@ -318,11 +355,10 @@ def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Contr
                 label = _safe_web_text(label)
             if ident and (len(ident) > MAX_WEB_LABEL_LENGTH or HTTP_URL.search(ident)):
                 ident = None
-        enabled = get(el, "AXEnabled") if not is_set else False
         filled = _filled(value, role) if role in value_roles else None
         control = Control(
-            id=f"c{len(controls):02d}", role=role, label=label, frame=frame,
-            enabled=enabled is None or bool(enabled), identifier=ident, filled=filled,
+            id=f"c{len(controls):02d}", role=role, label=label, frame=visible_frame,
+            enabled=not is_set and _enabled(el, get), identifier=ident, filled=filled,
             group=(enclosing_set.label or None) if grouped_option else None,
         )
         controls.append(control)
@@ -331,8 +367,16 @@ def _collect(start, get, limit, viewport=None, *, practice=False) -> tuple[Contr
         headings += context
         if web and len(controls) >= MAX_WEB_CONTROLS:
             break
-    return tuple(replace(control, filled=choice_rows[control.id].filled) if control.id in choice_rows else control
-                 for control in controls)
+    controls_with_groups = tuple(
+        replace(control, filled=choice_rows[control.id].filled) if control.id in choice_rows else control
+        for control in controls
+    )
+    return _Collection(controls_with_groups, below_fold_count)
+
+
+def _enabled(el, get) -> bool:
+    value = get(el, "AXEnabled")
+    return value is None or bool(value)
 
 
 def find_app(bundle_id: str) -> NSRunningApplication | None:
@@ -352,7 +396,7 @@ def frontmost_bundle_id() -> str | None:
 
 
 def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None = None,
-             page_url_prefix: str | None = None) -> Snapshot:
+             page_url_prefix: str | None = None) -> _ReaderSnapshot:
     started = time.monotonic()
     if not is_trusted():
         raise ReaderError("This process is not allowed to read other apps (Accessibility permission missing).")
@@ -362,11 +406,12 @@ def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None =
         root = AX.AXUIElementCreateApplication(browser_pid)
         page, window_frame, viewport, url = _selected_web_page(root, get, page_title, page_url_prefix)
         practice = url == _practice_url()
-        controls = _collect(page, get, MAX_WEB_ELEMENTS, viewport, practice=practice)
+        collected = _collect(page, get, MAX_WEB_ELEMENTS, viewport, practice=practice)
         if str(get(page, "AXURL") or "") != url:
             raise ReaderError("The selected page changed while it was being read. Try again.")
         title = PRACTICE_TITLES[bundle_id] if practice else _host(url) or "Browser page"
-        return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame, controls, viewport)
+        return _ReaderSnapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame,
+                               collected.controls, viewport, below_fold_count=collected.below_fold_count)
     if bundle_id in UNSUPPORTED_BROWSERS or pid is not None:
         raise ReaderError("This browser or pid is not a supported practice target.")
     app = find_app(bundle_id)
@@ -380,15 +425,16 @@ def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None =
     if window is None:
         raise ReaderError("The target app has no readable window.")
 
-    controls = _collect(window, _attr, MAX_ELEMENTS)
-    return Snapshot(
+    window_frame = _frame(window)
+    collected = _collect(window, _attr, MAX_ELEMENTS, window_frame=window_frame)
+    return _ReaderSnapshot(
         snapshot_id=uuid.uuid4().hex[:12],
         taken_at=time.time(),
         app_bundle_id=bundle_id,
         app_pid=int(app.processIdentifier()),
         window_title=str(_attr(window, "AXTitle") or ""),
-        window_frame=_frame(window) or (0.0, 0.0, 0.0, 0.0),
-        controls=controls,
+        window_frame=window_frame or EMPTY_BOUNDS,
+        controls=collected.controls,
     )
 
 
@@ -410,4 +456,5 @@ if __name__ == "__main__":
         parser.exit(1, f"{exc}\n")
     ms = (time.perf_counter() - t0) * 1000
     print(json.dumps({"snapshot_id": snap.snapshot_id, "window": snap.window_title, "viewport": snap.viewport, "ms": round(ms, 1),
-                      "controls": [c.__dict__ for c in snap.controls]}, indent=1, default=list))
+                      "below_fold_count": snap.below_fold_count, "controls": [c.__dict__ for c in snap.controls]},
+                     indent=1, default=list))
