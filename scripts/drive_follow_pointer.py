@@ -1,4 +1,4 @@
-"""TEST-ONLY follow-the-pointer driver for our local pizza practice page in Safari.
+"""TEST-ONLY follow-the-pointer driver for our local practice pages (pizza, KSEB Quick Pay) in Safari.
 
 Tails the companion's session log (runs/session-*.jsonl). On each new `point` decision it acts ONLY
 on the pointed control, the way a person following the pointer would, then waits for the next decision:
@@ -8,13 +8,14 @@ on the pointed control, the way a person following the pointer would, then waits
   single radio option      presses it
   button                   presses it
   checkbox, time input     does nothing (nothing optional is ticked); the stop rules below end the run
+  link                     does nothing (detours such as Refresh are never followed)
 
 Stops on: `complete` (done), any other terminal decision, the same target pointed at `--repeat-limit`
 times, no new decision within `--decision-timeout`, or `--total-timeout`.
 
 Safety rules, enforced here (same as drive_web_practice.py):
-  * Safari only; only the window titled like the pizza page; only the AXWebArea whose AXURL is exactly
-    http://127.0.0.1:$CONDUCTOR_PORT/pizza . No other window, tab or app is walked or pressed.
+  * Safari only; only the window titled like the chosen page (--page pizza|kseb); only the AXWebArea whose AXURL is
+    exactly http://127.0.0.1:$CONDUCTOR_PORT/<path> . No other window, tab or app is walked or pressed.
   * The pointed control is found by the logged frame. If no control of this page matches it, nothing is
     pressed and the miss is recorded.
   * Writes only synthetic values into the page. Never run against a personal browser profile.
@@ -37,12 +38,18 @@ import ApplicationServices as AX  # noqa: E402
 from companion import reader  # noqa: E402
 
 BUNDLE = reader.SAFARI
-TITLE = "HackaThoni · Pizza Order Practice"
-PATH = "/pizza"
+PAGES = {"pizza": ("HackaThoni · Pizza Order Practice", "/pizza"),
+         "kseb": ("HackaThoni · KSEB Quick Pay Practice", "/kseb-quickpay")}
+TITLE, PATH = PAGES["pizza"]  # default; configure() switches (main() does it from --page)
+
+
+def configure(page: str) -> None:
+    global TITLE, PATH
+    TITLE, PATH = PAGES[page]
 MAX_NODES = 1500
 TEXT_ROLES = {"AXTextField", "AXTextArea"}
 CHOICE_ROLES = {"AXRadioButton", "AXCheckBox"}
-TARGET_ROLES = TEXT_ROLES | CHOICE_ROLES | {"AXButton", "AXGroup", "AXRadioGroup", "AXDateTimeArea", "AXTimeField",
+TARGET_ROLES = TEXT_ROLES | CHOICE_ROLES | {"AXButton", "AXLink", "AXGroup", "AXRadioGroup", "AXDateTimeArea", "AXTimeField",
                                             "AXPopUpButton", "AXComboBox"}
 MIN_IOU = 0.6
 
@@ -76,8 +83,21 @@ def iou(a, b) -> float:
     return inter / (aw * ah + bw * bh - inter)
 
 
-def pizza_area():
-    """The single pizza web area in Safari (exact URL), or SystemExit."""
+def pizza_area(wait: float = 3.0):
+    """The single practice web area for the configured page in Safari (exact URL), or SystemExit.
+    (Named for the first page; it serves every page in PAGES.) Safari's tree is briefly empty around window
+    changes, so look for up to `wait` seconds."""
+    end = time.time() + wait
+    while True:
+        try:
+            return _pizza_area_once()
+        except SystemExit:
+            if time.time() >= end:
+                raise
+            time.sleep(0.4)
+
+
+def _pizza_area_once():
     app = reader.find_app(BUNDLE)
     if app is None:
         raise SystemExit("Safari is not running")
@@ -101,7 +121,7 @@ def pizza_area():
 
 
 def _label(el) -> str:
-    for name in ("AXTitle", "AXDescription"):
+    for name in ("AXTitle", "AXDescription", "AXPlaceholderValue"):
         v = _get(el, name)
         if isinstance(v, str) and v.strip():
             return v.strip()
@@ -163,6 +183,12 @@ def is_filled(el, role):
 
 def sample_for(label: str) -> str:
     low = label.lower()
+    if "consumer" in low:
+        return "1234567890123"
+    if "mobile" in low:
+        return "9000000000"
+    if "text shown" in low or "captcha" in low:
+        return "PRACTICE"  # the practice page's fixed image text
     if "tel" in low or "phone" in low:
         return "0000000000"
     if "mail" in low:
@@ -192,6 +218,8 @@ def act(el, role, label):
         return "pressed button"
     if role == "AXCheckBox":
         return "left unticked (optional)"
+    if role == "AXLink":
+        return "left alone (links are detours)"
     return f"cannot drive {role} through Accessibility"
 
 
@@ -217,6 +245,7 @@ class Tail:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--page", choices=sorted(PAGES), default="pizza", help="which local practice page to act on")
     ap.add_argument("--log", type=Path, required=True, help="companion session log to tail")
     ap.add_argument("--out", type=Path, help="write one JSON line per handled decision plus a final summary")
     ap.add_argument("--decision-timeout", type=float, default=45.0)
@@ -225,6 +254,7 @@ def main(argv=None) -> int:
     ap.add_argument("--poll", type=float, default=0.3)
     ap.add_argument("--settle", type=float, default=0.6, help="pause after acting so the page redraws")
     a = ap.parse_args(argv)
+    configure(a.page)
 
     tail, records, seen_targets = Tail(a.log), [], {}
     start = last_decision = time.time()

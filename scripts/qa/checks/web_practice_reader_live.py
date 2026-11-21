@@ -136,5 +136,5 @@ def run():
         out.append(result(FEATURE, "Safari page read latency", "pass" if ms and ms[-1] < 250 else "fail", "live-machine",
                           f"{len(ms)} reads, median {ms[len(ms)//2]:.0f} ms, max {ms[-1]:.0f} ms (limit 250)" if ms else "no reads"))
     finally:
-        _web.close_practice_windows()
+        _web.close_and_settle()
     return out

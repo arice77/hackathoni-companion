@@ -73,8 +73,14 @@ def web_areas() -> list:
     return found
 
 
-def page():
+def page(wait: float = 10.0):
+    """The single practice web area. Safari's tree can be briefly empty right after a window opens or closes,
+    so look for up to `wait` seconds before giving up."""
+    end = time.time() + wait
     areas = web_areas()
+    while len(areas) != 1 and time.time() < end:
+        time.sleep(0.4)
+        areas = web_areas()
     if len(areas) != 1:
         raise SystemExit(f"expected exactly one practice page at {practice_url()} in Safari, found {len(areas)}")
     return areas[0]

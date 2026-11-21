@@ -47,7 +47,7 @@ def run():
         except subprocess.TimeoutExpired:
             app.kill()
         stderr_tail = app.stderr.read()[-300:] if app.stderr else ""
-        _web.close_practice_windows()
+        _web.close_and_settle()
 
     events = [json.loads(line) for line in log.read_text().splitlines()]
     decisions = [e for e in events if e["event"] == "decision"]

@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from _common import PY, ROOT, result, wait_for
+import _follow
 import _web
 
 FEATURE = "web-support"
@@ -34,29 +35,11 @@ ORIENTATION = re.compile(r"\b(?:this is an? [\w\- ]{0,30}form|order form|this (?
                          re.IGNORECASE)
 
 
-def _key_available() -> bool:
-    if os.environ.get("SARVAM_API_KEY"):
-        return True
-    env = ROOT / ".env"
-    return env.exists() and any(line.strip().startswith("SARVAM_API_KEY=") and line.strip() != "SARVAM_API_KEY="
-                                for line in env.read_text().splitlines())
-
-
-def _first_sentence(text: str) -> str:
-    return re.split(r"(?<=[.!?])\s", text.strip(), maxsplit=1)[0].strip().lower()
-
-
-def _line(rec: dict) -> str:
-    who = rec.get("target_label") or rec["kind"]
-    return (f"#{rec['index']} {rec['kind']} {who!r} filled_before={rec.get('filled_before')} "
-            f"x{rec.get('times_pointed', '-')} -> {rec.get('action')} | \"{rec.get('instruction_en', '')}\"")
-
-
 def run():
     if os.environ.get("QA_LIVE_SARVAM") != "1":
         return [result(FEATURE, "pizza follow-the-pointer (Sarvam planner)", "blocked", "blocked",
                        "set QA_LIVE_SARVAM=1: live Sarvam planner, ~10-15 chat calls per run, and it puts a Safari window in front")]
-    if not _key_available():
+    if not _follow.key_available():
         return [result(FEATURE, "pizza follow-the-pointer (Sarvam planner)", "blocked", "blocked", "no SARVAM_API_KEY in env or .env")]
     from companion import reader
     if not reader.is_trusted():
@@ -88,7 +71,7 @@ def run():
             app.wait(timeout=5)
         except subprocess.TimeoutExpired:
             app.kill()
-        _web.close_practice_windows(_web.PIZZA_URL)
+        _web.close_and_settle(_web.PIZZA_URL)
 
     records = [json.loads(l) for l in out_file.read_text().splitlines()] if out_file.exists() else []
     return assess(records, d.returncode, d.stderr, heading_seen, started, out_file, log)
@@ -101,7 +84,7 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
     reader_errors = [r for r in records if r["event"] == "reader_error"]
     points = [r for r in decisions if r["kind"] == "point"]
     labels = [r.get("target_label") for r in points]
-    full_list = "\n".join(_line(r) for r in decisions)
+    full_list = "\n".join(_follow.line(r) for r in decisions)
     print(f"\n--- pizza follow-the-pointer: {len(decisions)} decisions, stop={stop['reason']} ---\n{full_list}\n--- end ---")
     where = f"decision list: {out_file}; session log: {log}"
 
@@ -138,7 +121,7 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
     bad = [r["index"] for r in decisions[1:] if ORIENTATION.search(r.get("instruction_en", ""))]
     firsts = {}
     for r in decisions:
-        firsts.setdefault(_first_sentence(r.get("instruction_en", "")), []).append(r["index"])
+        firsts.setdefault(_follow.first_sentence(r.get("instruction_en", "")), []).append(r["index"])
     shared = {s: i for s, i in firsts.items() if s and len(i) > 1}
     results.append(result(FEATURE, "orientation text appears only in the first decision",
                           "fail" if bad or shared else "pass", "live-machine",

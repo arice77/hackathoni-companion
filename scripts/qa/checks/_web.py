@@ -45,17 +45,68 @@ def close_practice_windows(url: str = URL) -> str:
     return p.stdout.strip() if p.returncode == 0 else f"osascript failed: {p.stderr.strip()[:200]}"
 
 
+def _count_open(url: str) -> int:
+    script = (f'tell application id "{SAFARI}"\n set n to 0\n repeat with w in (get every window)\n try\n'
+              f' repeat with t in (get every tab of w)\n if URL of t is "{url}" then set n to n + 1\n end repeat\n'
+              f' end try\n end repeat\n return n\nend tell')
+    p = sh("osascript", "-e", script, timeout=30)
+    return int(p.stdout.strip() or 0) if p.returncode == 0 and p.stdout.strip().isdigit() else -1
+
+
+def close_and_settle(url: str = URL) -> None:
+    """Close our window(s) for `url`, then wait until Safari really has none and its AX tree has settled.
+
+    The next web check starts from a quiet Safari: right after a close, Safari briefly reports a front window
+    with no readable bounds, which made the next check's first reads (and driver lookup) fail.
+    """
+    close_practice_windows(url)
+    wait_for(lambda: _count_open(url) == 0, seconds=6, every=0.3)
+    time.sleep(0.8)
+
+
+def wait_front_readable(url: str, title: str | None = None, seconds: float = 20.0) -> str | None:
+    """Wait until OUR page is the front window's selected page and the reader gets it twice in a row, 0.6 s apart,
+    with controls. `title` pins the practice root page (a plain prefix match on `/` would also match `/pizza`).
+    Returns an error string or None."""
+    from companion import reader
+    state = {"streak": 0, "last": "no read yet"}
+
+    def good():
+        try:
+            snap = reader.snapshot(SAFARI, page_url_prefix=url)
+        except reader.ReaderError as exc:
+            state["streak"], state["last"] = 0, str(exc)
+            return False
+        if (title and snap.window_title != title) or not snap.controls:
+            state["streak"], state["last"] = 0, f"front page is {snap.window_title!r} with {len(snap.controls)} controls"
+            return False
+        state["streak"] += 1
+        time.sleep(0.6)
+        return state["streak"] >= 2
+
+    if wait_for(good, seconds=seconds, every=0.2):
+        return None
+    return f"{url} did not become the front, readable Safari page within {seconds:.0f} s (last: {state['last']})"
+
+
+def _open_in_safari(url: str) -> str | None:
+    script = f'tell application id "{SAFARI}"\n make new document with properties {{URL:"{url}"}}\n activate\nend tell'
+    p = sh("osascript", "-e", script, timeout=30)
+    return None if p.returncode == 0 else f"could not open {url} in Safari: {p.stderr.strip()[:200]}"
+
+
 def open_fresh_page(drive) -> str | None:
-    """Close our stale practice windows, open exactly one fresh page. Returns an error or None."""
-    close_practice_windows()
-    time.sleep(0.5)
+    """Close our stale practice windows, open exactly one fresh page, and wait until it is front and readable
+    by both the reader and the test driver. Returns an error or None."""
+    from companion import reader
+    close_and_settle(URL)
     p = sh("sh", "scripts/open_web_practice.sh", timeout=60)
     if p.returncode != 0:
         return f"open_web_practice.sh failed: {(p.stderr or p.stdout).strip()[:300]}"
     ok = wait_for(lambda: len(drive.web_areas()) == 1 and _ready(drive), seconds=15)
     if not ok:
         return f"practice page not readable in Safari ({len(drive.web_areas())} matching web areas)"
-    return None
+    return wait_front_readable(URL, title=reader.PRACTICE_TITLE)
 
 
 def _ready(drive) -> bool:
@@ -74,8 +125,9 @@ def load_drive():
     return mod
 
 
-# ---- pizza page (follow-the-pointer) -------------------------------------------------------------
+# ---- local site copies (pizza, KSEB) for follow-the-pointer ---------------------------------------
 PIZZA_URL = f"http://127.0.0.1:{PORT}/pizza"
+KSEB_URL = f"http://127.0.0.1:{PORT}/kseb-quickpay"
 
 
 def _http(path, method="GET"):
@@ -89,15 +141,15 @@ def _http(path, method="GET"):
         return getattr(exc, "code", 0), b""
 
 
-def ensure_pizza_route() -> str | None:
-    """Make sure this workspace's practice server serves /pizza; restart our own stale server if not.
+def ensure_route(path: str) -> str | None:
+    """Make sure this workspace's practice server serves `path`; restart our own stale server if not.
 
     Only a server that answers /health with this workspace's key AND whose cwd is this workspace is stopped.
     Returns an error string or None.
     """
     import subprocess
     from scripts.serve_web_practice import WORKSPACE_KEY
-    status, _ = _http("/pizza")
+    status, _ = _http(path)
     if status == 200:
         return None
     health, body = _http("/health")
@@ -114,30 +166,21 @@ def ensure_pizza_route() -> str | None:
     log = open(ROOT / "runs" / "web-practice-server.log", "a")
     subprocess.Popen([str(ROOT / ".venv" / "bin" / "python"), "scripts/serve_web_practice.py"], cwd=ROOT,
                      stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
-    ok = wait_for(lambda: _http("/pizza")[0] == 200, seconds=8)
-    return None if ok else "practice server does not serve /pizza (check runs/web-practice-server.log)"
+    ok = wait_for(lambda: _http(path)[0] == 200, seconds=8)
+    return None if ok else f"practice server does not serve {path} (check runs/web-practice-server.log)"
+
+
+def ensure_pizza_route() -> str | None:
+    return ensure_route("/pizza")
+
+
+def open_site_front(url: str, receipt: str) -> str | None:
+    """Close our stale window for `url`, clear the old receipt, open one fresh window, and wait until it is the
+    front window's selected page and readable. Other Safari windows are left alone."""
+    (ROOT / "runs" / receipt).unlink(missing_ok=True)
+    close_and_settle(url)
+    return _open_in_safari(url) or wait_front_readable(url)
 
 
 def open_pizza_front() -> str | None:
-    """Close our stale pizza windows, open one fresh pizza window and bring Safari to the front.
-
-    Returns an error string or None. Other Safari windows are left alone (the new one simply sits in front).
-    """
-    from companion import reader
-    (ROOT / "runs" / "pizza-complete.json").unlink(missing_ok=True)
-    close_practice_windows(PIZZA_URL)
-    time.sleep(0.5)
-    script = (f'tell application id "{SAFARI}"\n make new document with properties {{URL:"{PIZZA_URL}"}}\n activate\nend tell')
-    p = sh("osascript", "-e", script, timeout=30)
-    if p.returncode != 0:
-        return f"could not open the pizza page in Safari: {p.stderr.strip()[:200]}"
-
-    def front():
-        try:
-            reader.snapshot(SAFARI, page_url_prefix=PIZZA_URL)  # raises unless the front window's selected page is ours
-            return True
-        except reader.ReaderError:
-            return False
-    if not wait_for(front, seconds=15):
-        return "the pizza page did not become the front Safari window's selected page (someone else took focus?)"
-    return None
+    return open_site_front(PIZZA_URL, "pizza-complete.json")

@@ -1,5 +1,5 @@
-"""Offline self-test of the pizza check's assertions: a good run must pass, an Abin-style buggy run must fail
-each rule it breaks. No screen, no Safari, no Sarvam.
+"""Offline self-test of the follow-the-pointer checks' assertions (pizza and KSEB): a good run must pass, a buggy run
+must fail each rule it breaks. No screen, no Safari, no Sarvam.
 
     .venv/bin/python scripts/qa/selftest_pizza_assess.py
 """
@@ -67,4 +67,50 @@ assert [v for v in bad.values()].count("pass") <= 2 and "fail" in bad.values(), 
 fails = [k for k, v in bad.items() if v == "fail"]
 for needle in ("required steps", "Pizza Size", "no target", "orientation", "a filled control", "completion"):
     assert any(needle in k for k in fails), (needle, fails)
+
+# ---- KSEB ----
+spec = importlib.util.spec_from_file_location("kseb", ROOT / "scripts/qa/checks/kseb_follow_pointer_e2e.py")
+kseb = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(kseb)
+
+KGOOD = [
+    dec(0, "13 digit Consumer number", "This is the Quick Pay page. Enter your 13 digit consumer number."),
+    dec(1, "Enter Mobile Number", "Enter the mobile number registered with KSEB."),
+    dec(2, "Enter text shown below", "Read the text in the image and type it here; I cannot read it for you."),
+    dec(3, "Submit to see the bill", "Click 'Submit to see the bill'.", role="AXButton"),
+    dec(4, None, "Your practice bill is showing.", kind="complete"),
+    {"event": "stop", "reason": "complete"},
+]
+KBAD = [  # captcha before mobile, guesses the captcha, detours via Refresh twice, orientation repeated
+    dec(0, "13 digit Consumer number", "This is the Quick Pay page. Enter the number."),
+    dec(1, "Enter text shown below", "This is the Quick Pay page. Type PRACTICE.", ),
+    dec(2, "Refresh", "This is the Quick Pay page. Refresh the image.", role="AXLink"),
+    dec(3, "Refresh", "This is the Quick Pay page. Refresh the image.", role="AXLink", times=2),
+    {"event": "stop", "reason": "repeat:Refresh"},
+]
+
+
+def kstatuses(records, receipt):
+    rc = kseb.ROOT / "runs" / "kseb-complete.json"
+    backup = rc.read_bytes() if rc.exists() else None
+    try:
+        if receipt:
+            rc.write_text(json.dumps({"task": "kseb_practice", "synthetic": True, "completed_at": "t"}))
+        else:
+            rc.unlink(missing_ok=True)
+        got = kseb.assess(records, 0, "", receipt, time.time() - 60, Path("/tmp/x.jsonl"), Path("/tmp/log.jsonl"))
+    finally:
+        rc.unlink(missing_ok=True)
+        if backup is not None:
+            rc.write_bytes(backup)
+    return {r["check"][:48]: r["status"] for r in got if r["evidence"] != "needs-human"}
+
+
+kgood, kbad = kstatuses(KGOOD, True), kstatuses(KBAD, False)
+print("kseb good:", kgood)
+print("kseb bad: ", kbad)
+assert set(kgood.values()) == {"pass"}, kgood
+kfails = [k for k, v in kbad.items() if v == "fail"]
+for needle in ("steps pointed in order", "captcha guidance", "no target", "no detour", "orientation", "completion"):
+    assert any(needle in k for k in kfails), (needle, kfails)
 print("self-test OK")

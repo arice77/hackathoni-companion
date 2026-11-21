@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "apps" / "web-practice"
 RECEIPT = ROOT / "runs" / "web-practice-complete.json"
 PIZZA_RECEIPT = ROOT / "runs" / "pizza-complete.json"
+KSEB_RECEIPT = ROOT / "runs" / "kseb-complete.json"
 WORKSPACE_KEY = hashlib.sha256(os.fsencode(ROOT)).hexdigest().encode("ascii")
 ASSETS = {
     "/": ("index.html", "text/html"),
@@ -20,9 +21,21 @@ ASSETS = {
     "/pizza": ("pizza.html", "text/html"),
     "/pizza.css": ("pizza.css", "text/css"),
     "/pizza.js": ("pizza.js", "text/javascript"),
+    "/kseb-quickpay": ("kseb-quickpay.html", "text/html"),
+    "/kseb.css": ("kseb.css", "text/css"),
+    "/kseb.js": ("kseb.js", "text/javascript"),
+}
+# Generated images for the KSEB practice copy: a fixed placeholder "captcha" and a refresh arrow.
+GENERATED = {
+    "/kseb-captcha.svg": b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" viewBox="0 0 200 60">'
+        b'<rect width="200" height="60" fill="#eee"/><path d="M0 40 C50 10 150 70 200 20" stroke="#999" fill="none"/>'
+        b'<text x="100" y="40" font-family="monospace" font-size="28" text-anchor="middle" fill="#333">PRACTICE</text></svg>',
+    "/kseb-refresh.svg": b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">'
+        b'<path d="M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6v3l4-4-4-4z" fill="#1b5e8c"/></svg>',
 }
 # POST route -> (receipt file, task name). Receipts hold no form data.
-RECEIPTS = {"/receipt": (RECEIPT, "web_practice"), "/pizza-receipt": (PIZZA_RECEIPT, "pizza_practice")}
+RECEIPTS = {"/receipt": (RECEIPT, "web_practice"), "/pizza-receipt": (PIZZA_RECEIPT, "pizza_practice"),
+            "/kseb-receipt": (KSEB_RECEIPT, "kseb_practice")}
 
 
 def write_receipt(path: Path = RECEIPT, task: str = "web_practice") -> None:
@@ -53,6 +66,8 @@ class PracticeHandler(BaseHTTPRequestHandler):
             self.send_error(403)
         elif self.path == "/health":
             self.respond(WORKSPACE_KEY, "text/plain")
+        elif self.path in GENERATED:
+            self.respond(GENERATED[self.path], "image/svg+xml")
         elif self.path in ASSETS:
             filename, media_type = ASSETS[self.path]
             self.respond((APP / filename).read_bytes(), media_type)

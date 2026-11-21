@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HackaThoni · KSEB Quick Pay Practice</title>
+  <link rel="stylesheet" href="/kseb.css">
+  <script src="/kseb.js" defer></script>
+</head>
+<body>
+  <div class="banner">PRACTICE copy · nothing is sent</div>
+  <!-- Structure follows KSEB's public Quick Pay page (headings, placeholder-only fields, image captcha,
+       Refresh link, registration hint, submit button). Written from scratch. Nothing here talks to KSEB. -->
+  <nav>
+    <ul>
+      <li><a href="/kseb-quickpay#home">Home</a></li>
+      <li><a href="/kseb-quickpay">Quick Pay</a></li>
+      <li><a href="/kseb-quickpay#complaint">Register Complaint/Service</a></li>
+      <li><a href="/kseb-quickpay#status">Complaint Status</a></li>
+    </ul>
+  </nav>
+  <main>
+    <div class="page-header"><h1>Quick Pay</h1></div>
+    <form id="quickpay" autocomplete="off">
+      <h1>Consumer Details</h1>
+      <div class="error" role="alert" hidden></div>
+      <div class="row">
+        <h2>Consumer No:</h2>
+        <input type="tel" name="consumerNumber" maxlength="13" placeholder="13 digit Consumer number">
+      </div>
+      <div class="row">
+        <h2>Registered Mobile Number:</h2>
+        <input type="tel" name="phone" maxlength="10" placeholder="Enter Mobile Number">
+      </div>
+      <div class="row">
+        <h2>Enter the text in image:</h2>
+        <input type="text" name="code" placeholder="Enter text shown below">
+      </div>
+      <div class="row">
+        <img alt="Captcha" src="/kseb-captcha.svg" width="200" height="60">
+        <a id="refresh" href="#"><img alt="Refresh" src="/kseb-refresh.svg" width="24" height="24"></a>
+      </div>
+      <div class="info">For Quick pay consumers are required to register mobile number with KSEB. Please click <b><a href="#register">here</a></b> to register mobile number if not yet registered</div>
+      <button type="submit">Submit to see the bill</button>
+    </form>
+    <section class="bill" hidden>
+      <h1>Bill Details (practice)</h1>
+      <p>Practice consumer · synthetic bill · no real account was looked up.</p>
+      <p>Amount due: ₹0.00 (practice)</p>
+    </section>
+  </main>
+</body>
+</html>
