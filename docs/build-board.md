@@ -1,7 +1,7 @@
 # Build board
 
-> **Snapshot 22 Nov 01:52 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes. YouTube ad handling,
-> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); Ad fix merged; YouTube Q1 passes with ads. Q2 needs a countdown on the speed "−" button (no 0.75 preset), building.
+> **Snapshot 22 Nov 02:10 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes. YouTube ad handling,
+> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); YouTube passes live end to end (play with ad + make it slower to 0.75 with countdown), QA and orchestrator reruns.
 > Panel revamp merged. Orchestrator state:
 > `.context/orchestrator-state.md`.
 
@@ -88,6 +88,8 @@ QA rerun 22 Nov ~01:53 (runs/qa/20261122-015201): **FAIL at step 1**. A home-pag
 
 - 5652053 (planner) merged: ad handling only near the player. 4d215de (planner) merged: natural speed/captions/play/pause/full-screen phrases in Malayalam and English (61 replays / 152 decisions).
 - QA rerun ~02:00 (runs/qa/20261122-015556): **Q1 PASS with an ad** (Skip pointed and pressed). Q2: Settings → Playback speed OK, then stalled: YouTube's speed panel has **no 0.75 preset** (presets 1.0/1.25/1.5/2.0/3.0, ±0.05 buttons, unlabelled slider). Decision: point at "−" with a countdown ("press N more times"), never at the slider (dragging is hard for older users). Reader exposes the slider value as fixed "Playback speed slider <n>" (web builder); planner counts down (planner builder). QA driver fixed (aec2be7).
+- c2bb575 (reader: speed slider value), e437e68 (planner: "Press − to slow down (N more times)"), 8da979b (orchestrator: slider has no identifier so value changes re-plan) merged; unit 212/0.
+- **YouTube PASS live, both questions.** QA (runs/qa/20261122-020602) and orchestrator rerun (runs/qa/20261122-020709): 10 pass / 0 fail / 1 needs-human. Q1 Malayalam "play Darshana" with a pre-roll ad (wait → Skip → playing); Q2 "make it slower": Settings → Playback speed → − ×5 with countdown 5,4,3,2,1 → "The video is set to 0.75×"; speed restored to Normal, Settings closed.
 
 ## Site packs (started 22 Nov ~00:15)
 
@@ -177,3 +179,9 @@ Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime:
 | Sarvam planner (LLM picks the control on any page) | merged (ccaa970) | Codex sol + coordinator (async in app) | 28/30 exact in 2 runs, 0 unknown ids, p50 ~550 ms; Safari practice walk 8/8 to complete; live on httpbin: Malayalam question → "Customer name:". Now: missing control → unsupported, ambiguous → clarify (all cases pass); 37/41 and 39/41; Wikipedia Search correct. Completion detected locally (ae74bd1). Latest: 69/69 exact in 2 runs, 0 malformed, 0 unknown ids |
 | AIMS fixture | reference | coordinator | regression target in QA |
 | GST practice portal | parked | — | — |
+
+## Organiser-project option (research 22 Nov ~02:08, `.context/organiser-projects.md`)
+
+Abin asked for options for a 4th demo site built/promoted by the HackaThoni hosts. Not started; Abin decides.
+Candidates: Kochi Buzz (kochi.buzz, host Vaishakh Suresh), GasUndo (gasundo.live, hosts Vaishakh + Viswanatha),
+mashi.guru (Malayalam fonts, Viswanatha). None tested in Safari / our reader yet.
