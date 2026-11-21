@@ -28,6 +28,10 @@ class Control:
     # Whether an input holds something (text typed, option chosen, box ticked).
     # The reader records only this boolean, never the content. None = not an input.
     filled: bool | None = None
+    # For options inside a choice set (radio buttons, a fieldset of checkboxes): the set's label,
+    # e.g. "Pizza Size". A choice set itself is reported as a Control with role "AXGroup" or
+    # "AXRadioGroup", its label, and filled=True once any option in it is selected.
+    group: str | None = None
 
 
 @dataclass(frozen=True)
