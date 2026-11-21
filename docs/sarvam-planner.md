@@ -58,6 +58,8 @@ The pure walkthrough retains one planner and one question. It fills each pointed
 
 After a pointed web form action, the planner compares visible status to the status when it pointed. A new explicit success message ends the walk with `complete` even if the form and action remain visible. A generic confirmation heading asks the user to verify the result without highlighting the action again.
 
+Two diagnostic Safari walks used the proposed app and validator integration from `.context/group-outline-integration.diff`. Both passed all eight automated checks and used zero chat calls. Both decision lists are Customer name → Telephone → E-mail address → Pizza Size group → Submit order → complete. The driver chose Small, and the companion mentioned optional toppings once at Submit. Both walks saw the success heading and a fresh local receipt. The proposed integration also passed all 120 unit tests and matched 69/69 frozen cases with 27 live chat calls in the eval. Evidence lives in `runs/qa/20261121-232746/report.md`, `runs/qa/20261121-232937/report.md`, and `runs/qa/20261121-232953/report.md`. Branch acceptance still depends on landing the shared integration.
+
 ### Broad web help eval
 
 Each of the following phrasings runs on both the httpbin order form and the Safari practice fixture, for 18 cases. The public cases start at “Customer name:”. The practice cases use “Business Name” on a blank form, “Next” after the required fields are filled, and “Save” on Review.
