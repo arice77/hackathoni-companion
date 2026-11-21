@@ -3,7 +3,16 @@
 Orchestrator: coordinator session (Opus) · Process: `/conductor-orchestrator` · QA: `companion-qa` skill.
 Status words: planned · building · in QA · in review · merged · demo-ready.
 
-## Hero demo (decided 21 Nov 2026)
+## Current focus (Abin, 21 Nov 2026, later): get the basics right first
+
+1. The companion works on **web apps in a browser** (real tasks such as GST are websites). Safari is proven readable
+   (orchestrator probe, live-machine); Chromium/Brave needs work and is tested only with a throwaway profile.
+2. **Language preference, Malayalam or English**: the user speaks in it, the overlay and panel show it, the voice
+   answers in it (Sarvam STT, Malayalam->English for matching English labels, Bulbul TTS). Panel switch and
+   overlay language: done (coordinator). Voice: building.
+3. The problem domain (GST or something else) is chosen **after** these basics work. The GST plan below is parked.
+
+## Parked: GST hero demo (decided earlier on 21 Nov, on hold)
 
 **One person:** a Kerala shop owner (e.g. a hardware or textile shop in Alappuzha) on the GST
 **regular scheme**, turnover **under ₹5 crore**, who files **GSTR-3B monthly** because B2B customers
@@ -38,7 +47,9 @@ can create a document, 49.4% can email (MoSPI CMS 2025). No survey shows English
 | Reader, scripted planner, validator, loop | merged | coordinator | `companion/*.py`, `companion/tasks/` | QA suite green (3/3 runs) |
 | QA skill + runner | merged | coordinator | `.claude/skills/companion-qa/`, `scripts/qa/` | runs, grows per feature |
 | AIMS fixture | prototype (reference) | coordinator | `apps/aims-training/`, `companion/tasks/aims.py` | e2e green |
-| GST practice portal + task script | planned | Codex builder | `apps/gst-practice/`, `companion/tasks/gst.py`, `scripts/restart_gst.sh` | labels cited to GSTN manual; reader sees all step controls; task script reaches file step |
-| GST QA coverage | planned | Sonnet QA | `scripts/drive_gst.py`, `scripts/qa/checks/gst_*.py`, registry | e2e green 3/3 |
-| Sketch overlay | planned | Codex builder | `companion/overlay/**` | `PointerOverlay`; Malayalam renders; click-through proven on own window |
-| Sarvam voice | planned, needs key | Codex builder | `companion/voice/**`, `scripts/sarvam_smoke.py` | live round trip or explicit BLOCKED |
+| Web support (reader in browsers + practice web app) | building | Codex `gpt-6.2-sol` (workspace port-louis) | `companion/reader.py`, `apps/web-practice/`, `scripts/serve_web_practice.py`, `scripts/open_web_practice.sh`, `companion/tasks/web_practice.py` | reader sees page controls by DOM id without browser chrome; QA green |
+| Language preference (panel + overlay) | merged | coordinator | `companion/app.py` | `--lang ml|en`, switch in panel, one language shown |
+| Web QA coverage | planned | Sonnet QA | `scripts/drive_web*.py`, `scripts/qa/checks/web_*.py`, registry | e2e green 3/3 in Safari |
+| GST practice portal | parked | — | — | — |
+| Sketch overlay | building | Codex `gpt-6.2-astra` (workspace damascus) | `companion/overlay/**` | `PointerOverlay`; Malayalam renders; click-through proven on own window |
+| Sarvam voice (ml/en ask + speak, mic) | building, needs key | Codex `gpt-6.2-sol` (workspace lome) | `companion/voice/**`, `scripts/sarvam_smoke.py` | live round trip both languages, or explicit BLOCKED |
