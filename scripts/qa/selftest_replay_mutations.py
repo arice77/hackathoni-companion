@@ -38,6 +38,8 @@ MUTATIONS = [
      (yt_pack, "ResultChoice"), lambda key, title, score, anchor: ORIG_CHOICE(key, title, (False, 0, False, 0, 0, -10**6), anchor)),
     (yt, "faster points at the 1 25 preset and completes", "speed presets ignored", (yt_pack, "_SPEED_PRESET"),
      __import__("re").compile(r"(?!)")),
+    (gm, "natural phrasings start the compose guide", "keyword fallback for natural sentences removed",
+     (gmail_pack, "_COMPOSE_WORDS"), __import__("re").compile(r"(?!)")),
     (gm, "private question text never reaches a decision", "question privacy filter removed",
      (gmail_pack.PACK.privacy, "filter_question"), lambda question: question),
 ]

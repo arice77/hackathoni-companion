@@ -351,4 +351,25 @@ for phase in range(1, 8):
 two = [("mute", ""), ("speed it up", "speed")]
 assert drv.next_ask(1, two) == "mute" and drv.next_ask(2, two) == "speed it up" and drv.next_ask(3, two) is None
 assert drv.tidy_kind(1, two) == "" and drv.tidy_kind(2, two) == "" and drv.tidy_kind(3, two) == "speed" and drv.tidy_kind(4, two) == ""
+# ---------------------------------------------------------------- Gmail phrasings (one send in the whole run)
+gp = load("gmail_phrasings_e2e")
+ph_ok = gp.assess_phrase(1, "I need to send an email to my son.", False, GGATED, 1, "", [], True, 0, X, X)
+pst = {r["check"]: r["status"] for r in ph_ok if r["evidence"] != "needs-human"}
+print("phrasings gated good:", pst)
+assert set(pst.values()) == {"pass"}, pst
+assert any("stops at the Send pointer" in k for k in pst)
+# a walk that never reaches Send, repeats To, or leaves its draft behind fails
+no_send = [dict(r) for r in GGATED[:4]] + [dict(GGATED[-1])]
+bad = {r["check"]: r["status"] for r in gp.assess_phrase(2, "x", False, no_send, 1, "", [], True, 0, X, X) if r["evidence"] != "needs-human"}
+assert any("steps pointed in order" in k and v == "fail" for k, v in bad.items()), bad
+assert any("stops at the Send pointer" in k and v == "fail" for k, v in bad.items()), bad
+kept = [dict(r) for r in GGATED]
+kept[-1] = dict(kept[-1], draft="draft discarder button not found; a draft may remain")
+assert any("stops at the Send pointer" in r["check"] and r["status"] == "fail" for r in gp.assess_phrase(3, "x", False, kept, 1, "", [], True, 0, X, X))
+twice = GGATED[:2] + [dec(2, 1, "To", "To again.", "AXComboBox", times_pointed=2)] + GGATED[2:]
+assert any("no target is pointed at twice" in r["check"] and r["status"] == "fail" for r in gp.assess_phrase(4, "x", False, twice, 1, "", [], True, 0, X, X))
+# the sending phrasing needs the full ending
+sendres = gp.assess_phrase(5, "Ente makanu oru email ayakkanam", True, GGOOD, 0, "", [], True, 0, X, X)
+assert set(r["status"] for r in sendres if r["evidence"] != "needs-human") == {"pass"}, [(r["check"], r["status"]) for r in sendres]
+
 print("site self-test OK")

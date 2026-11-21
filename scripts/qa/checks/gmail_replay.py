@@ -111,6 +111,56 @@ def s_private_question_text_never_reaches_a_decision():
         assert "my.son@example.invalid" not in red and "9847012345" not in red, red
 
 
+PHRASINGS = ("I need to send an email to my son.", "എനിക്കൊരു ഇമെയിൽ അയക്കണം.", "I want to write a mail",
+             "Ente makanu oru email ayakkanam", "എന്റെ മകന് ഒരു ഇമെയിൽ അയയ്ക്കണം")
+
+
+@scenario
+def s_natural_phrasings_start_the_compose_guide():
+    """Abin's real sentences (spoken and typed, English/Malayalam/Manglish) start Compose, never 'I can help write…' with no step;
+    a request that is not about mail still gets the honest 'I can help…' line."""
+    with blocked_network():
+        for q in PHRASINGS:
+            Walk(q).step(gm("Compose"), "point", "Compose", text="new email")
+        Walk("Can you pay my bill").step(gm("Compose"), "unsupported", text="I can help")
+
+
+@scenario
+def s_collapsed_to_box_is_done_and_the_guide_does_not_bounce_back():
+    """After the address is typed and Subject is clicked, Gmail collapses To into a recipients summary (no To control, or one read
+    as empty). That, or any later field filled, means To is done: To -> Subject -> Body -> Attach (skip) -> Send, To pointed once."""
+    with blocked_network():
+        for q in PHRASINGS[:2]:
+            w = Walk(q)
+            w.step(gm("Compose"), "point", "Compose")
+            w.step(gm(*COMPOSER, empty=("To", "Subject", "Message Body")), "point", "To")
+            # clicked Subject: To collapsed (no To control), Subject still empty
+            w.step(gm(*COMPOSER[1:], empty=("Subject", "Message Body")), "point", "Subject")
+            # typed the subject, To still collapsed
+            w.step(gm(*COMPOSER[1:], filled=("Subject",), empty=("Message Body",)), "point", "Message Body")
+            # Gmail re-renders To as an empty-looking field while Subject is filled: still done
+            w.step(gm(*COMPOSER, filled=("Subject",), empty=("To", "Message Body")), "point", "Message Body")
+            ready = gm(*COMPOSER, filled=("Subject", "Message Body"), empty=("To",))
+            w.step(ready, "point", "Attach files", text="skip")
+            assert w.pl.skip_current()
+            w.step(ready, "point", "Send")
+            targets = [e.split(":")[1] for e in w.log if e.startswith("point")]
+            assert targets.count("To") == 1, f"To was pointed at {targets.count('To')} times: {targets}"
+            w.step(gm("Compose", "Sending…"), "clarify")
+            w.step(gm("Compose", "Message sent"), "complete", text="Your email was sent")
+
+
+@scenario
+def s_collapsed_to_at_the_very_start_of_a_compose_is_not_a_finished_to():
+    """Guard the other side: before anything is typed the To control is present and empty, so the guide points at it (the
+    collapsed-To rule only applies when To has gone away)."""
+    with blocked_network():
+        w = Walk(PHRASINGS[0])
+        w.step(gm("Compose"), "point", "Compose")
+        w.step(gm(*COMPOSER, empty=("To", "Subject", "Message Body")), "point", "To")
+        w.step(gm(*COMPOSER, empty=("To", "Subject", "Message Body")), "point", "To")  # still empty: same pointer, not skipped
+
+
 def run():
     out = []
     for name, fn in SCENARIOS.items():

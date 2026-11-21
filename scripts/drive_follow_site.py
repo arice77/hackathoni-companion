@@ -16,7 +16,7 @@ Safety rules, enforced here:
                /watch link, names the song and is not an ad; press Play, Skip ad / Skip (ad button), Settings, Playback speed.
                Stops at the speed target (--stop-label) WITHOUT pressing it: no setting is applied.
                No like, subscribe or comment control is ever pressed.
-      gmail    press Compose; type To (QA_GMAIL_TO), Subject, Message Body; say "Next" in the companion panel when the
+      gmail    press Compose; type To (QA_GMAIL_TO; no Return unless --to-return), Subject, Message Body; say "Next" in the companion panel when the
                instruction asks for it (also to skip the optional "Attach files", which is never opened);
                press Send only with --allow-send
                AND QA_GMAIL_TO inside QA_GMAIL_ALLOWED (checked again here), at most once. If Send is gated, the
@@ -470,6 +470,9 @@ def main(argv=None) -> int:
                          "Full screen is pointed at but never pressed; an honest 'unsupported' ends a question without failing the run")
     ap.add_argument("--allow-presets", default="", help="youtube: comma-separated speed preset labels the driver may press, e.g. 1.25")
     ap.add_argument("--allow-send", action="store_true", help="gmail: Send may be pressed (needs the env gate too)")
+    ap.add_argument("--to-return", action="store_true",
+                    help="gmail option B: press Return after typing the address. Default (option A, human-like): type the address "
+                         "and move straight on to Subject, so Gmail collapses To into its recipients summary as it did in the hand test")
     ap.add_argument("--keep-playing", action="store_true", help="youtube: do not pause the video between questions")
     ap.add_argument("--max-scrolls", type=int, default=4)
     ap.add_argument("--apply-speed", action="store_true",
@@ -701,8 +704,8 @@ def main(argv=None) -> int:
                                         result += "; then Return"
                                     else:
                                         state["search_fallback"] = "search did not run"
-                        if verb == "type:to":
-                            AX.AXUIElementPerformAction(el, "AXConfirm")  # "then press Enter"
+                        if verb == "type:to" and a.to_return:
+                            AX.AXUIElementPerformAction(el, "AXConfirm")  # option B: press Return after the address
                         if verb.startswith("type:") and SAY_NEXT.search(rec["instruction_en"]) and a.companion_pid:
                             asked = say_next()
                             result += f"; said 'Next' in the panel ({asked})"
