@@ -69,7 +69,7 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | Site-pack framework + KSEB Quick Pay pack + `web_site` task; optional units offered, Skip, "Next…" | Codex sol (planner) | merged (f8af958). Orchestrator runs ×2: KSEB 8/8, pizza 11/11 (runs/qa/20261122-003028, -003100); eval 78/78 |
 | Local KSEB Quick Pay copy + KSEB follow-pointer check; flake hardening | Sonnet QA | building |
 | Gmail privacy gate (chrome-only labels, inbox = one 'Inbox: N messages' control), To in compose, Reply on a Sent conversation; YouTube sliders + Settings menu items (speed, quality, subtitles) | Codex sol (web) | merged (8b0d1d8, 28ad214) |
-| YouTube site pack (search+play, full screen, pause/mute, Malayalam subtitles, speed) + generic `start_guidance` hook | Codex sol (planner) | merged (24f4fe9 … a0872e7); 29 replay cases / 81 decisions. First live run picked a channel → waiting on reader `youtube-watch:<video>:<anchor>` marker (web builder) |
+| YouTube site pack (search+play, full screen, pause/mute, Malayalam subtitles, speed) + generic `start_guidance` hook | Codex sol (planner) | merged (24f4fe9 … a0872e7); 29 replay cases / 81 decisions. First live run picked a channel → reader marker merged (8ea4463); live rerun queued with QA |
 | Gmail site pack (compose, reply, search, attach) | Codex sol (web) | merged (180cf8a); live walk may Send once to Abin's allowlisted address; QA running it |
 
 Commit messages: AI co-author trailers stripped from all local branches on 22 Nov 00:13 (message-only rewrite,
