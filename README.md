@@ -25,6 +25,26 @@ Ask in Malayalam, “Is Bektash Kakkanad open?” The companion points to **Sear
 
 **Privacy.** The page reader skips passwords and typed values. In Gmail it uses interface labels such as **Compose**, **To** and **Send**, and the **Message sent** confirmation. Your email subjects, recipients and message bodies stay out of the page data sent to the planner.
 
+## How we use Sarvam AI
+
+Sarvam is the voice and language layer, called live while the companion runs:
+
+- **Saaras v4 (speech to text).** It transcribes the question in Malayalam or English and also translates Malayalam speech to English for the planner. With the panel set to English it auto-detects Malayalam. The button names on screen are sent as key terms, so words like "Compose" and "Search" are heard correctly.
+- **Bulbul v3 (text to speech).** It speaks every step back in the chosen language.
+- **Sarvam LLM (`sarvam-105b-conversations`).** It works out what you meant when a request isn't one of the phrases the companion already knows: one structured-JSON call, limited to a fixed list of actions. Known tasks need no LLM call. Each site's steps come from our own code, so the model never invents a button.
+- **Sarvam Translate and Transliterate.** Translate turns each step into Hindi or Kannada and keeps on-screen labels such as ‘Search’ in English. Transliterate turns a restaurant name spoken in Malayalam script into Latin letters, so it can be typed into GasUndo's search box.
+
+## How we use Devin
+
+Devin repairs bugs found by our own QA, with a human reviewing and merging the fix:
+
+1. QA's replay found a real bug: on a YouTube player, "make it faster" wasn't understood (commit `329cc68`).
+2. [`tools/devin_case`](tools/devin_case) turns the bug into a case: the exact repro, the expected and actual result, and the commit. After a developer approves that case, it starts a Devin session through the Devin API, capped at 5 ACUs.
+3. Devin opened [PR #4](https://github.com/arice77/hackathoni-companion/pull/4) with the fix and a regression test.
+4. The same replay ran on Devin's exact commit `136ba45`. It passed: the arrow lands on Settings with no fallback call. The developer then reviewed and merged it. Record: [docs/devin-cases](docs/devin-cases).
+
+The rest of the companion was built with AI coding agents (Claude and Codex) orchestrated in Conductor. Devin's role is this verified repair loop.
+
 ## Quick start on macOS
 
 From the repo root, with `uv` installed and `SARVAM_API_KEY` set in your environment, run the following. Open a supported page in Safari and grant Accessibility access to the launching terminal. Allow microphone access when prompted for voice input.
