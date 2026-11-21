@@ -152,10 +152,10 @@ def order_check(pts, steps):
     return ok, f"targets {seq}; missing {missing}; first positions {first}"
 
 
-def repeats(pts):
+def repeats(pts, by_phase=True):
     seen, out = {}, []
     for r in pts:
-        k = (r.get("phase"), r.get("target_role"), r.get("target_label"))
+        k = (r.get("phase") if by_phase else None, r.get("target_role"), r.get("target_label"))
         seen[k] = seen.get(k, 0) + 1
         if seen[k] == 2:
             out.append(k[2])

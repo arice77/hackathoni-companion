@@ -93,9 +93,10 @@ GGOOD = [
     dec(1, 1, "To", "Type your son's address in 'To'.", "AXComboBox", action="typed (value not recorded)"),
     dec(2, 1, "Subject", "Add a subject.", "AXTextField", action="typed (value not recorded)"),
     dec(3, 1, "Message Body", "Write your message.", "AXTextArea", action="typed (value not recorded)"),
-    dec(4, 1, "Send", "Click 'Send'.", action="pressed Send"),
-    dec(5, 1, None, "Your email is sent.", kind="complete", action="none"),
-    {"event": "stop", "reason": "phase1=complete", "phases": {"1": "complete"}, "sends": 1, "sent_seen": True},
+    dec(4, 1, "Attach files", "Click 'Attach files'. Say 'Next' to skip.", "AXPopUpButton", action="skipped optional step, said 'Next' in the panel (asked)"),
+    dec(5, 1, "Send", "Click 'Send'.", action="pressed Send"),
+    dec(6, 1, None, "The draft is no longer visible. I can't confirm whether it was sent.", kind="clarify", action="waiting (clarify): nothing pressed"),
+    {"event": "stop", "reason": "phase1=sent", "phases": {"3": "sent"}, "sends": 1, "sent_seen": True},
 ]
 GBAD = [  # Subject before To, To twice, an inbox row pointed at, two Sends, no completion
     dec(0, 1, "Compose", "Click Compose."),
@@ -108,10 +109,12 @@ GBAD = [  # Subject before To, To twice, an inbox row pointed at, two Sends, no 
     {"event": "stop", "reason": "phase1=refused", "phases": {"1": "refused"}, "sends": 2, "sent_seen": False},
 ]
 GGATED = [dec(4, 1, "Send", "Click 'Send'.", action="held: send gated: QA_GMAIL_TO is not in QA_GMAIL_ALLOWED")]
-GGATED = GGOOD[:4] + GGATED + [{"event": "stop", "reason": "phase1=send-gated", "phases": {"1": "send-gated"},
+GGATED = GGOOD[:5] + GGATED + [{"event": "stop", "reason": "phase1=send-gated", "phases": {"1": "send-gated"},
                                 "sends": 0, "draft": "draft discarded"}]
 ggood = statuses(gm.assess(GGOOD, 0, "", [], True, 0, X, X))
 gbad = statuses(gm.assess(GBAD, 1, "", ["address"], True, 0, X, X))
+after_send = GGOOD[:6] + [dec(6, 1, "Send", "Send again.", action="refused: a send already happened in this run")] + GGOOD[7:]
+assert any(v == "fail" for k, v in statuses(gm.assess(after_send, 1, "", [], True, 0, X, X)).items() if k.startswith("send: pressed once"))
 ggate = gm.assess(GGATED, 1, "", [], False, 0, X, X)
 print("gmail good:", ggood)
 print("gmail bad: ", gbad)
@@ -122,6 +125,10 @@ for needle in ("steps pointed in order", "no target is pointed", "every pointer 
     assert any(needle in k for k in gfails), (needle, gfails)
 gs = {r["check"][:14]: r["status"] for r in ggate if r["evidence"] != "needs-human"}
 assert gs["send and compl"] == "blocked" and all(v == "pass" for k, v in gs.items() if k != "send and compl"), gs
+
+# a stuck step repeated across 'Next' acknowledgements (different phases) still fails the repeat rule
+stuck = [dec(0, 1, "Compose", "Compose."), dec(1, 1, "To", "To.", "AXComboBox"), dec(2, 2, "To", "To.", "AXComboBox")]
+assert any(v == "fail" for k, v in statuses(gm.assess(stuck, 1, "", [], True, 0, X, X)).items() if k.startswith("no target is pointed"))
 
 # privacy scan: finds the fake address, its parts, typed text and any e-mail-shaped text; never returns text
 secrets = ["son.fake@example.invalid", "son.fake", "example.invalid", "HackaThoni companion test", "short test message"]
@@ -156,6 +163,8 @@ for banned in ("Like this video along with 1,234 other people", "Subscribe", "Ad
     assert d("youtube", "AXButton", banned, "", o)[0] == "refuse", banned
 assert d("gmail", "AXButton", "Compose", "", o)[0] == "press"
 assert d("gmail", "AXComboBox", "To", "", o)[0] == "type:to"
+assert d("gmail", "AXPopUpButton", "Attach files", "", o)[0] == "skip"
+assert drv.SAY_NEXT.search("In ‘To’, type the address. When you’re done, say ‘Next’.") and not drv.SAY_NEXT.search("Click Send.")
 for banned in ("Archive", "Delete", "Reply", "Open email", "Inbox", "<other>"):
     assert d("gmail", "AXButton", banned, "", o)[0] == "refuse", banned
 import os  # the Send gate is the driver's own, second check on top of --allow-send

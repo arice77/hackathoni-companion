@@ -4,7 +4,11 @@ LIVE + SARVAM. BLOCKED unless QA_LIVE_SARVAM=1, a SARVAM_API_KEY exists, the Gma
 is on this branch, QA_GMAIL_TO is set (env or repo-root .env) and the process is Accessibility-trusted.
 
 Question (Malayalam) "എന്റെ മകന് ഒരു ഇമെയിൽ അയയ്ക്കണം" (I want to send an email to my son). Walk: Compose -> To (the
-driver types QA_GMAIL_TO) -> Subject -> Message Body (a short neutral line) -> Send.
+driver types QA_GMAIL_TO) -> Subject -> Message Body (a short neutral line) -> Send. The pack also offers an optional
+"Attach files" step (the driver skips it without opening the dialog) and asks the person to say "Next" after a field
+whose state it cannot read; the driver says "Next" in the companion panel when the instruction asks for it. The pack
+never claims a send happened ("I can't confirm whether it was sent"), so the end is read from Gmail's own "Message
+sent" notice, not from a complete decision.
 
 Send gate: the driver presses Send ONLY if QA_GMAIL_TO is in the comma-separated QA_GMAIL_ALLOWED, at most once per
 run. Otherwise it stops before Send, discards its own draft, and the completion item reports BLOCKED. It never
@@ -122,14 +126,14 @@ def assess(records, driver_rc, driver_err, privacy_hits, send_allowed, started, 
     ok, d = _site.order_check(pts, STEPS)
     add("steps pointed in order: Compose, To, Subject, Message Body, Send", ok, f"{d}; {where}")
 
-    rep = _site.repeats(pts)
+    rep = _site.repeats(pts, by_phase=False)  # saying 'Next' starts a new question; a stuck step must still count
     add("no target is pointed at twice", not rep, f"repeated targets: {rep}; stop {stop['reason']}")
 
     invalid = [r["index"] for r in pts if r.get("valid") is not True]
     add("every pointer validated", not invalid and bool(decisions),
         f"unvalidated decisions {invalid}" if invalid else f"{len(decisions)} decisions, sources {sorted({r.get('source') for r in decisions})}")
 
-    other = [r["index"] for r in pts if r.get("target_label") not in {s[0] for s in STEPS}]
+    other = [r["index"] for r in pts if r.get("target_label") not in {s[0] for s in STEPS} | {"Attach files"}]
     add("gated snapshot privacy: no private text in the session log, only fixed names pointed at",
         not privacy_hits and not other,
         f"private text categories found in the session log: {privacy_hits}; pointed at non-compose controls in decisions {other}"
@@ -146,13 +150,16 @@ def assess(records, driver_rc, driver_err, privacy_hits, send_allowed, started, 
     if not send_allowed:
         out.append(result(FEATURE, "send and completion", "blocked", "blocked",
                           f"stopped before Send: QA_GMAIL_TO is not in QA_GMAIL_ALLOWED. Walk to Send asserted above; "
-                          f"phase end={phases.get('1', phases.get(1))}; draft: {stop.get('draft')}"))
+                          f"driver stop={stop['reason']}; draft: {stop.get('draft')}"))
     else:
         sent = len(sends) == 1 and stop.get("sent_seen") is True
-        done = bool(last and last["kind"] == "complete")
-        add("send: pressed once to Abin's own address, 'Message sent' seen, ended by a complete decision", sent and done,
-            f"sends={len(sends)}, message-sent toast seen={stop.get('sent_seen')}, last decision {last['kind'] if last else None}; "
-            f"driver stop={stop['reason']}; {where}")
+        send_idx = sends[0]["index"] if sends else None
+        later = [r for r in decisions if send_idx is not None and r["index"] > send_idx]
+        again = [r["index"] for r in later if r["kind"] == "point"]
+        honest = last is None or last["kind"] in {"complete", "clarify", "unsupported"} or last["index"] == send_idx
+        add("send: pressed once to Abin's own address, 'Message sent' seen, nothing pointed at after it", sent and not again and honest,
+            f"sends={len(sends)}, message-sent notice seen={stop.get('sent_seen')}, decisions after Send {[(r['kind']) for r in later]}, "
+            f"pointed again after Send: {again}; last decision {last['kind'] if last else None}; driver stop={stop['reason']}; {where}")
     out.append(result(FEATURE, "person follows the pointer in Gmail; Malayalam reads naturally", "skip", "needs-human",
                       "driver typed the recipient, subject and body through Accessibility; a person has not run this"))
     return out

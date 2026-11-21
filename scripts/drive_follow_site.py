@@ -16,7 +16,9 @@ Safety rules, enforced here:
                /watch link, names the song and is not an ad; press Play, Skip ad, Settings, Playback speed.
                Stops at the speed target (--stop-label) WITHOUT pressing it: no setting is applied.
                No like, subscribe or comment control is ever pressed.
-      gmail    press Compose; type To (QA_GMAIL_TO), Subject, Message Body; press Send only with --allow-send
+      gmail    press Compose; type To (QA_GMAIL_TO), Subject, Message Body; say "Next" in the companion panel when the
+               instruction asks for it (also to skip the optional "Attach files", which is never opened);
+               press Send only with --allow-send
                AND QA_GMAIL_TO inside QA_GMAIL_ALLOWED (checked again here), at most once. If Send is gated, the
                driver stops before it and discards its own draft. Never opens, archives, deletes or marks mail.
   * Never prints or records typed values, addresses, subjects, senders or bodies. Gmail target labels are
@@ -57,6 +59,7 @@ TARGET_ROLES = {"AXTextField", "AXTextArea", "AXComboBox", "AXSearchField", "AXB
 SEARCH_ROLES = {"AXComboBox", "AXSearchField", "AXTextField"}
 MENU_ROLES = {"AXMenuItem", "AXMenuItemRadio", "AXMenuItemCheckbox", "AXButton"}
 FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
+SAY_NEXT = re.compile(r"say\s+[‘'\"]next[’'\"]", re.IGNORECASE)  # the pack asks the person to acknowledge a step
 AD_WORDS = re.compile(r"\b(ad|ads|advert|advertisement|sponsored)\b", re.IGNORECASE)
 SKIP_AD = re.compile(r"^skip ads?\b", re.IGNORECASE)
 SUBJECT_TEXT = "HackaThoni companion test"
@@ -90,7 +93,7 @@ def host_ok(url: str, site: str) -> bool:
 
 
 def decide_action(site: str, role: str, label: str, url: str, opts) -> tuple[str, str]:
-    """(verb, why). verb: type:<what> | press | hold | refuse. `label` is the raw (YouTube) or normalized (Gmail) name."""
+    """(verb, why). verb: type:<what> | press | skip | hold | refuse. `label` is the raw (YouTube) or normalized (Gmail) name."""
     low = (label or "").strip().lower()
     if site == "youtube":
         if role in SEARCH_ROLES and low == "search":
@@ -124,6 +127,8 @@ def decide_action(site: str, role: str, label: str, url: str, opts) -> tuple[str
             return "type:subject", "subject"
         if low == "message body" and role in FIELD_ROLES:
             return "type:body", "body"
+        if low == "attach files" and role in {"AXPopUpButton", "AXButton"}:
+            return "skip", "optional attachment: skipped, the dialog is never opened"
         if low == "send" and role == "AXButton":
             if not opts.allow_send or not send_allowed():
                 return "hold", "send gated: QA_GMAIL_TO is not in QA_GMAIL_ALLOWED"
@@ -313,6 +318,7 @@ def main(argv=None) -> int:
     phase_end, seen = {}, {}
     state = {"sends": 0, "sent_seen": None, "draft": None, "playing": None, "paused": None, "search_fallback": None}
     start = last = time.time()
+    dt = a.decision_timeout
 
     def emit(rec):
         records.append(rec)
@@ -353,8 +359,8 @@ def main(argv=None) -> int:
         if now - start > a.total_timeout:
             finish_phase("total-timeout", fatal=True)
             break
-        if now - last > a.decision_timeout:
-            finish_phase("decision-timeout", fatal=True)
+        if now - last > dt:
+            finish_phase("sent" if state["sends"] else "decision-timeout", fatal=True)
             break
         for ev in tail.new_events():
             name = ev.get("event")
@@ -412,6 +418,11 @@ def main(argv=None) -> int:
                     if verb == "refuse":
                         emit({**out, "action": f"refused: {why}"})
                         done = finish_phase("refused", fatal=True)
+                    elif verb == "skip":
+                        asked = ask_companion(a.companion_pid, "Next") if a.companion_pid else "no companion pid"
+                        emit({**out, "action": f"skipped optional step, said 'Next' in the panel ({asked})"})
+                        awaiting_q = asked == "asked"
+                        last = time.time()
                     elif verb == "hold":
                         emit({**out, "action": f"held: {why}"})
                         done = finish_phase("reached-target" if site == "youtube" else "send-gated", fatal=site == "gmail")
@@ -429,6 +440,7 @@ def main(argv=None) -> int:
                                 time.sleep(3.0)
                                 state["sent_seen"] = any_text(window, "Message sent")
                                 result = "pressed Send"
+                                dt = 15.0  # the pack may not say anything more; do not wait the full timeout
                             if site == "youtube" and why == "search button" and result == "pressed":
                                 time.sleep(3.0)
                                 url_now = web_area_url(window, site) or ""
@@ -440,6 +452,11 @@ def main(argv=None) -> int:
                                         result += "; then Return"
                                     else:
                                         state["search_fallback"] = "search did not run"
+                        if verb == "type:to":
+                            AX.AXUIElementPerformAction(el, "AXConfirm")  # "then press Enter"
+                        if verb.startswith("type:") and SAY_NEXT.search(rec["instruction_en"]) and a.companion_pid:
+                            result += f"; said 'Next' in the panel ({ask_companion(a.companion_pid, 'Next')})"
+                            awaiting_q = True
                         emit({**out, "action": result})
                         if seen[key] >= a.repeat_limit:
                             done = finish_phase(f"repeat:{label}", fatal=True)
@@ -457,8 +474,8 @@ def main(argv=None) -> int:
     first, second = phase_end.get(1), phase_end.get(2)
     ok = first == "complete" and (not a.then_ask or second in {"reached-target", "complete"})
     if site == "gmail":
-        ok = first in {"complete", "send-gated"}
-    stop = {"event": "stop", "reason": f"phase1={first}" + (f" phase2={second}" if a.then_ask else ""),
+        ok = list(phase_end.values())[-1:] and list(phase_end.values())[-1] in {"complete", "send-gated", "sent"}
+    stop = {"event": "stop", "reason": f"phase1={first}" + (f" phase2={second}" if a.then_ask else "") + (f" last={list(phase_end.values())[-1]}" if site == "gmail" else ""),
             "phases": phase_end, "seconds": round(time.time() - start, 1),
             "decisions": sum(r["event"] == "decision" for r in records), **state}
     emit(stop)
