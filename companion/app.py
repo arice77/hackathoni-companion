@@ -50,7 +50,8 @@ TICK_S = 0.5
 
 def screen_signature(snap) -> tuple:
     """What the planner's answer depends on: which controls exist and which are filled."""
-    return tuple(sorted((c.identifier or c.label, c.role, bool(c.filled)) for c in snap.controls))
+    return (tuple(sorted((c.identifier or c.label, c.role, bool(c.filled)) for c in snap.controls)),
+            getattr(snap, "below_fold_count", 0))  # scrolling alone must refresh "scroll down" guidance
 
 
 def rebind(decision: Decision, old_snap, new_snap) -> Decision | None:
