@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from time import monotonic
 
 from ..contracts import Control, Decision, Snapshot
 from . import PrivacyProfile, SitePack, SiteStep, _phrase
@@ -14,6 +15,7 @@ _SETTINGS_ROLES = _MENU | {"AXMenuButton", "AXPopUpButton"}
 _SHARED_SETTINGS = ("Playback speed", "Subtitles/CC", "Quality")
 _SETTINGS_NAMES = {_phrase(label): label for label in (*_SHARED_SETTINGS, "Ambient mode", "Annotations", "Sleep timer")}
 _SETTINGS_ROW = re.compile(rf"^({'|'.join(map(re.escape, _SETTINGS_NAMES))})(?=$|[\s:(])")
+_SETTINGS_RETRY_S = 3.0
 _SEARCH = {"AXComboBox", "AXSearchField", "AXTextField"}
 _CC = re.compile(r"^(?:subtitles/closed captions|closed captions|cc)(?:\b|\s|$)")
 _SPEED_PRESET = re.compile(r"(\d+(?:\.\d+)?)\s*[x×]?")
@@ -66,6 +68,17 @@ _PLAYER_SHORTCUTS = {
 }
 _CC_LABEL = "subtitles/closed captions"
 _SKIP_LABELS = ("skip ad", "skip ads", "skip")
+_AD_SKIP_BUTTONS = {("AXButton", label) for label in _SKIP_LABELS}
+_AD_MARKERS = {
+    "Ad break": re.compile(r"\bad break\b|\bad \d+ of\b|\bad will end in\b|\bvideo will play after ad\b"),
+    "My Ad Centre": re.compile(r"\bmy ad cent(?:re|er)\b"),
+    "Visit advertiser": re.compile(r"\bvisit advertiser\b"),
+    "Ad": re.compile(r"^ad$|\bad\s*·"),
+    "Sponsored": re.compile(r"\bsponsored\b"),
+    "Skip ad": re.compile(r"^skip(?: ads?)?(?: in .+)?$"),
+}
+_AD_CARD_MARKERS = {"Ad", "Sponsored"}
+_AD_HEADING = re.compile(r"ad|sponsored|ad \d+ of \d+")
 _PLAYER = {
     *(("AXButton", label) for label in _PLAYER_SHORTCUTS),
     ("AXPopUpButton", "settings"), ("AXButton", "settings"),
@@ -222,27 +235,43 @@ def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> Control
     return max(matches, key=lambda row: row[0])[1] if matches else None
 
 
-def _settings(snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
-    if any(_setting_name(c) for c in controls):
-        return _decision(snap, "clarify", "സെറ്റിങ്‌സ് പട്ടിക തുറക്കുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
-                         "Wait for the Settings menu to finish opening.")
-    if gear := _target(controls, {"AXPopUpButton", "AXButton"}, "settings"):
-        return _point(snap, gear, "{label} അമർത്തൂ.", "Open {label}.")
-    return _await_player(snap, controls)
+def ad_marker_name(label: str) -> str | None:
+    """Identify an ad marker and discard its advertiser name or status text."""
+    label = _player_label(label)
+    return next((name for name, pattern in _AD_MARKERS.items() if pattern.search(label)), None)
+
+
+def _ad_marker(control: Control) -> str | None:
+    if control.identifier and control.identifier.startswith(
+        ("youtube-watch:", "youtube-short:", "youtube-channel:", "youtube-playlist:")
+    ):
+        return None  # A search result title can contain ad-related words.
+    if control.role == "AXHeading" and not _AD_HEADING.fullmatch(_phrase(control.label)):
+        return None
+    return ad_marker_name(control.label)
 
 
 def _ad(snap: Snapshot, controls: tuple[Control, ...]) -> Decision | None:
     for label in _SKIP_LABELS:
         if skip := _target(controls, {"AXButton"}, label):
             return _point(snap, skip, "പരസ്യം ഒഴിവാക്കാൻ {label} അമർത്തൂ.", "Use {label} to skip the ad.")
-    if any(
-        re.fullmatch(r"skip(?: ads?)?(?: in .+)?|ad \d+ of \d+|ad will end in .+|video will play after ad",
-                     _phrase(c.label))
-        for c in controls
-    ):
-        return _decision(snap, "clarify", "പരസ്യം തീരുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
-                         "Wait for the ad to finish.")
+    markers = [(marker, c) for c in controls if (marker := _ad_marker(c)) is not None]
+    if any(marker not in _AD_CARD_MARKERS for marker, _ in markers) or _player_ad_card(controls, markers):
+        return _decision(snap, "clarify", "പരസ്യം ഏതാനും സെക്കൻഡിനുള്ളിൽ തീരും.",
+                         "The ad will finish in a few seconds.")
     return None
+
+
+def _player_ad_card(controls: tuple[Control, ...], markers: list[tuple[str, Control]]) -> bool:
+    if not markers or not _has_player(controls):
+        return False
+    seek = _target(controls, {"AXSlider"}, "seek slider")
+    if seek is None:
+        return True
+    left, bottom, width, height = seek.frame
+    # Generic Sponsored badges can also appear in the recommendations beside the player.
+    return any(c.frame[0] < left + width and c.frame[0] + c.frame[2] > left
+               and c.frame[1] < bottom + height + 64 for _, c in markers)
 
 
 @dataclass
@@ -254,25 +283,53 @@ class YouTubeGuide:
     replacing_search: bool = False
     had_player: bool = False
     last_key: tuple[str, str] | None = None
+    retry_at: float | None = None
+    settings_retry_used: bool = False
 
     def decide(self, snap: Snapshot) -> Decision:
         controls = tuple(sorted(snap.controls, key=_rank))
+        deadline, self.retry_at = self.retry_at, None
+        if ad := _ad(snap, controls):
+            return ad
         if self.intent.action == "exit_fullscreen":
             return _decision(snap, "clarify", "ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തുവരാൻ Esc അമർത്തൂ.",
                              "Press Esc to leave full screen.")
-        if ad := _ad(snap, controls):
-            return ad
         if self.intent.action == "find":
             decision = self._find(snap, controls)
         elif self.intent.action == "speed":
-            decision = self._speed(snap, controls)
+            decision = self._speed(snap, controls, deadline)
         elif self.intent.action == "captions":
-            decision = self._captions(snap, controls)
+            decision = self._captions(snap, controls, deadline)
         else:
             decision = self._player(snap, controls)
         if decision.control_id is not None and (target := snap.control(decision.control_id)) is not None:
             self.last_key = _key(target)
         return decision
+
+    def _settings(self, snap: Snapshot, controls: tuple[Control, ...], deadline: float | None) -> Decision:
+        gear = _target(controls, {"AXPopUpButton", "AXButton"}, "settings")
+        if not any(_setting_name(c) for c in controls):
+            if gear is None:
+                return _await_player(snap, controls)
+            if self.settings_retry_used and self.last_key == _key(gear):
+                return self._reopen_settings(snap, gear)
+            return _point(snap, gear, "{label} അമർത്തൂ.", "Open {label}.")
+        if self.settings_retry_used:
+            return _decision(snap, "clarify", "ആ ഓപ്ഷൻ ഇപ്പോഴും സെറ്റിങ്‌സിൽ കാണുന്നില്ല.",
+                             "That option still isn’t visible in Settings.")
+        if gear is not None:
+            now = monotonic()
+            if deadline is not None and now >= deadline:
+                self.settings_retry_used = True
+                return self._reopen_settings(snap, gear)
+            self.retry_at = deadline if deadline is not None else now + _SETTINGS_RETRY_S
+        return _decision(snap, "clarify", "സെറ്റിങ്‌സ് പട്ടിക തുറക്കുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
+                         "Wait for the Settings menu to finish opening.")
+
+    @staticmethod
+    def _reopen_settings(snap: Snapshot, gear: Control) -> Decision:
+        return _point(snap, gear, "{label} അമർത്തി അടച്ചിട്ട് വീണ്ടും തുറക്കൂ.",
+                      "Close {label}, then open it again.")
 
     def _find(self, snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
         search = _target(controls, _SEARCH, "search")
@@ -379,7 +436,7 @@ class YouTubeGuide:
             return _decision(snap, "complete", ml_done, en_done)
         return _await_player(snap, controls)
 
-    def _speed(self, snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
+    def _speed(self, snap: Snapshot, controls: tuple[Control, ...], deadline: float | None) -> Decision:
         rates = []
         for c in controls:
             if c.role in _MENU and c.enabled and (value := _SPEED_PRESET.fullmatch(_phrase(c.label))):
@@ -411,9 +468,9 @@ class YouTubeGuide:
         if self.last_key is not None and _SPEED_PRESET.fullmatch(self.last_key[1]):
             return _decision(snap, "clarify", "വേഗം മാറിയോ എന്ന് വീഡിയോ നോക്കി ഉറപ്പാക്കൂ.",
                              "Check that the video is playing at the speed you chose.")
-        return _settings(snap, controls)
+        return self._settings(snap, controls, deadline)
 
-    def _captions(self, snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
+    def _captions(self, snap: Snapshot, controls: tuple[Control, ...], deadline: float | None) -> Decision:
         cc = next((c for c in controls if c.role in {"AXCheckBox", "AXButton"} and _CC.search(_phrase(c.label))), None)
         if cc is not None and "unavailable" in _phrase(cc.label):
             return _decision(
@@ -447,18 +504,20 @@ class YouTubeGuide:
                              "Check the video for Malayalam subtitles.")
         if cc is not None and cc.enabled and cc.filled is False and not any(_setting_name(c) for c in controls):
             return _point(snap, cc, "സബ്‌ടൈറ്റിൽ ഓണാക്കാൻ {label} അമർത്തൂ.", "Click {label} to turn on captions.")
-        return _settings(snap, controls)
+        return self._settings(snap, controls, deadline)
 
 
 class YouTubePrivacy(PrivacyProfile):
     def filter_snapshot(self, snap: Snapshot) -> Snapshot:
-        # Current settings can carry extra display text. Send only the known row name.
-        controls = tuple(
-            replace(control, label=name, identifier=None, group=None)
-            if (name := _setting_name(control)) in _SHARED_SETTINGS else control
-            for control in snap.controls
-        )
-        return super().filter_snapshot(replace(snap, controls=controls))
+        controls = []
+        for control in snap.controls:
+            if (name := _setting_name(control)) in _SHARED_SETTINGS:
+                control = replace(control, label=name, identifier=None, group=None)
+            elif (marker := _ad_marker(control)) is not None and _key(control) not in _AD_SKIP_BUTTONS:
+                # Share the marker as context, without allowing a pointer to an ad or advertiser.
+                control = replace(control, role="AXStaticText", label=marker, identifier=None, group=None)
+            controls.append(control)
+        return super().filter_snapshot(replace(snap, controls=tuple(controls)))
 
 
 class YouTubePack(SitePack):
@@ -481,7 +540,8 @@ PACK = YouTubePack(
                    "Type the video name in ‘Search’."),
     steps=(),
     privacy=YouTubePrivacy(frozenset((role, _phrase(label)) for role, label in (
-        *_PLAYER, *_PLAYER_SHORTCUT_LABELS, *(("AXButton", label) for label in _SKIP_LABELS),
+        *_PLAYER, *_PLAYER_SHORTCUT_LABELS, *_AD_SKIP_BUTTONS,
+        *(("AXStaticText", label) for label in _AD_MARKERS),
         *((role, "Search") for role in {*_SEARCH, "AXButton"}),
         *((role, label) for role in _SETTINGS_ROLES for label in _SHARED_SETTINGS),
         *((role, "Malayalam") for role in _MENU),

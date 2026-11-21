@@ -140,6 +140,12 @@
       {"id": "speed", "role": "AXMenuItem", "label": "Playback speed Normal"},
       {"id": "quality", "role": "AXMenuItem", "label": "Quality Auto (720p)"}
     ],
+    "settings_partial_ad": [
+      {"id": "gear", "role": "AXPopUpButton", "label": "Settings"},
+      {"id": "ambient", "role": "AXMenuItemCheckbox", "label": "Ambient mode"},
+      {"id": "subs", "role": "AXMenuItem", "label": "Subtitles/CC English (auto-generated)"},
+      {"id": "advertiser", "role": "AXLink", "label": "Visit advertiser — Example advertiser"}
+    ],
     "speed_menu": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
       {"id": "go", "role": "AXButton", "label": "Search"},
@@ -276,6 +282,11 @@
     "ad_skip_plain": [
       {"id": "skip", "role": "AXButton", "label": "Skip"}
     ],
+    "ad_at_start": [
+      {"id": "pause", "role": "AXButton", "label": "Pause (k)"},
+      {"id": "ad-count", "role": "AXStaticText", "label": "Ad 1 of 2"},
+      {"id": "ad-centre", "role": "AXButton", "label": "My Ad Centre"}
+    ],
     "ad_skip_plural": [
       {"id": "skip", "role": "AXButton", "label": "Skip ads"}
     ],
@@ -314,7 +325,9 @@
     {"id": "speed-choice", "language": "english", "question": "Set playback speed to 1.5", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "faster"]]},
     {"id": "ask-faster-speed", "language": "malayalam", "question": "വേഗം കൂട്ടൂ", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "clarify", null, "1.25"]]},
     {"id": "ad-skip-and-resume", "language": "english", "question": "Pause this video", "walk": [["ad", "point", "skip"], ["watch", "point", "pause"]]},
-    {"id": "ad-wait", "language": "english", "question": "Pause this video", "walk": [["ad_wait", "clarify", null, "Wait for the ad"]]},
+    {"id": "ad-wait", "language": "english", "question": "Pause this video", "walk": [["ad_wait", "clarify", null, "The ad will finish in a few seconds"]]},
+    {"id": "find-finishes-after-the-ad", "language": "english", "question": "Find and play Darshana Hridayam", "walk": [["home", "point", "search"], ["typed", "point", "go"], ["results", "point", "best"], ["ad_at_start", "clarify", null, "The ad will finish in a few seconds"], ["ad_skip_plain", "point", "skip"], ["watch", "complete", null, "playing"]]},
+    {"id": "slower-waits-through-ad-menu", "language": "manglish", "question": "Speed kurakku", "walk": [["watch_paused", "point", "gear"], ["settings_partial_ad", "clarify", null, "The ad will finish in a few seconds"], ["ad_skip_plain", "point", "skip"], ["settings_partial", "clarify", null, "Wait for the Settings menu"], ["settings_values", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "make-it-slower", "language": "english", "question": "Make it slower", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "slow-it-down", "language": "english", "question": "Slow it down", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "vegatha", "language": "malayalam", "question": "വേഗത കുറയ്ക്കൂ", "walk": [["watch", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},

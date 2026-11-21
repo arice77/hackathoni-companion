@@ -115,6 +115,83 @@ class YouTubeTests(unittest.TestCase):
         self.assertEqual((closed.kind, closed.control_id), ("clarify", None))
         self.assertIn("Check that", closed.instruction_en)
 
+    def test_waits_for_ad_markers_and_keeps_advertiser_copy_out_of_sarvam(self):
+        playing = snapshot("watch")
+        for label, marker in (
+            ("Ad · Some advertiser", "Ad"), ("Sponsored by Some advertiser", "Sponsored"),
+            ("Ad 1 of 2", "Ad break"), ("My Ad Centre", "My Ad Centre"),
+            ("Visit advertiser — Some advertiser", "Visit advertiser"),
+        ):
+            with self.subTest(label=label):
+                ad = Control("ad", "AXButton", label, (20, 275, 150, 20))
+                snap = replace(playing, controls=(*playing.controls, ad))
+                guide = PACK.start_guidance("Resume the video")
+                decision = guide.decide(snap)
+                self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+                self.assertEqual(decision.instruction_en, "The ad will finish in a few seconds.")
+                safe = PACK.privacy.filter_snapshot(snap).control("ad")
+                self.assertEqual((safe.role, safe.label), ("AXStaticText", marker))
+                self.assertEqual(guide.decide(playing).kind, "complete")
+
+    def test_sponsored_search_card_does_not_block_the_results(self):
+        results = snapshot("results")
+        sponsor = Control("sponsor", "AXStaticText", "Sponsored", (20, 275, 150, 20))
+        guide = PACK.start_guidance("Find Darshana Hridayam")
+        decision = guide.decide(replace(results, controls=(*results.controls, sponsor)))
+        self.assertEqual(decision.control_id, "best")
+
+    def test_sponsored_recommendation_beside_the_player_does_not_block_playback(self):
+        playing = snapshot("watch")
+        sponsor = Control("sponsor", "AXStaticText", "Sponsored", (300, 20, 150, 20))
+        guide = PACK.start_guidance("Resume the video")
+        decision = guide.decide(replace(playing, controls=(*playing.controls, sponsor)))
+        self.assertEqual(decision.kind, "complete")
+
+    def test_partial_settings_reopens_once_then_advances_when_the_row_appears(self):
+        planner = SarvamPlanner("web_site", log_calls=False)
+        question = "Play it slower"
+        partial = snapshot("settings_partial")
+        with (
+            patch("companion.sites.youtube.monotonic", return_value=10.0) as clock,
+            patch.object(sarvam, "_post") as post,
+        ):
+            self.assertEqual(planner.decide(question, snapshot("watch_paused")).control_id, "gear")
+            self.assertEqual(planner.decide(question, partial).kind, "clarify")
+            self.assertEqual(planner.retry_at, 13.0)
+            clock.return_value = 12.9
+            self.assertEqual(planner.decide(question, partial).kind, "clarify")
+            self.assertEqual(planner.retry_at, 13.0)
+            clock.return_value = 13.0
+            decision = planner.decide(question, partial)
+            self.assertEqual((decision.kind, decision.control_id), ("point", "gear"))
+            self.assertEqual(decision.instruction_en, "Close ‘Settings’, then open it again.")
+            self.assertIsNone(planner.retry_at)
+            closed = planner.decide(question, snapshot("watch_paused"))
+            self.assertEqual((closed.control_id, closed.instruction_en), ("gear", decision.instruction_en))
+            clock.return_value = 18.0
+            decision = planner.decide(question, partial)
+            self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+            self.assertIn("still isn’t visible", decision.instruction_en)
+            self.assertIsNone(planner.retry_at)
+            self.assertEqual(planner.decide(question, snapshot("settings_values")).control_id, "speed")
+            self.assertEqual(planner.decide(question, snapshot("speed_menu")).control_id, "slow")
+            post.assert_not_called()
+
+    def test_ad_cancels_the_settings_timer_until_normal_playback_returns(self):
+        guide = PACK.start_guidance("Play it slower")
+        partial = snapshot("settings_partial")
+        with patch("companion.sites.youtube.monotonic", return_value=10.0) as clock:
+            self.assertEqual(guide.decide(partial).kind, "clarify")
+            self.assertEqual(guide.retry_at, 13.0)
+            clock.return_value = 18.0
+            self.assertIn("The ad", guide.decide(snapshot("settings_partial_ad")).instruction_en)
+            self.assertIsNone(guide.retry_at)
+            clock.return_value = 20.0
+            self.assertEqual(guide.decide(partial).kind, "clarify")
+            self.assertEqual(guide.retry_at, 23.0)
+            self.assertEqual(guide.decide(snapshot("settings_values")).control_id, "speed")
+            self.assertIsNone(guide.retry_at)
+
     def test_only_supported_host_and_safe_provider_controls(self):
         self.assertIs(pack_for(snapshot("watch")), PACK)
         self.assertIsNone(pack_for(replace(snapshot("watch"), window_title="www.youtube.com.example.net")))

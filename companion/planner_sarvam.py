@@ -522,6 +522,13 @@ class SarvamPlanner:
         """Begin another submission, including when the user repeats the same words."""
         self._question_version += 1
 
+    @property
+    def retry_at(self) -> float | None:
+        """Monotonic deadline for rechecking a cached local guide decision."""
+        if self._active_version != self._question_version:
+            return None
+        return getattr(self._site_guide, "retry_at", None)
+
     @staticmethod
     def is_skip_phrase(text: str) -> bool:
         return any(_question_phrase(part) in _SKIP_PHRASES for part in text.split(" / ", 1))
