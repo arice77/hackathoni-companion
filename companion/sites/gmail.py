@@ -43,7 +43,9 @@ _CHROME = {
         *((step.role, step.label) for step in (COMPOSE, REPLY, *_STEPS)),
         *((role, "Search mail") for role in SEARCH_ROLES),
         *(("AXLink", name) for name in ("Inbox", "Sent", "Drafts", "Starred", "Snoozed")),
-        ("AXStaticText", "Open email"), ("AXButton", "Back"),
+        *(("AXStaticText", name) for name in ("Open email", "Message sent", "Sending…", "Undo")),
+        *((role, "Undo") for role in ("AXButton", "AXLink", "AXMenuButton", "AXPopUpButton")),
+        ("AXButton", "Back"),
     )
 }
 
@@ -111,6 +113,7 @@ class GmailGuide:
         self._pending: SiteStep | None = None
         self._confirmed: set[SiteStep] = set()
         self._saw_editor = False
+        self._sent_notice_after_editor: bool | None = None
 
     @staticmethod
     def _note(snap: Snapshot, ml: str, en: str, *, unsupported: bool = False) -> Decision:
@@ -168,21 +171,29 @@ class GmailGuide:
         if self._goal not in {"compose", "reply"}:
             return self._note(snap, "പുതിയ ഇമെയിൽ എഴുതാനോ, മറുപടി നൽകാനോ, മെയിൽ തിരയാനോ, ഫോട്ടോ ചേർക്കാനോ സഹായിക്കാം.",
                               "I can help write, reply, search for mail, or attach a photo.", unsupported=True)
-        if self._goal == "reply" and not any(control.role == "AXStaticText" and control.label == "Open email"
-                                             for control in snap.controls):
+        notices = {control.label for control in snap.controls if control.role == "AXStaticText"}
+        editor = any(step.target(snap) is not None for step in (TO, SUBJECT, BODY, SEND))
+        if "Message sent" not in notices:
+            self._sent_notice_after_editor = None
+        elif self._sent_notice_after_editor is None:
+            self._sent_notice_after_editor = self._saw_editor
+        if self._sent_notice_after_editor and not editor:
+            return Decision("complete", snap.snapshot_id, "ഇമെയിൽ അയച്ചു", "Your email was sent", source="sarvam")
+        if self._saw_editor and "Sending…" in notices:
+            return self._note(snap, "ഇമെയിൽ അയയ്ക്കുകയാണ്. ഒന്ന് കാത്തിരിക്കൂ.", "Gmail is sending your email. One moment.")
+        if self._goal == "reply" and "Open email" not in notices and (editor or not self._saw_editor):
             return self._note(snap, "മറുപടി അയയ്ക്കേണ്ട ഇമെയിൽ നിങ്ങൾ തന്നെ തുറന്നിട്ട് ചോദിക്കൂ.",
                               "Open the email you want to reply to, then ask again.")
-        editor = any(step.target(snap) is not None for step in (TO, SUBJECT, BODY, SEND))
         if not editor:
             self._confirmed.clear()
             if self._saw_editor:
                 return self._note(snap, "എഴുതിയ ഇമെയിൽ ഇപ്പോൾ കാണുന്നില്ല. അത് അയച്ചോ എന്ന് എനിക്ക് ഉറപ്പിക്കാൻ കഴിയില്ല.",
                                   "The draft is no longer visible. I can’t confirm whether it was sent.")
             return self._point(snap, REPLY if self._goal == "reply" else COMPOSE)
-        self._saw_editor = True
         if self._goal == "reply" and (TO.target(snap) or SUBJECT.target(snap)):
             return self._note(snap, "ഇത് പുതിയ ഇമെയിൽ എഴുതുന്ന ബോക്സാണ്. മറുപടി നൽകേണ്ട മെയിലിലെ ‘Reply’ തുറക്കൂ.",
                               "This is a new email draft. Open ‘Reply’ on the email you want to answer.")
+        self._saw_editor = True
         fields = (TO, SUBJECT, BODY) if self._goal == "compose" else (BODY,)
         for step in fields:
             target = step.target(snap)

@@ -15,6 +15,8 @@ from companion.voice import sarvam
 
 FRAME = (0, 0, 800, 600)
 OPEN_EMAIL = Control("open-email", "AXStaticText", "Open email", FRAME, enabled=False)
+MESSAGE_SENT = Control("message-sent", "AXStaticText", "Message sent", FRAME, enabled=False)
+SENDING = Control("sending", "AXStaticText", "Sending…", FRAME, enabled=False)
 COMPOSE_QUESTION = "എനിക്ക് ഒരു ഇമെയിൽ അയയ്ക്കണം"
 
 
@@ -78,6 +80,33 @@ class GmailSiteTests(unittest.TestCase):
         closed = self.guide.decide(make_screen(COMPOSE))
         self.assertEqual((closed.kind, closed.control_id), ("clarify", None))
         self.assertIn("can’t confirm", closed.instruction_en)
+
+    def test_compose_completes_when_the_new_sent_notice_appears(self):
+        self.point(make_screen(COMPOSE, extra=(MESSAGE_SENT,)), COMPOSE)
+        ready = make_screen(TO, SUBJECT, BODY, SEND, filled=("To", "Subject", "Message Body"))
+        self.point(ready, SEND)
+        waiting = self.guide.decide(make_screen(COMPOSE, extra=(SENDING,)))
+        self.assertEqual(waiting.kind, "clarify")
+        self.assertIn("Gmail is sending", waiting.instruction_en)
+        confirmed = make_screen(COMPOSE, extra=(MESSAGE_SENT,))
+        for _ in range(2):
+            complete = self.guide.decide(confirmed)
+            self.assertEqual((complete.kind, complete.instruction_en, complete.instruction),
+                             ("complete", "Your email was sent", "ഇമെയിൽ അയച്ചു"))
+            self.assertEqual(validate(complete, confirmed), (True, "ok"))
+
+    def test_a_notice_present_before_compose_does_not_confirm_this_draft(self):
+        self.point(make_screen(COMPOSE, extra=(MESSAGE_SENT,)), COMPOSE)
+        self.point(make_screen(TO, SUBJECT, BODY, SEND, filled=("To", "Subject", "Message Body"),
+                               extra=(MESSAGE_SENT,)), SEND)
+        unchanged = self.guide.decide(make_screen(COMPOSE, extra=(MESSAGE_SENT,)))
+        self.assertEqual(unchanged.kind, "clarify")
+        self.assertIn("can’t confirm", unchanged.instruction_en)
+
+    def test_reply_completes_if_gmail_returns_to_the_inbox_with_a_sent_notice(self):
+        self.guide = PACK.start_guidance("How do I reply to this email?")
+        self.point(make_screen(BODY, SEND, filled=("Message Body",), extra=(OPEN_EMAIL,)), SEND)
+        self.assertEqual(self.guide.decide(make_screen(COMPOSE, extra=(MESSAGE_SENT,))).kind, "complete")
 
     def test_next_acknowledges_only_one_unknown_field_per_call(self):
         editor = make_screen(TO, SUBJECT, BODY, ATTACH, SEND)
