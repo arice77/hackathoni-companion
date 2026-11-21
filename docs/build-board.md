@@ -1,7 +1,7 @@
 # Build board
 
 > **Snapshot 22 Nov 01:52 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes. YouTube ad handling,
-> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); QA rerunning YouTube Q2 live.
+> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); QA rerun failed: home-page display ad read as a player ad (fix with planner).
 > Panel revamp merged. Orchestrator state:
 > `.context/orchestrator-state.md`.
 
@@ -83,6 +83,8 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | 49d4b42 (web) | Reader keeps YouTube static texts only when they match "Ad", "Sponsored", "Ad N of M" or an ad timer, as fixed labels, never pointable | compatible with planner markers |
 
 Next: QA reruns `youtube_follow_pointer_e2e` once, then orchestrator reruns it before Abin retests.
+
+QA rerun 22 Nov ~01:53 (runs/qa/20261122-015201): **FAIL at step 1**. A home-page display ad's "My Ad Centre" button was read as a player ad, so the guide said "wait for the ad" and never pointed at Search. Fix routed to planner builder: ad handling only in player context; feed/results ads ignored.
 
 ## Site packs (started 22 Nov ~00:15)
 
