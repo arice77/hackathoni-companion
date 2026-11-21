@@ -12,6 +12,14 @@ Status words: planned · building · in QA · in review · merged · demo-ready.
    overlay language: done (coordinator). Voice: building.
 3. The problem domain (GST or something else) is chosen **after** these basics work. The GST plan below is parked.
 
+## Bugs from Abin's hands-on test (21 Nov ~22:50)
+
+| Bug | Cause | Fix | Owner | Status |
+|---|---|---|---|---|
+| Every question after the first got the same refusal | app reused the background answer on an unchanged screen, ignoring the new question | new question clears the result; late answers dropped | coordinator | fixed + live-verified |
+| Broad questions ("how do I use this site?", "help me fill this form") refused | planner policy too strict | orientation line + point at the first sensible step | Codex sol (planner) | briefed |
+| Pizza size: "select Small", "select Medium", back and forth | reader reports no radio state; planner picks an option for the user | reader: radio `filled` + `group` label + group control filled when any option selected; planner: point at the whole choice set, list the options, user decides, move on once any is chosen | Codex sol (reader) + Codex sol (planner) | briefed |
+
 ## Shared-Mac rule
 
 Abin uses this Mac during the build. Live checks fail when he moves windows; rerun on an idle screen before calling a
