@@ -5,7 +5,8 @@ parse, the one Sarvam intent call, YouTube guide, validator) with the network bl
 intent call, a MOCK provider answers it, and the scenario counts that exactly one call was made. Live coverage of the same
 behaviour is youtube_follow_pointer_e2e.py / youtube_utterances_e2e.py / youtube_player_controls_e2e.py.
 
-Mapping to the 22 Nov hand-test fixes (orchestrator list): 3 result matched by URL hash despite a hover label rewrite;
+Mapping to the 22 Nov hand-test fixes (orchestrator list; since the planner follow-up the Malayalam slow-down sentence and
+"make it faster" are local parses with zero intent calls, and an unclear request asks what to do): 3 result matched by URL hash despite a hover label rewrite;
 4 unparsed Manglish/Malayalam/English go to the YouTube guide (never the generic form stepper); 5 arrow stays on the
 title anchor; 6 after scrolling past the choice the pointer says scroll back; 7 hover-preview ads on results are ignored.
 Fixes 1, 2 and 8 are voice/panel items: voice_keyterms.py, panel tests (unit.py), voice_english_panel_ml.py.
@@ -115,18 +116,18 @@ def slow_walk(question):
 
 
 @scenario
-def s_abin_slow_sentences_use_one_intent_call_then_the_youtube_guide():
-    """Bug 4: unparsed Malayalam / English / mixed requests to slow down get ONE intent call, then Settings -> countdown -> 0.75."""
-    for q in ("എനിക്ക് ഈ വീഡിയോ സ്ലോ ആക്കണം.", "I need to slow down this video.",
+def s_abin_slow_sentences_resolve_locally_or_with_one_intent_call():
+    """Bug 4: Abin's Malayalam sentence is a LOCAL parse (zero intent calls); the other slow-down sentences take at most one
+    call (mock) that carries only the question; all reach Settings -> countdown -> 0.75 in the YouTube guide, never the form stepper."""
+    with blocked_network() as calls:  # no provider installed: any call would fail the scenario
+        slow_walk("എനിക്ക് ഈ വീഡിയോ സ്ലോ ആക്കണം.")
+        assert not calls
+    for q in ("I need to slow down this video.",
               "എനിക്ക് വീഡിയോ ഇച്ചിരി സ്ലോ ആക്കണം / I need to slow down the video a bit"):
         with blocked_network(intent_provider("slower")) as calls:
             slow_walk(q)
-            # "a bit" is a local parse (no call); the others take exactly one call and send only the question
             assert len(calls) <= 1, f"{q!r}: {len(calls)} provider calls"
             assert all(c["messages"][1]["content"] == q for c in calls), "the intent call sent more than the question"
-    with blocked_network(intent_provider("slower")) as calls:
-        slow_walk("എനിക്ക് ഈ വീഡിയോ സ്ലോ ആക്കണം.")
-        assert len(calls) == 1, f"expected exactly one intent call, got {len(calls)}"
 
 
 @scenario
@@ -147,19 +148,32 @@ def s_unparsed_find_sentence_uses_the_mock_intent_and_types_the_title():
         assert len(calls) == 1
 
 
+UNCLEAR = ("ഇതിൽ എന്തെങ്കിലും ചെയ്യാമോ", "can you do something with this")
+
+
 @scenario
-def s_provider_failure_degrades_inside_the_youtube_guide_never_the_form_stepper():
-    """Bug 4 (loop): if the intent call fails, the YouTube guide still answers and the answer is stable, not a form loop."""
-    def fail(payload):
+def s_unclear_request_while_a_video_plays_asks_what_to_do_never_points_at_search():
+    """Bug 4 (loop): a request that no local phrase understands and the intent call cannot place (mock says unclear, or the call
+    fails) must, with a video playing, ask what to do with it (pause, slow down, subtitles...), never point at Search or the form."""
+    def unclear(payload):
+        return intent_provider(None)(payload)
+
+    def outage(payload):
         raise sarvam.SarvamError("mock outage")
-    with blocked_network(fail):
-        w = Walk("എനിക്ക് ഈ വീഡിയോ സ്ലോ ആക്കണം.")
-        seen = set()
-        for _ in range(5):
-            d = w.step(home(), "point", "Search")
-            seen.add(d.instruction_en)
-            assert "form" not in d.instruction_en.lower() and "Next," not in d.instruction_en
-        assert len(seen) == 1, f"the answer changed between identical screens: {seen}"
+
+    for provider in (unclear, outage):
+        for q in UNCLEAR:
+            with blocked_network(provider):
+                w = Walk(q)
+                seen = set()
+                for _ in range(4):  # identical screens: the answer is stable
+                    d = w.step(watch(), "clarify", not_text="form")
+                    text = d.instruction_en.lower()
+                    assert d.control_id is None, "a clarify must not point"
+                    assert any(word in text for word in ("pause", "slow", "subtitle")), f"does not offer what to do: {d.instruction_en!r}"
+                    assert "search" not in text, f"mentions Search while a video plays: {d.instruction_en!r}"
+                    seen.add(d.instruction_en)
+                assert len(seen) == 1, f"the answer changed between identical screens: {seen}"
 
 
 # ---- search -> result -> play (bugs 3, 5, 6, 7) ------------------------------------------------------
@@ -274,10 +288,17 @@ def s_faster_points_at_the_1_25_preset_and_completes():
         w.step(watch(menu=MENU), "point", "Playback speed")
         w.step(watch(menu=MENU, panel=1), "point", "1.25", text="playback speed")
         w.step(watch(panel=1.25), "complete", text="1.25")
-    with blocked_network(intent_provider("faster")) as calls:  # "make it faster" is not a local phrase: one mock call
+
+
+@scenario
+def s_make_it_faster_is_a_local_parse():
+    """'make it faster' needs ZERO intent calls (planner follow-up of 22 Nov) and walks Settings -> Playback speed -> 1.25."""
+    with blocked_network() as calls:  # no provider installed: any call would fail the scenario
         w = Walk("make it faster")
         w.step(watch(), "point", "Settings")
-        assert len(calls) == 1
+        w.step(watch(menu=MENU), "point", "Playback speed")
+        w.step(watch(menu=MENU, panel=1), "point", "1.25")
+        assert not calls
 
 
 @scenario
