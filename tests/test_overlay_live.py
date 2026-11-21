@@ -49,6 +49,7 @@ def main():
     win = A.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         ((160, 260), (310, 150)), A.NSWindowStyleMaskTitled, A.NSBackingStoreBuffered, False)
     win.setTitle_("Companion pointer test")
+    win.setLevel_(A.NSFloatingWindowLevel)
     counter = SketchButtonCounter.alloc().init()
     counter.clicks = 0
     button = A.NSButton.buttonWithTitle_target_action_("Practice", counter, "clicked:")
@@ -82,7 +83,11 @@ def main():
 
         # Use the system hit-test result, then post to our own app queue. A
         # foreign window, including one moved here mid-test, cannot get a click.
-        recipient = A.NSWindow.windowNumberAtPoint_belowWindowWithWindowNumber_(centre, 0)
+        def window_at_centre():
+            return A.NSWindow.windowNumberAtPoint_belowWindowWithWindowNumber_(centre, 0)
+
+        pump_until(lambda: window_at_centre() == win.windowNumber())
+        recipient = window_at_centre()
         assert recipient == win.windowNumber(), (recipient, win.windowNumber(), panel.windowNumber())
         location = win.convertPointFromScreen_(centre)
         for kind in (A.NSEventTypeLeftMouseDown, A.NSEventTypeLeftMouseUp):

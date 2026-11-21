@@ -1,7 +1,7 @@
 """Original AppKit paths and text layout for the selected plum and paper style."""
 
 from functools import lru_cache
-from math import ceil, hypot
+from math import ceil, cos, hypot, radians, sin
 from pathlib import Path
 from random import Random
 
@@ -65,53 +65,85 @@ def line_path(points, width, close=False):
     return path
 
 
-def outline(target, seed):
+ROUGHNESS = 1.9
+PAPER_ANGLE = -2
+TILT_SIN = abs(sin(radians(PAPER_ANGLE)))
+TILT_COS = cos(radians(PAPER_ANGLE))
+PAD_X, PAD_Y = 12, 7
+
+
+def outline(target, seed, lean):
+    """One pen pass. Bow each side, then extend its tangents beyond the corners."""
     x, y, w, h = target
     rng = Random(seed)
-
-    def jitter():
-        return rng.uniform(-1.9, 1.9)
-
     left, right = x - 8, x + w + 8
     top, bottom = y - 7, y + h + 7
+    # Each pass starts at slightly different corners. A modest offset plus
+    # independent errors lets the lines meet at some corners and splay at others.
     corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
-    corners = [(a + jitter(), b + jitter()) for a, b in corners]
+    corners = [(a + lean * .85 + rng.uniform(-ROUGHNESS, ROUGHNESS),
+                b + lean * .85 + rng.uniform(-ROUGHNESS, ROUGHNESS)) for a, b in corners]
     path = line_path(corners[:1], 1.8)
+    tails = []
     for (sx, sy), (ex, ey) in zip(corners, corners[1:] + corners[:1]):
         dx, dy = ex - sx, ey - sy
-        first = (sx + dx * .33 + jitter(), sy + dy * .33 + jitter())
-        second = (sx + dx * .67 + jitter(), sy + dy * .67 + jitter())
+        length = hypot(dx, dy)
+        ux, uy = dx / length, dy / length
+        bow = min(1.55 * ROUGHNESS, length * .035) * rng.uniform(.8, 1.2) * lean
+        first = (sx + dx * .30 - uy * bow, sy + dy * .30 + ux * bow)
+        second = (sx + dx * .72 - uy * bow, sy + dy * .72 + ux * bow)
         path.curveToPoint_controlPoint1_controlPoint2_((ex, ey), first, second)
+        before, after = rng.uniform(.4, 1.6), rng.uniform(1.4, 4.2)
+        tails.extend([((sx - ux * before, sy - uy * before), (sx, sy)),
+                      ((ex, ey), (ex + ux * after, ey + uy * after))])
     path.closePath()
+    for start, end in tails:
+        path.moveToPoint_(start)
+        path.lineToPoint_(end)
     return path
 
 
-def draw_arrow(note, target):
+def arrow_ends(note, target):
     x, y, w, h = note
     tx, ty, tw, th = target
-    # Select facing edges. A small horizontal offset gives the stem a bend.
-    if y+h <= ty or ty+th <= y:
-        above = y+h <= ty
-        ex = clamp(x+w/2, tx+tw*.22, tx+tw*.78)
-        ey = ty-11 if above else ty+th+11
-        sx = clamp(ex+22, x+16, x+w-16)
-        sy = y+h-2 if above else y+2
+    # Start just inside the paper. The last few points are covered by the
+    # rotated card, so the ink meets its edge cleanly in either direction.
+    if y + h <= ty or ty + th <= y:
+        above = y + h <= ty
+        points_left = x + w / 2 >= tx + tw / 2
+        inset = min(30, tw * .25)
+        ex = tx + tw - inset if points_left else tx + inset
+        reach = 46 if points_left else -46
+        sx = clamp(ex + reach, x + 10, x + w - 10)
+        # A control can extend beyond both screen edges. Choose a reachable
+        # point on its border after the paper has been clamped to this display.
+        ex = clamp(sx - reach, tx + inset, tx + tw - inset)
+        sy = y + h - 11 if above else y + 11
+        ey = ty - 11 if above else ty + th + 11
     else:
-        left = x+w <= tx
-        ex, sx = (tx-12, x+w-2) if left else (tx+tw+12, x+2)
-        ey = clamp(y+h/2, ty, ty+th)
-        sy = clamp(ey+12, y+10, y+h-10)
-    dx, dy = ex-sx, ey-sy
+        left = x + w <= tx
+        ex, sx = (tx - 12, x + w - 6) if left else (tx + tw + 12, x + 6)
+        ey = clamp(y + h / 2, ty, ty + th)
+        sy = clamp(ey + 23, y + 10, y + h - 10)
+    return (sx, sy), (ex, ey)
+
+
+def draw_arrow(note, target):
+    start, end = arrow_ends(note, target)
+    sx, sy = start
+    ex, ey = end
+    dx, dy = ex - sx, ey - sy
     length = max(1, hypot(dx, dy))
-    nx, ny = -dy/length, dx/length
-    path = line_path([(sx, sy)], 1.8)
-    c2 = (ex-dx*.28+nx*4, ey-dy*.28+ny*4)
-    path.curveToPoint_controlPoint1_controlPoint2_((ex,ey), (sx+dx*.3+nx*4, sy+dy*.3+ny*4), c2)
+    nx, ny = -dy / length, dx / length
+    path = line_path([start], 1.8)
+    first = (sx + dx * .3 + nx * 5, sy + dy * .3 + ny * 5)
+    second = (ex - dx * .28 + nx * 4, ey - dy * .28 + ny * 4)
+    path.curveToPoint_controlPoint1_controlPoint2_(end, first, second)
     path.stroke()
-    length = max(1, hypot(c2[0]-ex, c2[1]-ey))
-    ax, ay = (c2[0]-ex)/length, (c2[1]-ey)/length
-    line_path([(ex+ax*9-ay*4, ey+ay*9+ax*4), (ex,ey),
-               (ex+ax*8+ay*4, ey+ay*8-ax*4)], 1.8).stroke()
+    length = max(1, hypot(second[0] - ex, second[1] - ey))
+    ax, ay = (second[0] - ex) / length, (second[1] - ey) / length
+    line_path([(ex + ax * 10 - ay * 4, ey + ay * 10 + ax * 4), end,
+               (ex + ax * 8 + ay * 4, ey + ay * 8 - ax * 4)], 1.8).stroke()
 
 
 class SketchPointerView(A.NSView):
@@ -121,33 +153,63 @@ class SketchPointerView(A.NSView):
     @objc.python_method
     def configure(self, target, visible, instruction, subtitle):
         self.target = target
-        self.outlines = [outline(target, seed) for seed in (31, 47)]
-        self.lines = []
-        for text, size in ((instruction, 25), (subtitle, 17)):
-            if text:
-                self.lines.append(lettering(text, size))
-        natural = max((line.size().width for line in self.lines), default=0)
-        width = min(visible[2]-16, 460, max(120, ceil(natural)+38))
-        self.heights = [ceil(line.boundingRectWithSize_options_(
-            (width-36, 10000), TEXT_OPTIONS).size.height) for line in self.lines]
-        height = 26 + sum(self.heights) + 4 * max(0, len(self.lines)-1)
-        self.note = place_note(target, visible, width, height)
+        self.outlines = [outline(target, 31, 1), outline(target, 47, -.8)]
+        self.lines = [lettering(text, size) for text, size in ((instruction, 25), (subtitle, 17))
+                      if text.strip()]
+
+        # Reserve room for rotation before measuring. Use the widest actual
+        # wrapped line so short translations and single-word prompts fit snugly.
+        available_w, available_h = visible[2] - 20, visible[3] - 20
+        max_width = min(420, available_w - min(available_h, 420) * TILT_SIN)
+        measure_width = max(1, max_width - 2 * PAD_X)
+        sizes = [line.boundingRectWithSize_options_((measure_width, 10000), TEXT_OPTIONS).size
+                 for line in self.lines]
+        self.text_width = min(measure_width, ceil(max((size.width for size in sizes), default=0)) + 1)
+        self.heights = [ceil(size.height) for size in sizes]
+        width = self.text_width + 2 * PAD_X
+        height = 2 * PAD_Y + sum(self.heights) + 2 * max(0, len(sizes) - 1)
+        # Keep even an unusually tall note's rotated paper inside the screen.
+        height = min(height, (available_h - width * TILT_SIN) / TILT_COS,
+                     (available_w - width * TILT_COS) / TILT_SIN)
+        self.paper_size = width, height
+        self.note = place_note(target, visible, width * TILT_COS + height * TILT_SIN,
+                               height * TILT_COS + width * TILT_SIN)
 
     def drawRect_(self, dirty):
         INK.setStroke()
         for path in self.outlines:
             path.stroke()
         draw_arrow(self.note, self.target)
-        x, y, w, h = self.note
-        paper = line_path([(x+4,y+4), (x+w-3,y), (x+w,y+h-4), (x,y+h)], .8, True)
-        PAPER.setFill()
-        BORDER.setStroke()
-        paper.fill()
-        paper.stroke()
-        top = y+12
-        for line, height in zip(self.lines, self.heights):
-            room = min(height, y+h-10-top)
-            if room <= 0:
-                break
-            line.drawWithRect_options_(((x+18, top), (w-36, room)), TEXT_OPTIONS)
-            top += height+4
+
+        x, y, nw, nh = self.note
+        w, h = self.paper_size
+        A.NSGraphicsContext.saveGraphicsState()
+        try:
+            transform = A.NSAffineTransform.transform()
+            transform.translateXBy_yBy_(x + nw / 2, y + nh / 2)
+            transform.rotateByDegrees_(PAPER_ANGLE)
+            transform.translateXBy_yBy_(-w / 2, -h / 2)
+            transform.concat()
+            paper = line_path([(3, 1), (w - 2, 0), (w, h - 1), (0, h)], .8, True)
+            A.NSGraphicsContext.saveGraphicsState()
+            try:
+                shadow = A.NSShadow.alloc().init()
+                shadow.setShadowColor_(A.NSColor.colorWithSRGBRed_green_blue_alpha_(.28, .18, .10, .24))
+                shadow.setShadowOffset_((0, -3))
+                shadow.setShadowBlurRadius_(5)
+                shadow.set()
+                PAPER.setFill()
+                paper.fill()
+            finally:
+                A.NSGraphicsContext.restoreGraphicsState()
+            BORDER.setStroke()
+            paper.stroke()
+            top = PAD_Y
+            for line, height in zip(self.lines, self.heights):
+                room = min(height, h - PAD_Y - top)
+                if room <= 0:
+                    break
+                line.drawWithRect_options_(((PAD_X, top), (self.text_width, room)), TEXT_OPTIONS)
+                top += height + 2
+        finally:
+            A.NSGraphicsContext.restoreGraphicsState()
