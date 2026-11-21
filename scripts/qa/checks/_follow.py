@@ -53,7 +53,8 @@ MAX_SCROLLS = 3
 
 def is_scroll(rec: dict) -> bool:
     """A 'Scroll down to continue.' clarify (the planner asks the person to bring the next control into view)."""
-    return rec.get("event") == "decision" and rec.get("kind") == "clarify" and "scroll" in rec.get("instruction_en", "").lower()
+    low = rec.get("instruction_en", "").lower()
+    return rec.get("event") == "decision" and rec.get("kind") == "clarify" and "scroll" in low and "scroll inside" not in low
 
 
 def walk_decisions(decisions):

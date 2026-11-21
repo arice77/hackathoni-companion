@@ -180,7 +180,9 @@ SCROLL_WORDS = ("scroll",)
 
 
 def is_scroll_clarify(kind: str, text: str) -> bool:
-    return kind == "clarify" and any(w in (text or "").lower() for w in SCROLL_WORDS)
+    """A request to scroll the PAGE. "Scroll inside <a menu>" is about a panel, not the page: never page-scrolled."""
+    low = (text or "").lower()
+    return kind == "clarify" and any(w in low for w in SCROLL_WORDS) and "scroll inside" not in low
 
 
 def scroll_down(area, fraction: float = 0.6) -> str:

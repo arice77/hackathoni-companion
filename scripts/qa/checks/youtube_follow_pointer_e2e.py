@@ -22,7 +22,9 @@ QUESTION = os.environ.get("QA_YT_QUESTION", "ദർശന പാട്ട് പ
 THEN_ASK = os.environ.get("QA_YT_SLOWER", "Play it slower")  # known pack phrase; "make it slower" does not parse
 SONG_TEXT, SONG_TOKEN = "Darshana Hridayam", "darshana"
 URL, HOST, PREFIX = "https://www.youtube.com/", "youtube.com", "https://www.youtube.com/"
-STOP_LABEL = r"^0?\.75$"
+# YouTube's speed panel has presets 1.0, 1.25, 1.5, 2.0, 3.0 and a 0.05 stepper: no 0.75 button. Landing on a 0.75 button
+# or on "Decrease playback speed 0.05" (five presses from Normal reach 0.75) is the slower-speed target.
+STOP_LABEL = r"^(?:0?\.75|decrease playback speed\b.*)$"
 AD = re.compile(r"\b(ad|ads|advert|advertisement|sponsored)\b", re.IGNORECASE)
 SEARCH_ROLES = {"AXComboBox", "AXSearchField", "AXTextField"}
 SKIP_AD = re.compile(r"^(?:skip ads?\b|skip$)", re.IGNORECASE)  # the ad buttons the pack may offer
@@ -41,7 +43,7 @@ FIND_STEPS = [
 SPEED_STEPS = [
     ("Settings", lambda r: _lab(r) == "settings"),
     ("Playback speed", lambda r: _lab(r).startswith("playback speed")),
-    ("0.75", lambda r: re.fullmatch(STOP_LABEL, _lab(r)) is not None),
+    ("0.75 or the decrease-speed stepper", lambda r: re.fullmatch(STOP_LABEL, _lab(r)) is not None),
 ]
 
 
