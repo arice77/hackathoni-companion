@@ -39,20 +39,24 @@ _CONTROL_KEYS = {
     "exit_fullscreen": ("exit full screen", "exit fullscreen", "how do i exit full screen",
                         "ഫുൾ സ്ക്രീനിൽ നിന്ന് എങ്ങനെ പുറത്തു വരാം", "ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തു വരൂ",
                         "full screen engane ozhivakkam"),
-    "pause": ("pause", "pause this video", "pause the video", "നിർത്തൂ", "വീഡിയോ നിർത്തൂ", "video pause cheyyu"),
+    "pause": ("pause", "stop", "pause this video", "pause the video", "നിർത്തൂ", "വീഡിയോ നിർത്തൂ", "video pause cheyyu"),
     "play": ("play", "play this video", "resume", "resume the video", "പ്ലേ ചെയ്യൂ", "വീഡിയോ വീണ്ടും പ്ലേ ചെയ്യൂ",
              "video play cheyyu"),
     "mute": ("mute", "mute this video", "mute the sound", "ശബ്ദം ഓഫ് ചെയ്യൂ", "sound mute cheyyu"),
     "unmute": ("unmute", "unmute this video", "turn the sound back on", "ശബ്ദം തിരിച്ചു കൊണ്ടുവരൂ",
                "sound unmute cheyyu"),
-    "captions": ("subtitles", "show captions", "malayalam subtitles", "show malayalam subtitles",
-                 "turn on malayalam subtitles", "മലയാളം സബ്ടൈറ്റിൽ", "മലയാളം സബ്ടൈറ്റിൽ വേണം", "സബ്ടൈറ്റിൽ ഇടൂ",
+    "captions": ("subtitles", "captions", "show subtitles", "show captions", "turn on subtitles", "turn on captions",
+                 "malayalam subtitles", "show malayalam subtitles", "turn on malayalam subtitles",
+                 "മലയാളം സബ്ടൈറ്റിൽ", "മലയാളം സബ്ടൈറ്റിൽ വേണം", "സബ്ടൈറ്റിൽ വേണം", "സബ്ടൈറ്റിൽ ഇടൂ",
                  "അക്ഷരങ്ങൾ കാണിക്കൂ", "malayalam subtitle venam", "malayalam subtitles venam"),
     "slower": ("slower", "play it slower", "slow down", "slow down the video", "slow it down", "make it slower", "make the video slower",
-               "play this video slower", "play slowly", "reduce the speed", "too fast", "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ",
+               "play this video slower", "play slower", "make slower", "play slowly", "reduce the speed", "too fast",
+               "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ",
                "പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ", "പതുക്കെ ആക്കൂ", "വേഗം കുറയ്ക്കൂ", "സ്പീഡ് കുറയ്ക്കൂ", "വേഗത കുറയ്ക്കൂ",
                "സാവധാനം", "സ്ലോ", "സ്ലോ ആക്കൂ", "slow ആക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
-    "faster": ("faster", "play it faster", "speed up", "speed it up", "make it faster", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
+    "faster": ("faster", "play it faster", "play faster", "speed up", "speed it up", "make it faster", "make it quicker",
+               "make faster", "make quicker", "വേഗം കൂട്ടൂ", "വേഗത കൂട്ടൂ", "സ്പീഡ് കൂട്ടൂ", "ഫാസ്റ്റ്", "ഫാസ്റ്റ് ആക്കൂ",
+               "fast ആക്കൂ", "speed koottu"),
 }
 _SPEED_DEFAULTS = {"slower": Decimal("0.75"), "faster": Decimal("1.25")}
 INTENT_ACTIONS = ("find", *_CONTROL_KEYS)
@@ -60,7 +64,7 @@ INTENT_TITLE_LIMIT = 60
 _SHORTCUT = re.compile(r"(?:\s*\([a-z]\)|\s+keyboard shortcut\s+[a-z])$")
 _SEARCH_PATTERNS = (
     re.compile(r"(?:(?:can you|please) )?(?:find(?: and play)?|search(?: for)?|look for|play|show me) (?P<title>.+)"),
-    re.compile(r"i (?:want|would like) to (?:watch|hear|find|play|listen to) (?P<title>.+)"),
+    re.compile(r"i (?:need|want|would like) to (?:watch|see|hear|find|play|listen to) (?P<title>.+)"),
     re.compile(r"(?:എനിക്ക് )?(?P<title>.+?)\s+(?:കണ്ടെത്തൂ|തിരയൂ|കേൾക്കണം|കാണണം|വേണം|വെക്കൂ|പ്ലേ ചെയ്യൂ|കാണിക്കൂ)"),
     re.compile(r"(?:enikku? )?(?P<title>.+?)\s+(?:play cheyyu|search cheyyu|thirayoo|kaanam|kaananam|kaanan|kelkkanam|venam|vekku)"),
 )
@@ -69,13 +73,14 @@ _TITLE_SUFFIX = re.compile(r"\s+(?:on youtube|please|ഒന്ന്|എന്�
 _MEDIA_SUFFIX = re.compile(r"\s+(?:song|video|paattu|പാട്ട്|വീഡിയോ)$")
 _GENERIC_TITLE = {
     "", "a", "a song", "a video", "music", "something", "song", "video", "a malayalam", "malayalam",
-    "പാട്ട്", "വീഡിയോ", "paattu", "oru paattu", "oru", "ഒരു",
+    "this", "that", "ഈ", "അത്", "പാട്ട്", "വീഡിയോ", "paattu", "oru paattu", "oru", "ഒരു",
 }
 _TOKENS = re.compile(r"(?:[^\W_]|[\u0d00-\u0d03\u0d3b-\u0d4d\u0d57\u200c\u200d])+", re.UNICODE)
 _ROMAN_NAMES = {"ദർശന": "darshana", "ദര്‍ശന": "darshana", "ഹൃദയം": "hridayam"}
 _QUERY_ALIASES = {**_ROMAN_NAMES, "പാട്ട്": "song", "paattu": "song", "വീഡിയോ": "video"}
 _MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
 _RESULT_SIGNALS = {"song", "official", "video"}
+_TITLE_SEPARATOR = re.compile(r"[|:–—]|\s+-\s*")
 _COLLECTION = re.compile(r"^mix\s*[-–—:]|\bplaylists?\b|\bshorts\b")
 _DERIVATIVE_WORDS = {"cover", "reaction", "karaoke", "remix"}
 _PLAYER_SHORTCUTS = {
@@ -113,7 +118,7 @@ _MAIN_PLAYER_KEYS = {
     ("AXPopUpButton", "settings"), ("AXButton", "settings"),
     ("AXButton", "full screen"), ("AXButton", "exit full screen"), ("AXSlider", "seek slider"),
 }
-ResultScore = tuple[bool, int, bool, int, int, int]
+ResultScore = tuple[bool, int, bool, bool, int, int, int]
 
 
 @dataclass(frozen=True)
@@ -149,7 +154,10 @@ def _command_phrase(text: str) -> str:
 
 def _command_variants(text: str) -> Iterator[str]:
     phrase = _command_phrase(text)
-    short = phrase.removesuffix(" a bit")
+    short = f" {phrase} "
+    for filler in ("for this video", "for the video", "this video", "the video", "ഈ വീഡിയോ", "a bit", "a little", "please"):
+        short = short.replace(f" {filler} ", " ")
+    short = short.strip()
     for prefix in ("i need to ", "i want to ", "എനിക്ക് ", "വീഡിയോ ", "ഇച്ചിരി ", "ഇത്തിരി ", "കുറച്ച് ", "കുറച്ചു "):
         short = short.removeprefix(prefix)
     for command in dict.fromkeys((phrase, short)):
@@ -313,11 +321,14 @@ def _result_links(controls: tuple[Control, ...]) -> tuple[Control, ...]:
     return tuple(links.values())
 
 
+def _has_results_ui(controls: tuple[Control, ...]) -> bool:
+    return any(c.role in {"AXButton", "AXHeading", "AXPopUpButton"} and _phrase(c.label) in _RESULTS_LABELS
+               for c in controls)
+
+
 def _looks_like_results(controls: tuple[Control, ...], links: tuple[Control, ...]) -> bool:
-    if any(c.role in {"AXButton", "AXHeading", "AXPopUpButton"} and _phrase(c.label) in _RESULTS_LABELS
-           for c in controls):
-        return True
-    return len(links) >= 3 and not any(_key(c) in _MAIN_PLAYER_KEYS for c in controls)
+    # Home and results both show lists of watch links and can expose hover previews.
+    return _has_results_ui(controls) or (len(links) >= 3 and not any(_key(c) in _MAIN_PLAYER_KEYS for c in controls))
 
 
 def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> tuple[ResultScore, Control] | None:
@@ -325,13 +336,15 @@ def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> tuple[R
     matches = []
     for link in links:
         label, words = _phrase(link.label), _title_words(link.label)
+        first_segment = _title_words(_TITLE_SEPARATOR.split(label, maxsplit=1)[0])
         regular = not _COLLECTION.search(label)
         if not queries:
-            matches.append(((regular, 0, False, 0, 0, 0), link))
+            matches.append(((regular, 0, False, False, 0, 0, 0), link))
         for wanted, query in queries:
             if wanted and wanted <= words:
                 signals = len(_RESULT_SIGNALS & words) - 3 * bool((words & _DERIVATIVE_WORDS) - wanted)
-                score = (regular, len(wanted), query <= words, signals, len(query), -len(words))
+                title_first = bool((wanted - _RESULT_SIGNALS or wanted) & first_segment)
+                score = (regular, len(wanted), title_first, query <= words, signals, len(query), -len(words))
                 matches.append((score, link))
     return max(matches, key=lambda row: row[0], default=None)
 
@@ -404,14 +417,14 @@ class YouTubeGuide:
         controls = tuple(sorted(snap.controls, key=_rank))
         deadline, self.retry_at = self.retry_at, None
         links = _result_links(controls)
-        results_ui = _looks_like_results(controls, links)
-        if not results_ui and (ad := _ad(snap, controls)):
+        listing = _looks_like_results(controls, links)
+        if not listing and (ad := _ad(snap, controls)):
             return ad
         if self.intent.action == "exit_fullscreen":
             return _decision(snap, "clarify", "ഫുൾ സ്ക്രീനിൽ നിന്ന് പുറത്തുവരാൻ Esc അമർത്തൂ.",
                              "Press Esc to leave full screen.")
         if self.intent.action == "find":
-            decision = self._find(snap, controls, links, results_ui)
+            decision = self._find(snap, controls, links, _has_results_ui(controls), _has_player(controls) and not listing)
         elif self.intent.action == "speed":
             decision = self._speed(snap, controls, deadline)
         elif self.intent.action == "captions":
@@ -448,13 +461,12 @@ class YouTubeGuide:
                       "Close {label}, then open it again.")
 
     def _find(self, snap: Snapshot, controls: tuple[Control, ...], links: tuple[Control, ...],
-              results_ui: bool) -> Decision:
+              results_ui: bool, player_visible: bool) -> Decision:
         search = _target(controls, _SEARCH, "search")
         submit = _target(controls, {"AXButton"}, "search")
         fingerprint = tuple((c.role, _video_key(c)) for c in links)
         play = _target(controls, {"AXButton"}, "play")
         pause = _target(controls, {"AXButton"}, "pause")
-        player_visible = _has_player(controls) and not results_ui
         if self.search_phase == "watch":
             on_watch = player_visible and (
                 not self.had_player or fingerprint != self.prior_results
@@ -466,21 +478,31 @@ class YouTubeGuide:
             if on_watch:
                 return _await_player(snap, controls)
         elif self.search_phase == "start":
+            if not self.intent.titles and player_visible:
+                return _decision(snap, "clarify", "ഈ വീഡിയോയിൽ എന്താണ് ചെയ്യേണ്ടത്? നിർത്തണോ, വേഗം കുറയ്ക്കണോ, സബ്‌ടൈറ്റിൽ ഇടണോ?",
+                                 "What would you like to do with this video? Pause it, slow it down, or turn on subtitles?")
             if not self.start_in_search and not player_visible and (results_ui or (links and search and search.filled is True)):
                 self.search_phase = "results"
-            elif search is not None:
+            else:
+                if not player_visible and self.intent.titles:
+                    if decision := self._choose_result(snap, links, fingerprint, results_ui, player_visible):
+                        return decision
+                if search is None:
+                    return _decision(snap, "clarify", "വീഡിയോയുടെ പേര് നൽകാൻ Search ബോക്സ് കാണിക്കൂ.",
+                                     "Show the Search box so you can type the video name.")
                 self.search_phase, self.prior_results = "typing", fingerprint
                 self.replacing_search = search.filled is True
-            elif self.start_in_search:
-                return _decision(snap, "clarify", "വീഡിയോയുടെ പേര് നൽകാൻ Search ബോക്സ് കാണിക്കൂ.",
-                                 "Show the Search box so you can type the video name.")
-        if self.search_phase == "typing" and search is not None:
-            if fingerprint != self.prior_results and links and not player_visible:
+                return self._type_into(snap, search)
+        if self.search_phase == "typing":
+            changed_results = fingerprint != self.prior_results
+            if (results_ui and (changed_results or not self.replacing_search)) or (
+                changed_results and links and search and search.filled is True and not player_visible
+            ):
                 self.search_phase = "results"
-            elif search.filled is True and not self.replacing_search and submit is not None:
+            elif search and search.filled is True and not self.replacing_search and submit is not None:
                 self.search_phase = "submitted"
                 return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
-            else:
+            elif search is not None:
                 return self._type_into(snap, search)
         if self.search_phase == "submitted":
             if results_ui or fingerprint != self.prior_results:
@@ -500,10 +522,6 @@ class YouTubeGuide:
                 )
             return _decision(snap, "clarify", "വീഡിയോ ഒന്നും കാണുന്നില്ല. വേറൊരു പേര് കൊടുത്ത് തിരയൂ.",
                              "I don’t see a video here. Try searching with another name.")
-        if search is not None and self.search_phase == "start":
-            self.search_phase, self.prior_results = "typing", fingerprint
-            self.replacing_search = search.filled is True
-            return self._type_into(snap, search)
         return _decision(snap, "clarify", "തിരച്ചിൽ ഫലം വരുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
                          "Wait for YouTube to show the search results or video.")
 
@@ -642,8 +660,8 @@ class YouTubeGuide:
 
 class YouTubePrivacy(PrivacyProfile):
     def filter_snapshot(self, snap: Snapshot) -> Snapshot:
-        results_ui = _looks_like_results(snap.controls, _result_links(snap.controls))
-        player_ads = set() if results_ui else {c.id for c in _player_ad_controls(snap.controls)}
+        listing = _looks_like_results(snap.controls, _result_links(snap.controls))
+        player_ads = set() if listing else {c.id for c in _player_ad_controls(snap.controls)}
         controls = []
         for control in snap.controls:
             if (name := _setting_name(control)) in _SHARED_SETTINGS:
