@@ -157,9 +157,85 @@ class PlannerTests(unittest.TestCase):
         snap = replace(self.snapshot, controls=(save, second))
         self.http.return_value = _response()
         decision = self.planner.decide(QUESTION, snap)
-        self.assertEqual(decision.kind, "unsupported")
+        self.assertEqual(decision.kind, "clarify")
         self.assertIsNone(decision.control_id)
-        self.assertIn("uniquely identified", decision.instruction_en)
+        self.assertIn("Which control", decision.instruction_en)
+
+    def test_unresolved_references_ask_a_short_question_without_calling_http(self):
+        for question in (
+            "Can I use that one?",
+            "ഇത് അമർത്തട്ടേ?",
+            "Ithu click cheyyatte?",
+            "ഇത് അമർത്തട്ടേ? / Should I click this button?",
+        ):
+            with self.subTest(question=question):
+                decision = self.planner.decide(question, self.snapshot)
+                self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+                self.assertIn("ഏത്", decision.instruction)
+                self.assertIn("Which control", decision.instruction_en)
+        self.http.assert_not_called()
+
+    def test_missing_format_ignores_print_other_formats_and_upload(self):
+        controls = (
+            Control("print", "AXButton", "Print", (10, 10, 100, 24)),
+            Control("csv", "AXButton", "Download CSV", (10, 40, 100, 24)),
+            Control("upload", "AXButton", "Upload PDF", (10, 70, 100, 24)),
+            Control("export", "AXButton", "Export PDF", (10, 100, 100, 24), enabled=False),
+        )
+        snap = replace(self.snapshot, controls=controls)
+        for question in (
+            "Where is the button that exports this as a PDF?",
+            "PDF ആയി എങ്ങനെ ഡൗൺലോഡ് ചെയ്യാം?",
+        ):
+            decision = self.planner.decide(question, snap)
+            self.assertEqual((decision.kind, decision.control_id), ("unsupported", None))
+            self.assertIn("no available control for PDF export", decision.instruction_en)
+        self.http.assert_not_called()
+
+    def test_requested_format_allows_only_the_matching_action(self):
+        csv = Control("csv", "AXButton", "Download CSV", (10, 10, 100, 24))
+        pdf = replace(csv, id="pdf", label="Export PDF", frame=(10, 40, 100, 24))
+        snap = replace(self.snapshot, controls=(csv, pdf))
+        self.http.return_value = _response(_choice(control_id="csv", label="Download CSV"))
+        result = self.planner.decide("Where can I download the CSV file?", snap)
+        body = json.loads(self.http.call_args.args[0].data)
+        allowed = body["response_format"]["json_schema"]["schema"]["properties"]["control_id"]["enum"]
+        self.assertEqual(allowed, [None, "csv"])
+        self.assertEqual((result.kind, result.control_id), ("point", "csv"))
+
+    def test_named_control_does_not_silently_substitute_another_label(self):
+        question = "Where is the button labeled ‘Delete Draft’?"
+        decision = self.planner.decide(question, self.snapshot)
+        self.assertEqual((decision.kind, decision.control_id), ("unsupported", None))
+        self.assertIn("requested label", decision.instruction_en)
+        self.http.assert_not_called()
+        self.http.return_value = _response()
+        decision = self.planner.decide("Where can I find ‘Save Draft’?", self.snapshot)
+        payload = json.loads(self.http.call_args.args[0].data)
+        schema = payload["response_format"]["json_schema"]["schema"]
+        self.assertEqual(schema["properties"]["control_id"]["enum"], [None, "c01"])
+        self.assertEqual((decision.kind, decision.control_id), ("point", "c01"))
+
+    def test_explicit_search_button_cannot_target_a_donation_link(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("Wikipedia", screens["wikipedia-home-search"], False)
+        donation = snap.control("c12")
+        self.http.return_value = _response(_choice(control_id=donation.id, label=donation.label))
+        decision = self.planner.decide("After typing a topic, which button runs the Wikipedia search?", snap)
+        payload = json.loads(self.http.call_args.args[0].data)
+        properties = payload["response_format"]["json_schema"]["schema"]["properties"]
+        self.assertEqual(properties["control_id"]["enum"], [None, "c21"])
+        self.assertEqual((decision.kind, decision.control_id), ("unsupported", None))
+
+    def test_add_to_list_keeps_the_add_button_even_with_unfilled_fields(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("Crop Information", screens["aims-crop-photo"], False)
+        self.http.return_value = _response(_choice(control_id="c20", label="+Add"))
+        decision = self.planner.decide("The photo is attached. Where do I add this crop to the list?", snap)
+        payload = json.loads(self.http.call_args.args[0].data)
+        properties = payload["response_format"]["json_schema"]["schema"]["properties"]
+        self.assertEqual(properties["control_id"]["enum"], [None, "c20"])
+        self.assertEqual((decision.kind, decision.control_id), ("point", "c20"))
 
     def test_malformed_json_and_schema_stop_without_a_pointer(self):
         replies = (
@@ -312,14 +388,23 @@ class PlannerTests(unittest.TestCase):
         cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         self.assertTrue({TYPED_QUESTION, QUESTION} <= {case["question"] for case in cases})
-        self.assertEqual(len(cases), 30)
+        self.assertEqual(len(cases), 41)
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual(
             {case["question_form"] for case in cases},
             {"malayalam", "english", "manglish", "bilingual"},
         )
         self.assertLessEqual(len(cases) * len(eval_planner.MODEL_ENDPOINTS), eval_planner.MAX_CALLS)
-        self.assertEqual({screen["origin"] for screen in screens.values()}, {"aims-reader", "safari-reader", "hand-made"})
+        self.assertEqual(
+            {screen["origin"] for screen in screens.values()},
+            {"aims-reader", "safari-reader", "hand-made", "public-safari-reader"},
+        )
+        public_cases = [case for case in cases if screens[case["screen"]]["origin"] == "public-safari-reader"]
+        self.assertEqual(len(public_cases), 4)
+        for case in public_cases:
+            snapshot = eval_planner._snapshot(case["screen"], screens[case["screen"]], False)
+            self.assertIsNotNone(snapshot.viewport)
+            self.assertIsNone(snapshot.control(case["control_id"]).identifier)
         for case in cases:
             ids = {c["id"] for c in screens[case["screen"]]["controls"]}
             self.assertTrue(case["control_id"] in ids if case["kind"] == "point" else case["control_id"] is None)

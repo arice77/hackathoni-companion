@@ -269,5 +269,104 @@
     "kind": "complete",
     "control_id": null,
     "question_form": "manglish"
+  },
+  {
+    "id": "missing-labeled-delete",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "Where is the button labeled ‘Delete Draft’?",
+    "kind": "unsupported",
+    "control_id": null,
+    "question_form": "english"
+  },
+  {
+    "id": "missing-xlsx-download",
+    "screen": "missing-control",
+    "task": null,
+    "question": "ഇത് XLSX ആയി എങ്ങനെ ഡൗൺലോഡ് ചെയ്യാം?",
+    "kind": "unsupported",
+    "control_id": null,
+    "question_form": "malayalam"
+  },
+  {
+    "id": "upload-is-not-pdf-export",
+    "screen": "upload-without-pdf-export",
+    "task": null,
+    "question": "Where can I export this document as a PDF?",
+    "kind": "unsupported",
+    "control_id": null,
+    "question_form": "english"
+  },
+  {
+    "id": "visible-csv-download",
+    "screen": "missing-control",
+    "task": null,
+    "question": "Where can I download the CSV file?",
+    "kind": "point",
+    "control_id": "c01",
+    "question_form": "english"
+  },
+  {
+    "id": "ambiguous-reference-malayalam",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "ഇത് അമർത്തട്ടേ?",
+    "kind": "clarify",
+    "control_id": null,
+    "question_form": "malayalam"
+  },
+  {
+    "id": "ambiguous-reference-manglish",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "Ithu click cheyyatte?",
+    "kind": "clarify",
+    "control_id": null,
+    "question_form": "manglish"
+  },
+  {
+    "id": "ambiguous-save-or-submit",
+    "screen": "similar-labels",
+    "task": null,
+    "question": "I see Save Draft and Save and Submit. Which one fits my goal?",
+    "kind": "clarify",
+    "control_id": null,
+    "question_form": "english"
+  },
+  {
+    "id": "public-httpbin-start-malayalam",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "എനിക്ക് ഒരു പിസ്സ ഓർഡർ ചെയ്യണം. എവിടെ തുടങ്ങണം?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "public-httpbin-telephone-manglish",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "Orderinu phone number evide kodukkanam?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "manglish"
+  },
+  {
+    "id": "public-httpbin-medium-size",
+    "screen": "httpbin-order-form",
+    "task": "web_any",
+    "question": "I want a medium pizza. Which size option should I select?",
+    "kind": "point",
+    "control_id": "c09",
+    "question_form": "english"
+  },
+  {
+    "id": "public-wikipedia-run-search",
+    "screen": "wikipedia-home-search",
+    "task": "web_any",
+    "question": "After typing a topic, which button runs the Wikipedia search?",
+    "kind": "point",
+    "control_id": "c21",
+    "question_form": "english"
   }
 ]

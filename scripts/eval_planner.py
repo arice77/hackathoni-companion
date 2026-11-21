@@ -20,7 +20,7 @@ from companion.validator import MAX_SNAPSHOT_AGE_S, validate
 from companion.voice import sarvam
 
 FIXTURES = ROOT / "tests" / "fixtures" / "planner"
-MAX_CALLS = 60
+MAX_CALLS = 90
 
 
 def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
@@ -29,14 +29,16 @@ def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
         for i, row in enumerate(record["controls"])
     )
     age = MAX_SNAPSHOT_AGE_S + 1 if stale else 0
+    frame = (0, 0, 600, 40 + len(controls) * 30)
     return Snapshot(
         snapshot_id=name,
         taken_at=time.time() - age,
         app_bundle_id=f"fixture.{record['origin']}",
         app_pid=0,
-        window_title=name,
-        window_frame=(0, 0, 600, 40 + len(controls) * 30),
+        window_title=record.get("host", name),
+        window_frame=frame,
         controls=controls,
+        viewport=frame if record["origin"] == "public-safari-reader" else None,
     )
 
 
@@ -44,6 +46,7 @@ def _case(model: str, case: dict, screen: dict) -> dict:
     planner = SarvamPlanner(case["task"], model=model, log_calls=False)
     snap = _snapshot(case["screen"], screen, case.get("stale", False))
     decision = planner.decide(case["question"], snap)
+    cold_calls = len(planner.calls)
     cold_valid, cold_reason = validate(decision, snap)
 
     remapped_ids = {control.id: f"warm-{i}" for i, control in enumerate(snap.controls)}
@@ -54,7 +57,8 @@ def _case(model: str, case: dict, screen: dict) -> dict:
     cached = planner.decide(case["question"], warm)
     cache_valid, cache_reason = validate(cached, warm)
     cache_ok = (
-        len(planner.calls) == 1
+        cold_calls <= 1
+        and len(planner.calls) == cold_calls
         and cache_valid
         and cached == replace(
             decision, snapshot_id=warm.snapshot_id, control_id=remapped_ids.get(decision.control_id)
@@ -69,6 +73,7 @@ def _case(model: str, case: dict, screen: dict) -> dict:
         "expected": {"kind": expected[0], "control_id": expected[1]},
         "actual": asdict(decision),
         "correct": actual == expected,
+        "decision_path": "provider" if cold_calls else "local",
         "cold_validator": {"valid": cold_valid, "reason": cold_reason},
         "stale_case": case.get("stale", False),
         "cache_ok": cache_ok,
@@ -88,6 +93,7 @@ def _summary(rows: list[dict], total: int) -> dict:
         "expected_cases": total,
         "met_target": len(rows) == total and correct * 17 >= total * 15 and invalid == 0,
         "calls": len(calls),
+        "local_decisions": sum(row["decision_path"] == "local" for row in rows),
         "invalid_ids": invalid,
         "invalid_id_rate": invalid / len(calls) if calls else None,
         "label_fallbacks": sum(call["outcome"] == "local_label_fallback" for call in calls),
@@ -111,13 +117,14 @@ def _run(model: str, cases: list[dict], screens: dict) -> tuple[dict, bool]:
         row = _case(model, case, screens[case["screen"]])
         rows.append(row)
         call = next(iter(row["calls"]), {})
-        outcome = call.get("outcome", "no_request")
+        outcome = call.get("outcome", "local")
         actual = row["actual"]
         mark = "pass" if row["correct"] else "fail"
-        print(f"[live] {model} {row['id']} {mark} · {actual['kind']}/{actual['control_id']} · {outcome}",
+        evidence = "live" if call else "local"
+        print(f"[{evidence}] {model} {row['id']} {mark} · {actual['kind']}/{actual['control_id']} · {outcome}",
               flush=True)
         status = call.get("http_status")
-        stop_all = status in (402, 403) or not call
+        stop_all = status in (402, 403) or actual["instruction_en"] == "BLOCKED: no SARVAM_API_KEY"
         if stop_all or status in (400, 404):
             break
     return {"model": model, "endpoint": MODEL_ENDPOINTS[model], "summary": _summary(rows, len(cases)),

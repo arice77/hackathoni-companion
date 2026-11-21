@@ -386,5 +386,63 @@
       {"id": "c11", "role": "AXStaticText", "label": "Ready for practice", "filled": null, "enabled": true, "identifier": "status"},
       {"id": "c17", "role": "AXStaticText", "label": "Ready for practice", "filled": null, "enabled": true, "identifier": null}
     ]
+  },
+  "httpbin-order-form": {
+    "origin": "public-safari-reader",
+    "host": "httpbin.org",
+    "controls": [
+      {"id": "c03", "role": "AXTextField", "label": "Customer name:", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c04", "role": "AXTextField", "label": "Telephone:", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c05", "role": "AXTextField", "label": "E-mail address:", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c00", "role": "AXGroup", "label": "Pizza Size", "filled": null, "enabled": false, "identifier": null},
+      {"id": "c08", "role": "AXRadioButton", "label": "Small", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c09", "role": "AXRadioButton", "label": "Medium", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c10", "role": "AXRadioButton", "label": "Large", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c01", "role": "AXGroup", "label": "Pizza Toppings", "filled": null, "enabled": false, "identifier": null},
+      {"id": "c11", "role": "AXCheckBox", "label": "Bacon", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c12", "role": "AXCheckBox", "label": "Extra Cheese", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c13", "role": "AXCheckBox", "label": "Onion", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c14", "role": "AXCheckBox", "label": "Mushroom", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c06", "role": "AXDateTimeArea", "label": "Preferred delivery time:", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c07", "role": "AXTextArea", "label": "Delivery instructions:", "filled": false, "enabled": true, "identifier": null},
+      {"id": "c02", "role": "AXButton", "label": "Submit order", "filled": null, "enabled": true, "identifier": null}
+    ]
+  },
+  "wikipedia-home-search": {
+    "origin": "public-safari-reader",
+    "host": "www.wikipedia.org",
+    "controls": [
+      {"id": "c01", "role": "AXHeading", "label": "Wikipedia The Free Encyclopedia", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c02", "role": "AXLink", "label": "English 7,261,000+ articles", "filled": null, "enabled": true, "identifier": "js-link-box-en"},
+      {"id": "c03", "role": "AXLink", "label": "日本語 1,526,000+ 記事", "filled": null, "enabled": true, "identifier": "js-link-box-ja"},
+      {"id": "c04", "role": "AXLink", "label": "Deutsch 3.164.000+ Artikel", "filled": null, "enabled": true, "identifier": "js-link-box-de"},
+      {"id": "c05", "role": "AXLink", "label": "Русский 2 128 000+ статей", "filled": null, "enabled": true, "identifier": "js-link-box-ru"},
+      {"id": "c06", "role": "AXLink", "label": "Français 2 788 000+ articles", "filled": null, "enabled": true, "identifier": "js-link-box-fr"},
+      {"id": "c07", "role": "AXLink", "label": "Español 2.148.000+ artículos", "filled": null, "enabled": true, "identifier": "js-link-box-es"},
+      {"id": "c08", "role": "AXLink", "label": "中文 1,565,000+ 条目 / 條目", "filled": null, "enabled": true, "identifier": "js-link-box-zh"},
+      {"id": "c09", "role": "AXLink", "label": "Italiano 1.994.000+ voci", "filled": null, "enabled": true, "identifier": "js-link-box-it"},
+      {"id": "c10", "role": "AXLink", "label": "فارسی ۱٬۱۰۲٬۰۰۰+ مقاله", "filled": null, "enabled": true, "identifier": "js-link-box-fa"},
+      {"id": "c11", "role": "AXLink", "label": "Português 1.188.000+ artigos", "filled": null, "enabled": true, "identifier": "js-link-box-pt"},
+      {"id": "c21", "role": "AXButton", "label": "Search", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c20", "role": "AXTextField", "label": "Search Wikipedia", "filled": false, "enabled": true, "identifier": "searchInput"},
+      {"id": "c22", "role": "AXPopUpButton", "label": "EN", "filled": true, "enabled": true, "identifier": "searchLanguage"},
+      {"id": "c13", "role": "AXButton", "label": "Read Wikipedia in your language", "filled": null, "enabled": true, "identifier": "js-lang-list-button"},
+      {"id": "c14", "role": "AXLink", "label": "Commons Free media collection", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c15", "role": "AXLink", "label": "Wikivoyage Free travel guide", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c16", "role": "AXLink", "label": "Wiktionary Free dictionary", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c12", "role": "AXLink", "label": "You can support our work with a donation.", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c17", "role": "AXLink", "label": "Wikibooks Free textbooks", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c18", "role": "AXLink", "label": "Wikidata Free knowledge base", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c19", "role": "AXLink", "label": "Wikiversity Free learning resources", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c00", "role": "AXLink", "label": "Download Wikipedia for Android or iOS", "filled": null, "enabled": true, "identifier": null}
+    ]
+  },
+  "upload-without-pdf-export": {
+    "origin": "hand-made",
+    "controls": [
+      {"id": "c00", "role": "AXHeading", "label": "Documents", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c01", "role": "AXButton", "label": "Upload PDF", "filled": null, "enabled": true, "identifier": null},
+      {"id": "c02", "role": "AXButton", "label": "Download CSV", "filled": null, "enabled": true, "identifier": null}
+    ]
   }
 }

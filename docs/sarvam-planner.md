@@ -6,7 +6,11 @@ The request carries the question, optional task goal, visible heading or window 
 
 Control identifiers, process metadata, geometry, and editable values stay out of the request. The prompt treats screen text as untrusted data and asks the model to decline decisions about payments, amounts, eligibility, and declarations.
 
-The provider returns a strict schema with `kind`, `control_id`, `instruction_ml`, and `instruction_en`. The planner inserts the exact quoted label at the model's `[CONTROL]` marker. A valid target with missing or unbound wording gets a local instruction in that language. Unknown IDs, malformed replies, and unavailable targets return `unsupported`. The panel rebinds background decisions to the fresh snapshot, then the validator checks snapshot age, target presence, and on-window position.
+The provider returns a strict schema with `kind`, `control_id`, `instruction_ml`, and `instruction_en`. The planner inserts the exact quoted label at the model's `[CONTROL]` marker. A valid target with missing or unbound wording gets a local instruction in that language. Unknown IDs, malformed replies, and unavailable targets return `unsupported`. The panel rebinds background decisions to the fresh snapshot, then the validator checks snapshot age, target presence, and on-window or viewport position.
+
+**Missing-control policy.** State that the requested control is absent and return `unsupported` with no pointer. For explicit label lookups, the planner allows matching labels. For explicit export, download, or save-as requests with a recognized file format, it allows visible output controls for that format. `Print`, `Download CSV`, and `Upload PDF` cannot stand in for a PDF export. Recognized button-action requests also require a visible button whose label names the action. These checks run locally. The prompt applies the same policy to other specific requests.
+
+**Ambiguity policy.** Return `clarify` with a short question in the user's language and no pointer. Recognized standalone references to “this” or “that” in Malayalam, English, and Manglish get a local question asking which control the user means. The planner also asks when a target cannot be rebound uniquely. The prompt asks the model to clarify broader requests with competing goals.
 
 For each active question, the planner caches decisions by window and the set of `(identifier or label, role, filled)` values. It also tracks visible label text, enabled states, and repeated controls. Safari uses status and enabled-state changes to mark progress after attachment and saving, so those changes need a fresh decision. On a cache hit the planner rebinds the target by identifier or by an unambiguous label and role and uses the current snapshot ID. Failed replies remain cached for that screen and question. Call logs in `runs/sarvam-planner-*.jsonl` contain model, timing, request ID, and outcome.
 
@@ -17,9 +21,9 @@ The default is **`sarvam-105b-conversations`** on `POST https://api.sarvam.ai/v1
 
 ## Fixture eval
 
-`tests/fixtures/planner/screens.json` contains six AIMS and nine Safari practice snapshots captured using the Accessibility reader on 21 November 2026, plus five hand-made snapshots. The test driver used only the practice fixtures, with synthetic inputs and the worktree loopback URL for Safari. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot.
+`tests/fixtures/planner/screens.json` contains six AIMS and nine Safari practice snapshots captured using the Accessibility reader on 21 November 2026, two public Safari snapshots, and six hand-made snapshots. The test driver used only the practice fixtures, with synthetic inputs and the worktree loopback URL for Safari. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot.
 
-The 30 cases keep the original 17 expected answers and add 13 cases covering crop details, photo attachment, declaration, completion, and partially filled business details. Questions include 6 Malayalam, 13 English, 6 Manglish, and 5 bilingual voice-style prompts.
+The 41 cases retain the previous 30, with additions for missing and present export controls, explicit labels, ambiguity, and the public pages. Each public snapshot was captured in a new Safari window, using the reader's URL-prefix constraint. The capture only read the page and its Accessibility controls. The public replays include host-only titles and synthetic viewports. All four expected public targets have no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
 
 ```sh
 .venv/bin/python scripts/eval_planner.py
@@ -27,9 +31,24 @@ The 30 cases keep the original 17 expected answers and add 13 cases covering cro
 .venv/bin/python scripts/qa/run.py
 ```
 
-The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 27/30 exact matches with zero unknown IDs. The script checks the validator on the cold result and a cached, fresh replay with all IDs shifted. p50 and p95 use HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 37/41 exact matches with zero unknown IDs. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
 
-### Expanded live stability eval
+### Current 41-case eval
+
+Both runs used `sarvam-105b-conversations` and the same frozen cases after adding label, export-format, and button-action grounding. Exactness compares decision kind and target ID.
+
+| Run | Exact | Public cases | Unknown IDs | HTTP p50 | HTTP p95 | Chat calls | Local decisions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 37/41 | 3/4 | 0 | 584 ms | 2,605 ms | 34 | 7 |
+| 2 | 39/41 | 4/4 | 0 | 798 ms | 3,513 ms | 34 | 7 |
+
+Both runs passed every missing-control and ambiguity case, including both original misses. Both selected Wikipedia's “Search” button. Among the public cases, the first run asked for clarification on the Medium pizza choice. The second run selected “Medium”. Two Safari completion cases regressed to malformed replies in both runs. The AIMS completion question also selected “Print Application” in run 1 and returned `complete` in run 2.
+
+The final runs agree on 39/41 decisions. Each used 34 chat calls and seven local decisions. A preliminary pair used 68 chat calls and exposed the Wikipedia donation-link substitution and an AIMS add-control miss. The final pair used another 68, for 136 chat calls in this round. The final reports are `runs/sarvam-planner-eval-20261121T155601.726907Z.json` and `runs/sarvam-planner-eval-20261121T155647.721698Z.json`.
+
+Locked QA passed 18 checks with zero failures, one opt-in Sarvam voice check blocked, and three human checks skipped. All 99 unit tests passed. See `runs/qa/20261121-212527/report.md`.
+
+### Earlier 30-case stability eval
 
 Two separate invocations used the same frozen 30 cases and the default `sarvam-105b-conversations` model. An exact match requires the expected decision kind and control ID. Both runs reused the local result for all 30 warm replays and rejected the deliberately stale snapshot.
 
@@ -68,5 +87,5 @@ All 19 planner mock tests and 84 unit tests passed. The stock locked QA run pass
 
 ### Open issues
 
-- The expanded eval missed the vague request and the missing PDF export in both runs. The provider selected IDs present on screen in the PDF case.
-- Live browser evidence is limited to the local Safari practice page. Taskless planning was evaluated on captured and hand-made screens. Malayalam instruction quality still needs a native-speaker review.
+- The latest runs exposed intermittent completion handling and one unnecessary clarification on an explicit choice. Both Safari receipt questions returned malformed payloads in the final pair.
+- Public-page evidence uses read-only captures. The end-to-end driver checks use the local practice fixtures. Malayalam instruction quality still needs a native-speaker review.
