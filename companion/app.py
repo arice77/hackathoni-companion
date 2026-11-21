@@ -429,8 +429,10 @@ class Companion(NSObject):
             self.status.setStringValue_(
                 "Verified: status text seen" + (" + fresh training receipt file" if fresh else " (no receipt file)"))
             self.active = False
-        elif decision.kind == "unsupported" or (decision.kind == "clarify" and not self.progressed):
-            self.active = False  # mid-task "clarify" (e.g. "scroll down to continue") keeps watching the screen
+        elif decision.kind == "unsupported":
+            self.active = False
+        # "clarify" keeps watching: "scroll down", "open a video first" or a menu that hasn't appeared yet
+        # can resolve on the next screen without a new question (QA live run, 22 Nov 01:07).
 
     @objc.python_method
     def background_decision(self, snap):
