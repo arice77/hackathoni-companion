@@ -32,9 +32,9 @@ _CONTROL_KEYS = {
     "captions": ("malayalam subtitles", "show malayalam subtitles", "turn on malayalam subtitles",
                  "മലയാളം സബ്ടൈറ്റിൽ വേണം", "മലയാളം സബ്‌ടൈറ്റിൽ വേണം", "malayalam subtitle venam",
                  "malayalam subtitles venam"),
-    "slower": ("slower", "play it slower", "slow down", "make the video slower", "play this video slower",
-               "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ പ്ലേ ചെയ്യൂ", "വേഗം കുറയ്ക്കൂ", "pathukke play cheyyu",
-               "speed kuraykku"),
+    "slower": ("slower", "play it slower", "slow down", "slow it down", "make it slower", "make the video slower",
+               "play this video slower", "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ പ്ലേ ചെയ്യൂ", "വേഗം കുറയ്ക്കൂ",
+               "വേഗത കുറയ്ക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
     "faster": ("faster", "play it faster", "speed up", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
 }
 _SHORTCUT = re.compile(r"\s*\([a-z]\)$")
@@ -44,7 +44,8 @@ _SEARCH_PATTERNS = (
     re.compile(r"(?:എനിക്ക് )?(?P<title>.+?)\s+(?:കണ്ടെത്തൂ|തിരയൂ|കേൾക്കണം|കാണണം|പ്ലേ ചെയ്യൂ|കാണിക്കൂ)"),
     re.compile(r"(?P<title>.+?)\s+(?:play cheyyu|search cheyyu|thirayoo|kaanam|kelkkanam)"),
 )
-_TITLE_SUFFIX = re.compile(r"(?:\s+on youtube|\s+(?:song|video|paattu|പാട്ട്|വീഡിയോ)|\s+(?:please|on youtube))$")
+_TITLE_PREFIX = re.compile(r"^(?:the|a|an|please|(?:song|video) (?:called|named)|ഒന്ന്|യൂട്യൂബിൽ)\s+")
+_TITLE_SUFFIX = re.compile(r"\s+(?:on youtube|song|video|paattu|പാട്ട്|വീഡിയോ|please|ഒന്ന്|എന്ന)$")
 _GENERIC_TITLE = {
     "", "a", "a song", "a video", "music", "something", "song", "video", "a malayalam", "malayalam",
     "പാട്ട്", "വീഡിയോ", "paattu", "oru paattu",
@@ -57,6 +58,7 @@ _PLAYER = (
     ("AXPopUpButton", "Settings"), ("AXCheckBox", "Subtitles/closed captions (c)"),
     ("AXCheckBox", "Subtitles/closed captions unavailable"), ("AXButton", "Skip ad"),
 )
+_VIDEO_LINK_PREFIX = "youtube-watch:"
 
 
 @dataclass(frozen=True)
@@ -89,7 +91,9 @@ def parse_intent(question: str) -> Intent | None:
                 title = match["title"]
                 previous = ""
                 while previous != title:
-                    previous, title = title, _TITLE_SUFFIX.sub("", title).strip(' "\'“”‘’')
+                    previous = title
+                    title = _TITLE_PREFIX.sub("", title.strip(' "\'“”‘’'))
+                    title = _TITLE_SUFFIX.sub("", title).strip(' "\'“”‘’')
                 titles.append(title)
                 break
     return Intent("find", tuple(dict.fromkeys(t for t in titles if t not in _GENERIC_TITLE))) if titles else None
@@ -127,13 +131,22 @@ def _title_words(label: str) -> set[str]:
     return {_ROMAN_NAMES.get(word, word) for word in _TOKENS.findall(_phrase(label))}
 
 
+def _video_key(control: Control) -> str:
+    if control.identifier and control.identifier.startswith(_VIDEO_LINK_PREFIX):
+        return control.identifier.removeprefix(_VIDEO_LINK_PREFIX).split(":", 1)[0]
+    return ""
+
+
 def _result_links(controls: tuple[Control, ...]) -> tuple[Control, ...]:
-    # The Safari probe exposed each video title as both a heading and a link.
+    # Channel cards also have both a heading and a link. Only the reader can verify a watch URL.
     titles = {_phrase(c.label) for c in controls if c.role == "AXHeading" and c.label}
     links = {}
     for c in controls:
-        if c.role == "AXLink" and c.enabled and c.label and _phrase(c.label) in titles:
-            links.setdefault(_phrase(c.label), c)
+        if c.role != "AXLink" or not c.enabled or not c.label or not (key := _video_key(c)):
+            continue
+        earlier = links.get(key)
+        if earlier is None or (_phrase(earlier.label) not in titles and _phrase(c.label) in titles):
+            links[key] = c
     return tuple(links.values())
 
 
@@ -205,10 +218,15 @@ class YouTubeGuide:
         search = _target(controls, _SEARCH, "search")
         submit = _target(controls, {"AXButton"}, "search")
         links = _result_links(controls)
-        fingerprint = tuple(_key(c) for c in links)
+        fingerprint = tuple((c.role, _video_key(c)) for c in links)
         result = _best_result(links, self.intent.titles)
         play = _target(controls, {"AXButton"}, "play")
         pause = _target(controls, {"AXButton"}, "pause")
+        results_ui = any(
+            c.role in {"AXButton", "AXHeading", "AXPopUpButton"}
+            and _phrase(c.label) in {"filters", "search filters", "search results"}
+            for c in controls
+        )
         if self.search_phase == "watch":
             on_watch = (play is not None or pause is not None) and (
                 not self.had_player or fingerprint != self.prior_results
@@ -219,11 +237,12 @@ class YouTubeGuide:
                 return _point(snap, play, "വീഡിയോ തുടങ്ങാൻ {label} അമർത്തൂ.", "Use {label} to start the video.")
             if result is not None and _phrase(result.label) == self.result_label:
                 return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
-        elif self.search_phase == "start" and search is not None and (
-            not self.intent.titles or result is None or play is not None or pause is not None
-        ):
-            self.search_phase, self.prior_results = "typing", fingerprint
-            self.replacing_search = search.filled is True
+        elif self.search_phase == "start":
+            if play is None and pause is None and (results_ui or (links and search and search.filled is True)):
+                self.search_phase = "results"
+            elif search is not None:
+                self.search_phase, self.prior_results = "typing", fingerprint
+                self.replacing_search = search.filled is True
         if self.search_phase == "typing" and search is not None:
             if fingerprint != self.prior_results and links and play is None and pause is None:
                 self.search_phase = "results"
@@ -232,17 +251,26 @@ class YouTubeGuide:
                 return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
             else:
                 return self._type_into(snap, search)
-        if self.search_phase == "submitted" and fingerprint == self.prior_results and submit is not None:
-            return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
+        if self.search_phase == "submitted":
+            if results_ui or fingerprint != self.prior_results:
+                self.search_phase = "results"
+            elif submit is not None:
+                return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
         if result is not None and (self.search_phase != "watch" or self.result_label == _phrase(result.label)):
             self.search_phase, self.result_label, self.prior_results = "watch", _phrase(result.label), fingerprint
             self.had_player = play is not None or pause is not None
             return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
-        if links and self.intent.titles:
-            return _decision(
-                snap, "clarify", "ചോദിച്ച വീഡിയോ കാണുന്നില്ല. പേര് നോക്കി വീണ്ടും തിരയൂ.",
-                "I don’t see a result with that name. Check the name and search again.",
-            )
+        if self.search_phase in {"results", "watch"} and snap.below_fold_count > 0:
+            return _decision(snap, "clarify", "കൂടുതൽ ഫലങ്ങൾ കാണാൻ താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
+                             "Scroll down to see more results.")
+        if self.search_phase == "results":
+            if self.intent.titles:
+                return _decision(
+                    snap, "clarify", "ചോദിച്ച വീഡിയോ കാണുന്നില്ല. പേര് നോക്കി വീണ്ടും തിരയൂ.",
+                    "I don’t see a result with that name. Check the name and search again.",
+                )
+            return _decision(snap, "clarify", "വീഡിയോ ഒന്നും കാണുന്നില്ല. വേറൊരു പേര് കൊടുത്ത് തിരയൂ.",
+                             "I don’t see a video here. Try searching with another name.")
         if search is not None and self.search_phase == "start":
             self.search_phase, self.prior_results = "typing", fingerprint
             self.replacing_search = search.filled is True
