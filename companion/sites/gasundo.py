@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from ..contracts import Control, Decision, DecisionKind, Snapshot
+from ..voice import sarvam
 from . import PrivacyProfile, SitePack, SiteStep, _phrase
 
 HOSTS = frozenset({"gasundo.live", "www.gasundo.live"})
@@ -35,12 +37,16 @@ REPORT_AGE = re.compile(r"[0-9]{1,5}(?: min|h|d) ago")
 CATALOG_ERROR = re.compile(r"Could not load the (?:\w+ )?restaurant catalog right now\.?", re.IGNORECASE)
 SEARCH = SiteStep("AXTextField", "Search restaurants", "‘Search restaurants’ എന്ന ബോക്സ് ഉപയോഗിക്കൂ.",
                   "Use the ‘Search restaurants’ box.")
-_DEMO_NAME = re.compile(r"ബെ[ക്‌]*താ[ഷ്ശ]+്?\s*കാക്കനാ[ട്ട്]+")
+_MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
+_OFFLINE_NAMES = ((re.compile(r"ബെ[ക്‌]*താ[ഷ്ശ]+്?\s*കാക്കനാ[ട്ട്]+"), "Bektash Kakkanad"),)
+_VAGUE_NAMES = {"it", "the restaurant", "this restaurant", "that restaurant", "the hotel", "this place"}
 _FIND = (
-    re.compile(r"is (?P<name>.+?) (?:open|closed)(?: now| today)?(?: in .+)?"),
-    re.compile(r"(?:check|see) (?:if|whether) (?P<name>.+?) is (?:open|closed)(?: now| today)?(?: in .+)?"),
+    re.compile(r"is (?P<name>.+?) (?:open|closed)(?: now| today)?(?: in .+)?(?: or not)?"),
+    re.compile(r"(?:check|see|i want to know|tell me) (?:if|whether) (?P<name>.+?) is (?:open|closed)"
+               r"(?: now| today)?(?: in .+)?"),
     re.compile(r"(?:find|check the status of|look up) (?P<name>.+)"),
-    re.compile(r"(?P<name>.+?) (?:open aano|thurannittundo|തുറന്നിട്ടുണ്ടോ|അടച്ചിട്ടുണ്ടോ)"),
+    re.compile(r"(?P<name>.+?) (?:open aano|thurannittundo|open ആണോ|തുറന്നിട്ടുണ്ടോ|അടച്ചിട്ടുണ്ടോ)"
+               r"(?: എന്ന് (?:അറിയണം|നോക്കണം|അറിയാൻ ആഗ്രഹിക്കുന്നു)| എന്നറിയണം| ennu (?:ariyanam|nokkanam))?"),
     re.compile(r"(?P<name>.+?)(?:ിന്റെ|ൻ്റെ)? (?:നില|സ്റ്റാറ്റസ്|status) (?:എങ്ങനെ നോക്കാം|എന്താണ്|engane nokkam)"),
 )
 _OPEN = re.compile(r"which (?:hotels|restaurants) are open|open (?:restaurants|filter)|തുറന്നിരിക്കുന്ന|തുറന്ന ഹോട്ടലുകൾ")
@@ -48,7 +54,9 @@ _FRESHNESS = re.compile(r"when was (?:this|the) .*updated|how old is (?:this|the
 
 
 def _normalized_name(text: str) -> str:
-    return " ".join(re.sub(r"[^\w\s-]", " ", _phrase(text)).split())
+    decomposed = unicodedata.normalize("NFKD", _phrase(text))
+    unaccented = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return " ".join(re.sub(r"[^\w\s-]", " ", unaccented).split())
 
 
 def _district(text: str) -> str | None:
@@ -65,26 +73,50 @@ class Intent:
     action: str = "unsupported"
 
 
+def _find_name(text: str) -> str:
+    for pattern in _FIND:
+        if match := pattern.fullmatch(text):
+            name = match["name"].strip(" '‘’\"“”")
+            for alias in _DISTRICT_ALIASES:
+                name = re.sub(rf" in {re.escape(alias)}$", "", name).strip()
+            return name
+    return ""
+
+
+def _latin_name(text: str) -> bool:
+    letters = [char for char in text if char.isalpha()]
+    return (0 < len(text) <= 120 and bool(letters) and _phrase(text) not in _VAGUE_NAMES
+            and all("LATIN" in unicodedata.name(char, "") for char in letters)
+            and all(char.isalnum() or char in " .,&'’()-" for char in text))
+
+
+def _romanize(name: str) -> str:
+    if len(name) <= 120:
+        try:
+            text = " ".join(sarvam.transliterate_text(name, "ml-IN", "en-IN").split())
+        except sarvam.SarvamError:
+            text = ""
+        if _latin_name(text):
+            return text
+    return next((latin for alias, latin in _OFFLINE_NAMES if alias.fullmatch(name)), "")
+
+
 def _intent(question: str) -> Intent:
     parts = [_phrase(part) for part in question.split(" / ", 1)]
     district = next((found for part in parts if (found := _district(part))), None)
-    if any(_DEMO_NAME.search(part) for part in parts):
-        return Intent("Bektash Kakkanad", district or "Ernakulam", "find")
     if any(_FRESHNESS.search(part) for part in parts):
         return Intent(district=district, action="card")
     if any(_OPEN.search(part) for part in parts):
         return Intent(district=district, action="open")
-    for part in reversed(parts):
-        for pattern in _FIND:
-            if match := pattern.fullmatch(part):
-                name = match["name"].strip(" '‘’\"“”")
-                for alias in _DISTRICT_ALIASES:
-                    name = re.sub(rf" in {re.escape(alias)}$", "", name).strip()
-                if name:
-                    if _normalized_name(name) == "bektash kakkanad":
-                        return Intent("Bektash Kakkanad", district or "Ernakulam", "find")
-                    return Intent(name, district, "find")
-    return Intent()
+    names = [_find_name(part) for part in parts]
+    name = next((candidate for candidate in reversed(names) if _latin_name(candidate)), "")
+    if not name and (native := next((candidate for candidate in names if _MALAYALAM.search(candidate)), "")):
+        name = _romanize(native)
+        if not name:
+            return Intent(district=district, action="spelling")
+    if _normalized_name(name) == "bektash kakkanad":
+        return Intent("Bektash Kakkanad", district or "Ernakulam", "find")
+    return Intent(name, district, "find") if name else Intent()
 
 
 def _decision(snap: Snapshot, kind: DecisionKind, ml: str, en: str, control: Control | None = None) -> Decision:
@@ -155,6 +187,10 @@ class GasUndoGuide:
             return _decision(snap, "unsupported",
                              "GasUndo-ൽ ഒരു ഹോട്ടൽ കണ്ടെത്താനോ അതിന്റെ റിപ്പോർട്ട് വായിക്കാനോ സഹായിക്കാം.",
                              "I can help find a restaurant or read its report on GasUndo.")
+        if self.intent.action == "spelling":
+            return _decision(snap, "clarify",
+                             "ഹോട്ടലിന്റെ പേര് ഇംഗ്ലീഷ് അക്ഷരത്തിൽ പറഞ്ഞോ എഴുതിയോ വീണ്ടും ചോദിക്കൂ.",
+                             "Ask again with the restaurant’s name in English letters.")
         district = _only(c for c in snap.controls if c.enabled and c.role == "AXPopUpButton"
                          and c.label.startswith("Select district"))
         if self.intent.district and district and district.label != f"Select district: {self.intent.district}":
