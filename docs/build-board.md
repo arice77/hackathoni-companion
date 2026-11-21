@@ -12,6 +12,11 @@ Status words: planned · building · in QA · in review · merged · demo-ready.
    overlay language: done (coordinator). Voice: building.
 3. The problem domain (GST or something else) is chosen **after** these basics work. The GST plan below is parked.
 
+## Shared-Mac rule
+
+Abin uses this Mac during the build. Live checks fail when he moves windows; rerun on an idle screen before calling a
+failure a product bug (21 Nov 22:35: 4 fails while he worked, 0 on the idle rerun). Ask before long live runs.
+
 ## Sarvam credits
 
 Organiser-provided: 600 credits (Abin, 21 Nov). Abin posts the remaining balance from the dashboard
@@ -71,6 +76,6 @@ Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime:
 | Sketch overlay | merged incl. taste pass (fc95633) | Codex astra | Offset rough strokes, 2° note with shadow, short arrow. Nit: Malayalam glyphs read slightly smaller than Latin |
 | Sarvam voice (Saaras v4 ml/en + translate, Bulbul, mic helper) | merged + wired into panel | Codex sol + coordinator | Live: Malayalam reply spoken on Safari practice page. Real mic needs Abin to allow the macOS prompt |
 | Language preference (panel + overlay + voice) | merged | coordinator | `--lang ml|en`, switch in panel |
-| Sarvam planner (LLM picks the control on any page) | merged (c3f00dc) | Codex sol + coordinator (async in app) | 28/30 exact in 2 runs, 0 unknown ids, p50 ~550 ms; Safari practice walk 8/8 to complete; live on httpbin: Malayalam question → "Customer name:". Open: ambiguous → should clarify; missing control → points at a near alternative |
+| Sarvam planner (LLM picks the control on any page) | merged (ccaa970) | Codex sol + coordinator (async in app) | 28/30 exact in 2 runs, 0 unknown ids, p50 ~550 ms; Safari practice walk 8/8 to complete; live on httpbin: Malayalam question → "Customer name:". Now: missing control → unsupported, ambiguous → clarify (all cases pass); 37/41 and 39/41; Wikipedia Search correct. Open: completion screens sometimes malformed (fix briefed) |
 | AIMS fixture | reference | coordinator | regression target in QA |
 | GST practice portal | parked | — | — |
