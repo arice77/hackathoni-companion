@@ -156,8 +156,9 @@ def assess(records, driver_rc, driver_err, privacy_hits, send_allowed, started, 
         send_idx = sends[0]["index"] if sends else None
         later = [r for r in decisions if send_idx is not None and r["index"] > send_idx]
         again = [r["index"] for r in later if r["kind"] == "point"]
-        honest = last is None or last["kind"] in {"complete", "clarify", "unsupported"} or last["index"] == send_idx
-        add("send: pressed once to Abin's own address, 'Message sent' seen, nothing pointed at after it", sent and not again and honest,
+        done = bool(last and last["kind"] == "complete" and "sent" in last.get("instruction_en", "").lower())
+        add("send: pressed once to Abin's own address, 'Message sent' seen, ended by complete 'Your email was sent', nothing pointed at after it",
+            sent and not again and done,
             f"sends={len(sends)}, message-sent notice seen={stop.get('sent_seen')}, decisions after Send {[(r['kind']) for r in later]}, "
             f"pointed again after Send: {again}; last decision {last['kind'] if last else None}; driver stop={stop['reason']}; {where}")
     out.append(result(FEATURE, "person follows the pointer in Gmail; Malayalam reads naturally", "skip", "needs-human",

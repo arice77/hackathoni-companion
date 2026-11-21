@@ -15,4 +15,8 @@ def run():
     ok = p.returncode == 0 and "site self-test OK" in p.stdout
     out.append(result(FEATURE, "follow-pointer assertions (YouTube + Gmail, Gmail privacy scan, driver allowlist): good walk passes, bad walk fails each rule",
                       "pass" if ok else "fail", "automated", "site self-test OK" if ok else (p.stderr or p.stdout)[-500:]))
+    p = sh(PY, "scripts/qa/selftest_replay_mutations.py", timeout=200)
+    ok = p.returncode == 0 and "replay mutation self-test OK" in p.stdout
+    out.append(result(FEATURE, "offline replays catch injected regressions (YouTube title anchor, ads, scroll-back, presets; Gmail privacy)",
+                      "pass" if ok else "fail", "automated", "replay mutation self-test OK" if ok else (p.stderr or p.stdout)[-500:]))
     return out

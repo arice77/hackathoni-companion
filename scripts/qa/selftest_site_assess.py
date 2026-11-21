@@ -132,8 +132,8 @@ GGOOD = [
     dec(3, 1, "Message Body", "Write your message.", "AXTextArea", action="typed (value not recorded)"),
     dec(4, 1, "Attach files", "Click 'Attach files'. Say 'Next' to skip.", "AXPopUpButton", action="skipped optional step, said 'Next' in the panel (asked)"),
     dec(5, 1, "Send", "Click 'Send'.", action="pressed Send"),
-    dec(6, 1, None, "The draft is no longer visible. I can't confirm whether it was sent.", kind="clarify", action="waiting (clarify): nothing pressed"),
-    {"event": "stop", "reason": "phase1=sent", "phases": {"3": "sent"}, "sends": 1, "sent_seen": True},
+    dec(6, 1, None, "Your email was sent", kind="complete", action="none"),
+    {"event": "stop", "reason": "phase1=complete", "phases": {"3": "complete"}, "sends": 1, "sent_seen": True},
 ]
 GBAD = [  # Subject before To, To twice, an inbox row pointed at, two Sends, no completion
     dec(0, 1, "Compose", "Click Compose."),
@@ -178,6 +178,10 @@ assert set(statuses(yt.assess(inside, 0, "", X, X, X)).values()) == {"pass"}
 # a bare "Skip" ad button pointed at is allowed (not an ad link); an ad link is still a failure
 skip = reindex(YGOOD[:2] + [dec(0, 1, "Skip", "Use 'Skip' to skip the ad.", "AXButton")] + YGOOD[2:])
 assert set(statuses(yt.assess(skip, 0, "", X, X, X)).values()) == {"pass"}
+
+# the old honest-clarify ending ("can't confirm whether it was sent") no longer passes: Send must end in complete
+cant = GGOOD[:6] + [dec(6, 1, None, "The draft is no longer visible. I can't confirm whether it was sent.", kind="clarify", action="waiting (clarify): nothing pressed")] + GGOOD[7:]
+assert any(v == "fail" for k, v in statuses(gm.assess(cant, 0, "", [], True, 0, X, X)).items() if k.startswith("send: pressed once"))
 
 # a stuck step repeated across 'Next' acknowledgements (different phases) still fails the repeat rule
 stuck = [dec(0, 1, "Compose", "Compose."), dec(1, 1, "To", "To.", "AXComboBox"), dec(2, 2, "To", "To.", "AXComboBox")]

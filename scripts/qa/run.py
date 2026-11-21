@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "checks"))
 CHECKS = Path(__file__).resolve().parent / "checks"
 LOCK_PATH = "/tmp/hackathoni-companion-qa.lock"  # machine-wide: every worktree shares fixtures and bundle ids
 LOCK_TIMEOUT_S = float(os.environ.get("QA_LOCK_TIMEOUT_S", "600"))
-NO_LOCK = {"unit"}  # checks that touch no screen, fixture or Safari window
+NO_LOCK = {"unit", "qa_selftest", "youtube_replay", "gmail_replay", "voice_keyterms"}  # touch no screen, fixture or Safari window
 ICON = {"pass": "PASS", "fail": "FAIL", "blocked": "BLOCKED", "skip": "SKIP"}
 
 
