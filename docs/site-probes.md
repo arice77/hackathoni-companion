@@ -43,6 +43,14 @@ Pages: Think Music's official [Darshana video from *Hridayam*](https://www.youtu
 
 Menus were closed through Settings and the dedicated windows were closed. No setting option, like, subscribe, or comment control was pressed. This verifies AX visibility and submenu navigation, not applying a new setting.
 
+## GasUndo
+
+**Anonymous HTTP and source inspection, 22 November 2026 IST.** GasUndo shows crowd reports about restaurants during Kerala’s LPG shortage. The Ernakulam catalog returned 2,736 places. The Alappuzha catalog returned HTTP 500 during the probe. The status snapshot was generated on 21 November UTC, and its newest included restaurant report was dated 25 May UTC. [GasUndo](https://gasundo.live/) · [Ernakulam catalog](https://gasundo.live/api/catalog?district=ernakulam) · [Alappuzha catalog](https://gasundo.live/api/catalog?district=alappuzha) · [Status snapshot](https://gasundo.live/api/status-snapshot)
+
+The desktop sidebar and mobile layout expose **Select district** and **Search restaurants** in HTML. Focused search shows matching buttons as the query changes. Selecting a result opens its name, address when available, report status and freshness in a sidebar or sheet. The site's **Open**, **Limited**, and **Closed** filters change the map. Reports older than 24 hours are labeled **Stale**. Adding reports, confirming reports, commenting, and voting require sign-in. [Search and filter implementation](https://github.com/vaishakh3/gasundo/blob/e266b7a53f1bd02c2f8cf9e363ea135440559502/src/components/FilterBar.jsx#L108-L251) · [Deployed app](https://gasundo.live/_next/static/chunks/a6ca469f9bc42c3f.js) · [Deployed status and freshness logic](https://gasundo.live/_next/static/chunks/aa53402c9aa86c37.js)
+
+**Automated:** Synthetic AX trees replay district selection, search, the matching suggestion, and the detail report. They also cover stale and missing reports and the catalog error. Safari AX labels, frame placement, and a person's walkthrough are pending live verification.
+
 ## KSEB Quick Pay
 
 The official [self-service home page](https://wss.kseb.in/selfservices/) links to [Quick Pay](https://wss.kseb.in/selfservices/quickpay). The dedicated Quick Pay window was opened directly by that URL. The reader retained these three `AXTextField` labels, each next to its own heading:
