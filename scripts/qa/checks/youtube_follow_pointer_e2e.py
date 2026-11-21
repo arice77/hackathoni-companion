@@ -108,8 +108,11 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
     add("no setting applied: the driver stopped at 0.75 and pressed nothing there",
         not pressed_target and reached, f"pressed 0.75 in decisions {pressed_target}; phase 2 end={phases.get('2', phases.get(2))}")
 
-    rep = _site.repeats(allpts)
-    add("no target pointed at twice (per question)", not rep, f"repeated targets: {rep}; stop {stop['reason']}")
+    rep = _site.repeats(allpts, allow={"settings": 1})
+    retries = [r["index"] for r in allpts if (r.get("target_label") or "").strip().lower() == "settings"][1:]
+    add("no target pointed at twice (per question; one Settings retry is the pack's intended recovery)", not rep,
+        f"repeated targets: {rep}; stop {stop['reason']}" if rep else
+        "every target pointed at once" + (f"; Settings pointed again in decisions {retries} (RETRY, exempt: allowed exactly once)" if retries else ""))
 
     bad = []
     for r in allpts:

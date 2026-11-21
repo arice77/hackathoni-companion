@@ -126,6 +126,15 @@ for needle in ("steps pointed in order", "no target is pointed", "every pointer 
 gs = {r["check"][:14]: r["status"] for r in ggate if r["evidence"] != "needs-human"}
 assert gs["send and compl"] == "blocked" and all(v == "pass" for k, v in gs.items() if k != "send and compl"), gs
 
+# one intentional Settings retry is exempt (and labelled); a second one, or any other repeat, still fails
+retry = YGOOD[:7] + [dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=2, action="pressed (retry: closed, reopened)")] + YGOOD[7:]
+res = yt.assess(retry, 0, "", X, X, X)
+assert set(statuses(res).values()) == {"pass"}, statuses(res)
+assert "RETRY" in next(r["detail"] for r in res if r["check"].startswith("no target pointed at twice"))
+retry2 = YGOOD[:7] + [dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=2),
+                      dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=3)] + YGOOD[7:]
+assert [v for k, v in statuses(yt.assess(retry2, 0, "", X, X, X)).items() if k.startswith("no target pointed at twice")] == ["fail"]
+
 # a bare "Skip" ad button pointed at is allowed (not an ad link); an ad link is still a failure
 skip = [dict(r) for r in YGOOD]
 skip.insert(2, dec(2, 1, "Skip", "Use 'Skip' to skip the ad.", "AXButton"))

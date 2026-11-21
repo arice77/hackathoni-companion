@@ -482,6 +482,13 @@ def main(argv=None) -> int:
                             result = type_text(el, text)
                         else:
                             result = press(el)
+                            if site == "youtube" and why == "settings" and seen[key] >= 2 and result == "pressed":
+                                # the pack's intentional recovery for a reduced menu: close it, then reopen it
+                                time.sleep(1.0)
+                                again = find_by_label(window, site, {"AXPopUpButton", "AXButton"},
+                                                      lambda l: l.strip().lower() == "settings")
+                                result = "pressed (retry: closed" + (
+                                    ", reopened)" if again and press(again[0]) == "pressed" else ", reopen failed)")
                             if site == "gmail" and why == "send":
                                 a.sends += 1
                                 state["sends"] = a.sends

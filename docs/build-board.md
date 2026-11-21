@@ -1,5 +1,11 @@
 # Build board
 
+> **Snapshot 22 Nov 01:47 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes, Q2 (speed) blocked on ad
+> handling. Running: planner builder (YouTube ads + retry_at), web builder (Gmail "sent" + YouTube ad
+> markers). QA holds the YouTube rerun until both land. Panel revamp merged. Orchestrator state:
+> `.context/orchestrator-state.md`.
+
+
 Orchestrator: coordinator session (Opus) · Process: `/conductor-orchestrator` · QA: `companion-qa` skill.
 Status words: planned · building · in QA · in review · merged · demo-ready.
 

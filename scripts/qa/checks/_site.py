@@ -152,12 +152,15 @@ def order_check(pts, steps):
     return ok, f"targets {seq}; missing {missing}; first positions {first}"
 
 
-def repeats(pts, by_phase=True):
+def repeats(pts, by_phase=True, allow=None):
+    """Targets pointed at more than once. `allow` maps a lower-case label to the number of EXTRA pointers tolerated
+    (e.g. {"settings": 1}: one intentional retry)."""
+    allow = allow or {}
     seen, out = {}, []
     for r in pts:
         k = (r.get("phase") if by_phase else None, r.get("target_role"), r.get("target_label"))
         seen[k] = seen.get(k, 0) + 1
-        if seen[k] == 2:
+        if seen[k] == 2 + allow.get((k[2] or "").strip().lower(), 0):
             out.append(k[2])
     return out
 
