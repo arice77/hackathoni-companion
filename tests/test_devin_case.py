@@ -86,9 +86,19 @@ class FlowTests(unittest.TestCase):
         live.start_fix.assert_called_once()
         attempts = json.loads(self.state.read_text())[self.case.id]
         self.assertEqual(set(attempts), {"simulated", "live"})
-        report = next(self.root.glob("*.md")).read_text()
-        self.assertEqual(report.count("Mode **SIMULATED**"), 1)
-        self.assertEqual(report.count("Mode **LIVE**"), 1)
+        simulated_report = next(self.root.glob("make-it-faster-simulated-*.md")).read_text()
+        live_report = next(self.root.glob("make-it-faster-live-*.md")).read_text()
+        self.assertIn("Mode **SIMULATED**", simulated_report)
+        self.assertNotIn("Mode **LIVE**", simulated_report)
+        self.assertIn("Mode **LIVE**", live_report)
+        self.assertNotIn("Mode **SIMULATED**", live_report)
+
+    def test_live_demo_has_its_own_branch_with_the_same_replay(self):
+        live_case = load_case("make-it-faster-live")
+        self.assertEqual(live_case.branch, "devin-case/make-it-faster-live")
+        self.assertEqual(live_case.approval, "fix make-it-faster-live 329cc68")
+        self.assertEqual((live_case.question, live_case.snapshot, live_case.expected, live_case.baseline),
+                         (self.case.question, self.case.snapshot, self.case.expected, self.case.baseline))
 
     def test_rejects_after_evidence_at_a_different_head(self):
         with self.assertRaisesRegex(CaseError, "exact PR head"):

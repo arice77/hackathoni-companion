@@ -96,11 +96,9 @@ def run_case(
         raise CaseError("The replay did not check the exact PR head.")
     report = _review(case, adapter.mode, pr, before, after)
     report_dir.mkdir(parents=True, exist_ok=True)
-    path = report_dir / f"{case.id}-{date.today().isoformat()}.md"
+    path = report_dir / f"{case.id}-{adapter.mode}-{date.today().isoformat()}.md"
     with _locked_state(state_path):
-        previous = path.read_text() if path.exists() else ""
-        if report not in previous:
-            path.write_text(previous + ("\n---\n\n" if previous else "") + report)
+        path.write_text(report)
     show(report)
     show(f"Report written to {path}")
     return 0 if after["passed"] else 1

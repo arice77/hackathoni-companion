@@ -17,7 +17,7 @@ At `329cc68` the pinned player snapshot yields a clarification, no local intent,
 .venv/bin/python -m tools.devin_case.cli make-it-faster
 ```
 
-Check the printed baseline evidence, then type `fix make-it-faster 329cc68` at the prompt. The case tool publishes the pinned base to `devin-case/make-it-faster`, cherry-picks the builder's fix and tests onto a separate branch, and opens a PR into the case branch. It replays the exact GitHub PR head and writes the dated review card here. Review and merge are manual on GitHub.
+Check the printed baseline evidence, then type `fix make-it-faster 329cc68` at the prompt. The case tool publishes the pinned base to `devin-case/make-it-faster`, cherry-picks the builder's fix and tests onto a separate branch, and opens a PR into the case branch. It replays the exact GitHub PR head and writes `<case-id>-<mode>-<date>.md` here. Review and merge are manual on GitHub.
 
 The gitignored `tools/devin_case/state.json` records one attempt per case and mode in this checkout. Rerunning resumes the saved session. If a start was reserved but no ID was saved, check the remote outcome before changing the state file.
 
