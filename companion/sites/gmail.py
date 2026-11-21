@@ -238,6 +238,6 @@ class GmailGuide:
         for step in fields:
             if step not in self._confirmed:
                 return self._point(snap, step, acknowledge=True)
-        if self._goal == "compose" and ATTACH not in self._confirmed and ATTACH.target(snap) is not None:
-            return self._point(snap, ATTACH, optional=True)
+        # Abin, 22 Nov 04:15: don't offer Attach inside "write an email"; go from Message Body straight to Send.
+        # Attaching stays available as its own request ("attach a photo").
         return self._point(snap, SEND)

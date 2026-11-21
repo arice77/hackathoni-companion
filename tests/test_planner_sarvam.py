@@ -593,13 +593,15 @@ class PlannerTests(unittest.TestCase):
             with self.subTest(skip=skip):
                 planner = SarvamPlanner("web_site", log_calls=False)
                 self.assertEqual(planner.decide(question, base).control_id, "compose")
-                for index, target in enumerate(("to", "subject", "body", "attach")):
+                for index, target in enumerate(("to", "subject", "body")):
                     snap = replace(base, snapshot_id=target, controls=tuple(
                         replace(control, filled=True) if i < index else control for i, control in enumerate(editor)
                     ))
                     self.assertEqual(planner.decide(question, snap).control_id, target)
+                snap = replace(base, snapshot_id="ready", controls=tuple(  # body filled: Send is next, no Attach
+                    replace(control, filled=True) if i < 3 else control for i, control in enumerate(editor)
+                ))
                 if skip is None:
-                    self.assertTrue(planner.skip_current())
                     active_question = question
                 else:
                     planner.reset_question()  # The panel submits typed and spoken questions through this path.

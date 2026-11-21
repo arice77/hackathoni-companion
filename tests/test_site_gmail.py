@@ -71,10 +71,7 @@ class GmailSiteTests(unittest.TestCase):
         # Gmail can collapse the To input after the user focuses the subject or body.
         self.point(make_screen(*steps[1:], filled=("Subject",), empty=("Message Body",)), BODY)
         ready = make_screen(*steps[1:], filled=("Subject", "Message Body"))
-        decision = self.point(ready, ATTACH)
-        self.assertIn("Open", decision.instruction_en)
-        self.assertIn("skip", decision.instruction_en)
-        self.assertTrue(self.guide.skip_current())
+        # Abin, 22 Nov: the compose walk goes straight from Message Body to Send; Attach is not offered.
         decision = self.point(ready, SEND)
         self.assertIn("only when you’re ready", decision.instruction_en)
         closed = self.guide.decide(make_screen(COMPOSE))
@@ -118,8 +115,6 @@ class GmailSiteTests(unittest.TestCase):
         self.point(editor, SUBJECT)
         self.assertTrue(self.guide.skip_current("Next"))
         self.point(editor, BODY)
-        self.assertTrue(self.guide.skip_current("Next"))
-        self.point(editor, ATTACH)
         self.assertTrue(self.guide.skip_current("Next"))
         self.point(editor, SEND)
 
