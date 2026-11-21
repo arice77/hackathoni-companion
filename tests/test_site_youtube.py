@@ -25,7 +25,8 @@ def snapshot(name: str, tick: int = 0) -> Snapshot:
     )
     bounds = (0, 0, 500, 500)
     return Snapshot(f"{name}-{tick}", time.time(), "com.apple.Safari", 123,
-                    "www.youtube.com", bounds, controls, viewport=bounds)
+                    "www.youtube.com", bounds, controls, viewport=bounds,
+                    below_fold_count=REPLAY["below_fold_counts"].get(name, 0))
 
 
 class YouTubeTests(unittest.TestCase):
@@ -49,12 +50,22 @@ class YouTubeTests(unittest.TestCase):
 
     def test_search_rebinds_the_same_action_to_fresh_ids_without_advance(self):
         guide = PACK.start_guidance("Find and play Darshana Hridayam")
-        home = snapshot("home")
+        home = replace(snapshot("home"), below_fold_count=160)
         self.assertEqual(guide.decide(home).control_id, "search")
         typed = snapshot("typed")
         self.assertEqual(guide.decide(typed).control_id, "go")
         warm = replace(typed, snapshot_id="warm", controls=tuple(replace(c, id=f"fresh-{c.id}") for c in typed.controls))
         self.assertEqual(guide.decide(warm).control_id, "fresh-go")
+        self.assertEqual(guide.decide(snapshot("results")).control_id, "best")
+
+    def test_submitted_search_with_no_visible_video_links_can_ask_for_scroll(self):
+        guide = PACK.start_guidance("Find and play Darshana Hridayam")
+        self.assertEqual(guide.decide(snapshot("home")).control_id, "search")
+        self.assertEqual(guide.decide(snapshot("typed")).control_id, "go")
+        step = guide.decide(snapshot("no_links_yet"))
+        self.assertEqual((step.kind, step.control_id, step.instruction_en),
+                         ("clarify", None, "Scroll down to see more results."))
+        self.assertIn("താഴേക്ക്", step.instruction)
         self.assertEqual(guide.decide(snapshot("results")).control_id, "best")
 
     def test_disregards_a_channel_even_when_its_heading_and_link_match(self):
@@ -111,6 +122,8 @@ class YouTubeTests(unittest.TestCase):
         self.assertEqual(faster.decide(snapshot("speed_menu")).control_id, "fast")
         search = PACK.start_guidance("Find and play Money 2x")
         self.assertIn("money 2x", search.decide(snapshot("home")).instruction_en)
+        song = PACK.start_guidance("Please play the song called Darshana.")
+        self.assertIn("Type ‘darshana’", song.decide(snapshot("home")).instruction_en)
 
     def test_language_button_outside_subtitles_is_not_pointed_at(self):
         snap = snapshot("watch")
