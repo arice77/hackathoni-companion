@@ -1,0 +1,29 @@
+{
+  "id": "make-it-faster",
+  "base_sha": "329cc68",
+  "question": "make it faster",
+  "snapshot": {
+    "snapshot_id": "synthetic-youtube-player",
+    "taken_at": 0,
+    "app_bundle_id": "com.apple.Safari",
+    "app_pid": 123,
+    "window_title": "www.youtube.com",
+    "window_frame": [0, 0, 1200, 800],
+    "viewport": [0, 60, 1200, 740],
+    "controls": [
+      {"id": "pause", "role": "AXButton", "label": "Pause (k)", "frame": [55, 548, 38, 35]},
+      {"id": "seek", "role": "AXSlider", "label": "Seek slider", "frame": [52, 529, 610, 10]},
+      {"id": "settings", "role": "AXPopUpButton", "label": "Settings", "frame": [610, 548, 40, 35]}
+    ]
+  },
+  "expected": {
+    "kind": "point",
+    "target_label": "Settings",
+    "local_intent": {"action": "speed", "speed": "1.25"},
+    "intent_calls": 0
+  },
+  "baseline": {
+    "actual": {"kind": "clarify", "target_label": null, "local_intent": null},
+    "intent_calls": 1
+  }
+}
