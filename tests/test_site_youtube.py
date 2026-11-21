@@ -379,6 +379,21 @@ class YouTubeTests(unittest.TestCase):
                 self.assertEqual(decision.kind, "point" if target else "clarify")
         load_key.assert_not_called()
 
+    @patch.object(sarvam, "_load_api_key", side_effect=AssertionError("Known commands must stay local"))
+    def test_make_it_faster_points_to_player_settings_locally(self, load_key):
+        controls = (
+            Control("pause", "AXButton", "Pause (k)", (55, 548, 38, 35)),
+            Control("seek", "AXSlider", "Seek slider", (52, 529, 610, 10)),
+            Control("settings", "AXPopUpButton", "Settings", (610, 548, 40, 35)),
+        )
+        snap = Snapshot("player", 0, "com.apple.Safari", 123, "www.youtube.com", (0, 0, 1200, 800), controls,
+                        viewport=(0, 60, 1200, 740))
+        decision = SarvamPlanner("web_site", log_calls=False).decide("make it faster", snap)
+        self.assertEqual((decision.kind, decision.control_id), ("point", "settings"))
+        self.assertEqual(validate(decision, snap, now=snap.taken_at), (True, "ok"))
+        self.assertEqual(PACK.start_guidance("make it faster").decide(snapshot("speed_menu")).control_id, "fast")
+        load_key.assert_not_called()
+
     def test_unrecognized_model_intents_stay_in_youtube_search(self):
         for reply in ({"action": None, "title": ""}, {"action": "delete", "title": ""},
                       {"action": "find", "title": "x" * 61}):
