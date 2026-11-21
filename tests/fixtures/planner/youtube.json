@@ -177,6 +177,16 @@
       {"id": "fast", "role": "AXButton", "label": "1.25"},
       {"id": "faster", "role": "AXButton", "label": "1.5"}
     ],
+    "speed_stepper": [
+      {"id": "decrease", "role": "AXButton", "label": "Decrease playback speed 0.05"},
+      {"id": "current-speed", "role": "AXSlider", "label": "Playback speed slider 1.0"},
+      {"id": "increase", "role": "AXButton", "label": "Increase playback speed 0.05"},
+      {"id": "normal", "role": "AXButton", "label": "1.0", "filled": true},
+      {"id": "fast", "role": "AXButton", "label": "1.25"},
+      {"id": "faster", "role": "AXButton", "label": "1.5"},
+      {"id": "double", "role": "AXButton", "label": "2.0"},
+      {"id": "triple", "role": "AXButton", "label": "3.0"}
+    ],
     "speed_after": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
       {"id": "go", "role": "AXButton", "label": "Search"},

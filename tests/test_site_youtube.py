@@ -116,6 +116,46 @@ class YouTubeTests(unittest.TestCase):
         self.assertEqual((closed.kind, closed.control_id), ("clarify", None))
         self.assertIn("Check that", closed.instruction_en)
 
+    @patch.object(sarvam, "_load_api_key", side_effect=AssertionError("Speed must stay local"))
+    def test_custom_speed_counts_down_then_completes_without_a_preset(self, load_key):
+        planner = SarvamPlanner("web_site", log_calls=False)
+        question = "Play it slower"
+        self.assertEqual(planner.decide(question, snapshot("watch")).control_id, "gear")
+        self.assertEqual(planner.decide(question, snapshot("settings_values")).control_id, "speed")
+        for tick, (value, kind, target, text, ml_text) in enumerate((
+            ("1.0", "point", "decrease", "Press − to slow down (5 more times)", "ഇനി 5 തവണ"),
+            ("0.8", "point", "decrease", "Press − to slow down (1 more time)", "ഇനി 1 തവണ"),
+            ("0.75", "complete", None, "The video is set to 0.75×.", "0.75"),
+            ("0.7509", "complete", None, "The video is set to 0.75×.", "0.75"),
+        )):
+            with self.subTest(value=value):
+                snap = snapshot("speed_stepper", tick)
+                snap = replace(snap, controls=tuple(replace(c, label=f"Playback speed slider {value}")
+                               if c.role == "AXSlider" else c for c in snap.controls))
+                decision = planner.decide(question, snap)
+                self.assertEqual((decision.kind, decision.control_id, decision.instruction_en), (kind, target, text))
+                self.assertIn(ml_text, decision.instruction)
+                self.assertEqual(validate(decision, snap), (True, "ok"))
+        load_key.assert_not_called()
+
+    def test_custom_speed_without_slider_uses_visible_menu_value_or_no_count(self):
+        guide = PACK.start_guidance("Play it slower")
+        snap = snapshot("speed_stepper")
+        controls = tuple(c for c in snap.controls if c.role != "AXSlider")
+        decision = guide.decide(replace(snap, controls=controls))
+        self.assertEqual((decision.control_id, decision.instruction_en), ("decrease", "Press − until it shows 0.75×."))
+        speed = replace(snapshot("settings_values").control("speed"), label="Playback speed 0.70")
+        decision = guide.decide(replace(snap, controls=(*controls, speed)))
+        self.assertEqual((decision.control_id, decision.instruction_en),
+                         ("increase", "Press + to speed up (1 more time)"))
+
+    def test_speed_prefers_a_preset_and_does_not_overshoot_an_unreachable_value(self):
+        snap = snapshot("speed_stepper")
+        self.assertEqual(PACK.start_guidance("Faster").decide(snap).control_id, "fast")
+        decision = PACK.start_guidance("Set playback speed to 0.76").decide(snap)
+        self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+        self.assertIn("0.05× at a time", decision.instruction_en)
+
     def test_waits_for_ad_markers_and_keeps_advertiser_copy_out_of_sarvam(self):
         playing = snapshot("watch")
         for label, marker in (

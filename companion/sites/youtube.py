@@ -20,6 +20,9 @@ _SEARCH = {"AXComboBox", "AXSearchField", "AXTextField"}
 _CC = re.compile(r"^(?:subtitles/closed captions|closed captions|cc)(?:\b|\s|$)")
 _SPEED_PRESET = re.compile(r"(\d+(?:\.\d+)?)\s*[x×]?")
 _SPEED_VALUE = re.compile(r"(?:(?:playback speed|speed)\s*:?\s*)?(\d+(?:\.\d+)?)\s*[x×]?")
+_SPEED_SLIDER = re.compile(r"playback speed slider (\d+(?:\.\d+)?)\s*[x×]?")
+_SPEED_STEP = Decimal("0.05")
+_SPEED_TOLERANCE = Decimal("0.001")
 _NAMED_SPEED = re.compile(r"(?<!\w)(\d+(?:\.\d+)?)(?:\s*[x×]|\s+(?:speed|vegathayil|വേഗത്തിൽ))(?!\w)")
 _EXPLICIT_SPEED = re.compile(r"(?:set |change )?(?:playback )?speed (?:to |at )?(\d+(?:\.\d+)?)\s*[x×]?")
 _SPEED_CONTEXT = re.compile(r"\b(?:play at|speed|slower|faster|vegathayil)\b|വേഗത്തിൽ")
@@ -199,6 +202,37 @@ def _decision(snap: Snapshot, kind: str, ml: str, en: str) -> Decision:
 def _point(snap: Snapshot, control: Control, ml: str, en: str) -> Decision:
     label = f"‘{control.label}’"
     return Decision("point", snap.snapshot_id, ml.format(label=label), en.format(label=label), control.id, "sarvam")
+
+
+def _speed_complete(snap: Snapshot, requested: Decimal) -> Decision:
+    return _decision(snap, "complete", f"വീഡിയോ {requested} മടങ്ങ് വേഗത്തിലാണ്.",
+                     f"The video is set to {requested}×.")
+
+
+def _adjust_speed(snap: Snapshot, requested: Decimal, current: Decimal | None,
+                  decrease: Control | None, increase: Control | None) -> Decision:
+    if current is None and requested == 1:
+        return _decision(snap, "clarify", "ഇപ്പോഴത്തെ സ്പീഡ് നോക്കി 1× ആക്കൂ.",
+                         "Check the current speed and adjust it to 1×.")
+    slower = requested < (current if current is not None else 1)
+    button = decrease if slower else increase
+    if button is None:
+        return _decision(snap, "clarify", f"സ്പീഡ് {requested}× ആക്കാനുള്ള ബട്ടൺ ഇപ്പോൾ കാണുന്നില്ല.",
+                         f"The button to reach {requested}× isn’t available in this menu.")
+    symbol = "−" if slower else "+"
+    if current is None:
+        return Decision("point", snap.snapshot_id, f"{requested}× കാണുന്നതുവരെ {symbol} അമർത്തൂ.",
+                        f"Press {symbol} until it shows {requested}×.", button.id, "sarvam")
+    distance = abs(requested - current)
+    presses = round(distance / _SPEED_STEP)
+    if abs(distance - presses * _SPEED_STEP) > _SPEED_TOLERANCE:
+        return _decision(snap, "clarify", "ഈ ബട്ടണുകൾ 0.05× വീതമാണ് സ്പീഡ് മാറ്റുന്നത്. വേറൊരു സ്പീഡ് പറയൂ.",
+                         "These buttons change speed by 0.05× at a time. Choose a speed they can reach.")
+    ml = "വേഗം കുറയ്ക്കാൻ" if slower else "വേഗം കൂട്ടാൻ"
+    en = "slow down" if slower else "speed up"
+    times = "time" if presses == 1 else "times"
+    return Decision("point", snap.snapshot_id, f"{ml} {symbol} അമർത്തൂ (ഇനി {presses} തവണ)",
+                    f"Press {symbol} to {en} ({presses} more {times})", button.id, "sarvam")
 
 
 def _title_words(label: str) -> set[str]:
@@ -452,26 +486,31 @@ class YouTubeGuide:
         return _await_player(snap, controls)
 
     def _speed(self, snap: Snapshot, controls: tuple[Control, ...], deadline: float | None) -> Decision:
-        rates = []
-        for c in controls:
-            if c.role in _MENU and c.enabled and (value := _SPEED_PRESET.fullmatch(_phrase(c.label))):
-                rates.append((Decimal(value[1]), c))
         requested = self.intent.speed
-        if rates:
-            if target := next((c for rate, c in rates if rate == requested), None):
-                if target.filled is True:
-                    return _decision(snap, "complete", f"വീഡിയോ {requested} മടങ്ങ് വേഗത്തിലാണ്.",
-                                     f"The video is set to {requested}×.")
-                return _point(snap, target, "വേഗം മാറ്റാൻ {label} അമർത്തൂ.", "Choose {label} for that playback speed.")
-            return _decision(
-                snap, "clarify", f"പട്ടികയിൽ {requested} കാണാൻ ഒന്ന് സ്ക്രോൾ ചെയ്യൂ.",
-                f"Scroll inside Playback speed to look for {requested}×.",
-            )
-        if speed := _menu(controls, "Playback speed"):
-            value = _SPEED_VALUE.fullmatch(_phrase(speed.label))
-            if requested is not None and value is not None and Decimal(value[1]) == requested:
-                return _decision(snap, "complete", f"വീഡിയോ {requested} മടങ്ങ് വേഗത്തിലാണ്.",
-                                 f"The video is set to {requested}×.")
+        assert requested is not None  # parse_intent supplies a speed for every speed intent.
+        speed = _menu(controls, "Playback speed")
+        slider = next((value for c in controls if c.role == "AXSlider"
+                       and (value := _SPEED_SLIDER.fullmatch(_phrase(c.label)))), None)
+        row_value = _SPEED_VALUE.fullmatch(_phrase(speed.label)) if speed is not None else None
+        value = slider or row_value
+        current = Decimal(value[1]) if value is not None else None
+        if current is None and speed is not None and _phrase(speed.label) == "playback speed normal":
+            current = Decimal(1)
+        if current is not None and abs(current - requested) <= _SPEED_TOLERANCE:
+            return _speed_complete(snap, requested)
+        rates = [(Decimal(value[1]), c) for c in controls if c.role in _MENU and c.enabled
+                 and (value := _SPEED_PRESET.fullmatch(_phrase(c.label)))]
+        if target := next((c for rate, c in rates if rate == requested), None):
+            if current is None and target.filled is True:
+                return _speed_complete(snap, requested)
+            return _point(snap, target, "വേഗം മാറ്റാൻ {label} അമർത്തൂ.", "Choose {label} for that playback speed.")
+        decrease = _target(controls, {"AXButton"}, "decrease playback speed 0.05")
+        increase = _target(controls, {"AXButton"}, "increase playback speed 0.05")
+        decrease = decrease or _target(controls, {"AXButton"}, "decrease playback speed")
+        increase = increase or _target(controls, {"AXButton"}, "increase playback speed")
+        if rates or slider is not None or decrease is not None or increase is not None:
+            return _adjust_speed(snap, requested, current, decrease, increase)
+        if speed is not None:
             return _point(snap, speed, "വീഡിയോയുടെ വേഗം മാറ്റാൻ {label} തുറക്കൂ.",
                           "Open {label} to see the available speeds.")
         if self.last_key is not None and _SPEED_PRESET.fullmatch(self.last_key[1]):
