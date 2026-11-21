@@ -77,6 +77,16 @@ assert statuses(yt.assess(alt, 0, "", X, X, X))["find: ended by a complete decis
 alt2 = YGOOD[:6] + [dec(6, 2, "Subscribe", "Subscribe.", action="refused: control is outside the YouTube allowlist")] + YGOOD[7:]
 assert any(v == "fail" for k, v in statuses(yt.assess(alt2, 0, "", X, X, X)).items() if "every pointed control" in k)
 
+
+# optional scroll step on YouTube results
+yscroll = YGOOD[:2] + [dec(2, 1, None, "Scroll down to continue.", kind="clarify", action="scrolled page down to 0.50")] + YGOOD[2:]
+for n, r in enumerate(x for x in yscroll if x["event"] == "decision"):
+    r["index"] = n
+assert set(statuses(yt.assess(yscroll, 0, "", X, X, X)).values()) == {"pass"}
+yscroll_bad = [dict(r) for r in yscroll]
+yscroll_bad[2]["action"] = "scroll failed: scrollbar did not move"
+assert [v for k, v in statuses(yt.assess(yscroll_bad, 0, "", X, X, X)).items() if k.startswith("scrolling is optional")] == ["fail"]
+
 # ---------------------------------------------------------------- Gmail
 GGOOD = [
     dec(0, 1, "Compose", "Click 'Compose' to start a new email."),

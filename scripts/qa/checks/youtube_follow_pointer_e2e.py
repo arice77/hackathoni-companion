@@ -127,6 +127,7 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
     add("every pointed control was inside the driver's allowlist and matched on the page", not refused,
         f"driver refused or could not match: {refused}" if refused else "no refusals, every frame matched a control of our window")
 
+    out.append(_follow.scroll_result(FEATURE, decisions))
     out.append(result(FEATURE, "person follows the pointer on real YouTube; Malayalam reads naturally; ads handled", "skip",
                       "needs-human", "driver pressed Search/result/Settings/Playback speed through Accessibility; a person has not run this"))
     return out

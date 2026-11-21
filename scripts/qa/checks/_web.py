@@ -10,6 +10,7 @@ import time
 from _common import ROOT, sh, wait_for
 
 SAFARI = "com.apple.Safari"
+TEST_BOUNDS = (40, 40, 1240, 40 + int(os.environ.get("QA_WINDOW_H") or 1000))  # 1200 x 1000 by default; QA_WINDOW_H forces a short window
 PORT = os.environ.get("CONDUCTOR_PORT") or "8765"
 URL = f"http://127.0.0.1:{PORT}/"
 
@@ -90,7 +91,9 @@ def wait_front_readable(url: str, title: str | None = None, seconds: float = 20.
 
 
 def _open_in_safari(url: str) -> str | None:
-    script = f'tell application id "{SAFARI}"\n make new document with properties {{URL:"{url}"}}\n activate\nend tell'
+    l, t, r, b = TEST_BOUNDS  # same tall window every run, so "below the fold" is comparable (Safari clamps to the screen)
+    script = (f'tell application id "{SAFARI}"\n make new document with properties {{URL:"{url}"}}\n activate\n delay 0.8\n'
+              f' set bounds of front window to {{{l}, {t}, {r}, {b}}}\nend tell')
     p = sh("osascript", "-e", script, timeout=30)
     return None if p.returncode == 0 else f"could not open {url} in Safari: {p.stderr.strip()[:200]}"
 

@@ -13,7 +13,7 @@ from _common import PY, ROOT, result, sh, wait_for
 import _follow
 
 SAFARI = "com.apple.Safari"
-BOUNDS = (63, 67, 1253, 811)  # unusual on purpose: the driver finds our window by its exact bounds
+BOUNDS = (63, 41, 1253, 1041)  # tall, and unusual on purpose: the driver finds our window by its exact bounds
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 

@@ -143,7 +143,7 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
     # 5 orientation once; no repeated first sentence
     bad = [r["index"] for r in decisions[1:] if ORIENTATION.search(r.get("instruction_en", ""))]
     firsts = {}
-    for r in decisions:
+    for r in _follow.walk_decisions(decisions):
         firsts.setdefault(_follow.first_sentence(r.get("instruction_en", "")), []).append(r["index"])
     shared = {s: i for s, i in firsts.items() if s and len(i) > 1}
     results.append(result(FEATURE, "orientation text appears only in the first decision",
@@ -178,6 +178,7 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
                           "pass" if done else "fail", "live-machine",
                           f"last decision {last['kind'] if last else None}; '{STATUS_TEXT}' on page={heading_seen}; "
                           f"{receipt_detail}; driver stop={stop['reason']}; {where}"))
+    results.append(_follow.scroll_result(FEATURE, decisions))
     results.append(result(FEATURE, "person follows the pointer on the KSEB copy, reads the image", "skip", "needs-human",
                           "driver typed the practice image text; a person has not read a captcha or run this (see features/web-support.md)"))
     return results

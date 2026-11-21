@@ -117,4 +117,31 @@ assert set(kgood.values()) == {"pass"}, kgood
 kfails = [k for k, v in kbad.items() if v == "fail"]
 for needle in ("steps pointed in order", "captcha guidance", "no target", "no detour", "orientation", "completion"):
     assert any(needle in k for k in kfails), (needle, kfails)
+
+# ---- optional scroll step ("Scroll down to continue." before Submit) ----
+def with_scroll(records, before_label, action="scrolled page down to 0.60", times=1):
+    out = []
+    for r in records:
+        if r.get("target_label") == before_label:
+            out += [dec(0, None, "Scroll down to continue.", kind="clarify", action=action) for _ in range(times)]
+        out.append(r)
+    n = 0
+    for r in out:
+        if r["event"] == "decision":
+            r["index"], n = n, n + 1
+    return out
+
+
+sg = statuses(with_scroll(GOOD, "Submit order"), True)
+assert set(sg.values()) == {"pass"}, sg  # one answered scroll, then progress: nothing else flags it
+assert any(k.startswith("scrolling is optional") for k in sg), sg
+for bad_scroll in (with_scroll(GOOD, "Submit order", action="none"),  # driver did not scroll
+                   with_scroll(GOOD, "Submit order", times=4),  # more than 3 scrolls
+                   GOOD[:7] + [dec(7, None, "Scroll down to continue.", kind="clarify", action="scrolled page down to 0.60"),
+                               {"event": "stop", "reason": "decision-timeout"}]):  # no progress after the scroll
+    bs = statuses(bad_scroll, True)
+    assert [v for k, v in bs.items() if k.startswith("scrolling is optional")] == ["fail"], bs
+ks = kstatuses(with_scroll(KGOOD, "Submit to see the bill"), True)
+assert set(ks.values()) == {"pass"}, ks
+print("scroll step OK")
 print("self-test OK")

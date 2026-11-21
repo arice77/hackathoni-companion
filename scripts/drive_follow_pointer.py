@@ -12,8 +12,11 @@ on the pointed control, the way a person following the pointer would, then waits
                            --companion-pid; Safari's time input cannot be driven, and nothing optional is ticked).
                            Without --companion-pid these are left alone and the stop rules below end the run.
   link                     does nothing (detours such as Refresh are never followed)
+  clarify "Scroll down..."  scrolls ONLY our page: moves the vertical scrollbar of the web area's scroll area through
+                           Accessibility by 60% of a viewport (no cursor, no keys, no other window), then waits for the
+                           next decision. At most --max-scrolls per run; a scroll that cannot move ends the run.
 
-Stops on: `complete` (done), any other terminal decision, the same target pointed at `--repeat-limit`
+Stops on: `complete` (done), any other terminal decision (a scroll clarify is not terminal), the same target pointed at `--repeat-limit`
 times, no new decision within `--decision-timeout`, or `--total-timeout`.
 
 Safety rules, enforced here (same as drive_web_practice.py):
@@ -173,6 +176,39 @@ def descendants(el, roles):
     return out
 
 
+SCROLL_WORDS = ("scroll",)
+
+
+def is_scroll_clarify(kind: str, text: str) -> bool:
+    return kind == "clarify" and any(w in (text or "").lower() for w in SCROLL_WORDS)
+
+
+def scroll_down(area, fraction: float = 0.6) -> str:
+    """Scroll the page of `area` (an AXWebArea) down by `fraction` of its viewport via the scroll area's vertical
+    scrollbar. Only our own window's page moves. Returns a result string starting 'scrolled' on success."""
+    parent = _get(area, "AXParent")
+    if parent is None or _get(parent, "AXRole") != "AXScrollArea":
+        return "scroll failed: web area has no scroll area"
+    bar = _get(parent, "AXVerticalScrollBar")
+    page, view = _frame(area), _frame(parent)
+    value = _get(bar, "AXValue") if bar is not None else None
+    if bar is None or not isinstance(value, (int, float)) or not page or not view:
+        return "scroll failed: no readable vertical scrollbar"
+    room = page[3] - view[3]
+    if room <= 1:
+        return "scroll failed: page fits the window (nothing to scroll)"
+    if value >= 0.999:
+        return "scroll failed: already at the bottom"
+    target = min(1.0, float(value) + fraction * view[3] / room)
+    err = AX.AXUIElementSetAttributeValue(bar, "AXValue", target)
+    if err:
+        return f"scroll failed: scrollbar refused AXValue (AX error {err})"
+    time.sleep(0.6)
+    now = _get(bar, "AXValue")
+    moved = isinstance(now, (int, float)) and now > value + 1e-4
+    return f"scrolled page down to {float(now):.2f}" if moved else "scroll failed: scrollbar did not move"
+
+
 def is_filled(el, role):
     """Test-side read of whether the control already holds something (None = unknown)."""
     if role in TEXT_ROLES:
@@ -284,10 +320,11 @@ def main(argv=None) -> int:
     ap.add_argument("--poll", type=float, default=0.3)
     ap.add_argument("--companion-pid", type=int, help="pid of the companion app whose Skip button may be pressed")
     ap.add_argument("--settle", type=float, default=0.6, help="pause after acting so the page redraws")
+    ap.add_argument("--max-scrolls", type=int, default=4, help="most 'Scroll down' clarifies answered with a scroll")
     a = ap.parse_args(argv)
     configure(a.page)
 
-    tail, records, seen_targets = Tail(a.log), [], {}
+    tail, records, seen_targets, scrolls = Tail(a.log), [], {}, 0
     start = last_decision = time.time()
     stop = None
 
@@ -316,6 +353,15 @@ def main(argv=None) -> int:
                 emit({**rec, "action": "none"})
                 stop = "complete"
                 break
+            if is_scroll_clarify(ev["kind"], rec["instruction_en"]):
+                scrolls += 1
+                result = scroll_down(pizza_area()) if scrolls <= a.max_scrolls else "scroll limit reached"
+                emit({**rec, "action": result})
+                if not result.startswith("scrolled"):
+                    stop = "scroll-failed"
+                    break
+                time.sleep(a.settle)
+                continue
             if ev["kind"] != "point":
                 emit({**rec, "action": "none"})
                 stop = f"terminal-decision:{ev['kind']}"

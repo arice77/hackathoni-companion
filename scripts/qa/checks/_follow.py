@@ -3,7 +3,7 @@ import importlib.util
 import os
 import re
 
-from _common import ROOT
+from _common import ROOT, result
 
 
 def key_available() -> bool:
@@ -46,3 +46,32 @@ def heading_seen(page: str, text: str) -> bool:
     except (SystemExit, Exception):  # noqa: BLE001 - page gone or unreadable counts as not seen
         return False
     return False
+
+
+MAX_SCROLLS = 3
+
+
+def is_scroll(rec: dict) -> bool:
+    """A 'Scroll down to continue.' clarify (the planner asks the person to bring the next control into view)."""
+    return rec.get("event") == "decision" and rec.get("kind") == "clarify" and "scroll" in rec.get("instruction_en", "").lower()
+
+
+def walk_decisions(decisions):
+    """Decisions that count for wording rules: scroll clarifies are a legitimate extra step and are not compared."""
+    return [r for r in decisions if not is_scroll(r)]
+
+
+def scroll_result(feature: str, decisions):
+    """Optional scroll step: allowed up to MAX_SCROLLS times; each must have been answered by the driver scrolling our
+    page and be followed by a point or complete decision (the walk went on)."""
+    scrolls = [i for i, r in enumerate(decisions) if is_scroll(r)]
+    name = "scrolling is optional and, when asked for, progresses the walk"
+    if not scrolls:
+        return result(feature, name, "pass", "live-machine", "no scroll needed in this window size")
+    unanswered = [decisions[i]["index"] for i in scrolls if not str(decisions[i].get("action", "")).startswith("scrolled")]
+    stalled = [decisions[i]["index"] for i in scrolls
+               if not any(r["kind"] in {"point", "complete"} for r in decisions[i + 1:])]
+    ok = not unanswered and not stalled and len(scrolls) <= MAX_SCROLLS
+    return result(feature, name, "pass" if ok else "fail", "live-machine",
+                  f"{len(scrolls)} scroll step(s); driver did not scroll for decisions {unanswered}; "
+                  f"no progress after decisions {stalled}; limit {MAX_SCROLLS}")

@@ -130,7 +130,7 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
     # 4 orientation text only in the first decision
     bad = [r["index"] for r in decisions[1:] if ORIENTATION.search(r.get("instruction_en", ""))]
     firsts = {}
-    for r in decisions:
+    for r in _follow.walk_decisions(decisions):
         firsts.setdefault(_follow.first_sentence(r.get("instruction_en", "")), []).append(r["index"])
     shared = {s: i for s, i in firsts.items() if s and len(i) > 1}
     results.append(result(FEATURE, "orientation text appears only in the first decision",
@@ -201,6 +201,7 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
                           "pass" if done else "fail", "live-machine",
                           f"last decision {last['kind'] if last else None}; '{STATUS_TEXT}' on page={heading_seen}; "
                           f"{receipt_detail}; driver stop={stop['reason']}; {where}"))
+    results.append(_follow.scroll_result(FEATURE, decisions))
     results.append(result(FEATURE, "person follows the pointer on a real-shaped form", "skip", "needs-human",
                           "driver acted on the pointed control; a person has not run this (see features/web-support.md)"))
     return results

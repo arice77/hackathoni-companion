@@ -9,6 +9,8 @@ Safety rules, enforced here:
   * Only the AXWebArea of that window whose host is the chosen site's host.
   * The pointed control is found by the logged frame (hit-test, then a bounded walk of that window). No match:
     nothing is pressed.
+  * "Scroll down" clarifies are answered by scrolling only our window's page (scrollbar of the web area's scroll
+    area via Accessibility), at most --max-scrolls times.
   * Allowlist per site. Anything else the pointer lands on is NOT pressed and ends the run ("refused").
       youtube  type the song text into Search; press the Search button; press a result link only if it is a
                /watch link, names the song and is not an ad; press Play, Skip ad, Settings, Playback speed.
@@ -178,6 +180,13 @@ def web_area_url(window, site: str) -> str | None:
     return None
 
 
+def web_area_el(window, site: str):
+    for el in walk(window, 3000):
+        if _get(el, "AXRole") == "AXWebArea" and host_ok(str(_get(el, "AXURL") or ""), site):
+            return el
+    return None
+
+
 def _candidate(el, window):
     role, frame = _get(el, "AXRole"), _frame(el)
     if role not in TARGET_ROLES or not frame or frame[2] <= 0 or frame[3] <= 0:
@@ -288,6 +297,7 @@ def main(argv=None) -> int:
     ap.add_argument("--then-ask", default="", help="after the first question completes, ask this in the panel")
     ap.add_argument("--allow-send", action="store_true", help="gmail: Send may be pressed (needs the env gate too)")
     ap.add_argument("--keep-playing", action="store_true", help="youtube: do not pause the video between questions")
+    ap.add_argument("--max-scrolls", type=int, default=4)
     ap.add_argument("--decision-timeout", type=float, default=45.0)
     ap.add_argument("--total-timeout", type=float, default=300.0)
     ap.add_argument("--repeat-limit", type=int, default=3)
@@ -299,7 +309,7 @@ def main(argv=None) -> int:
     site = a.site
 
     tail, records = Tail(a.log), []
-    phase, awaiting_q = 0, False
+    phase, awaiting_q, scrolls = 0, False, 0
     phase_end, seen = {}, {}
     state = {"sends": 0, "sent_seen": None, "draft": None, "playing": None, "paused": None, "search_fallback": None}
     start = last = time.time()
@@ -366,6 +376,15 @@ def main(argv=None) -> int:
             elif ev["kind"] == "unsupported":
                 emit({**rec, "action": "none"})
                 done = finish_phase("terminal-decision:unsupported", fatal=True)
+            elif base.is_scroll_clarify(ev["kind"], rec["instruction_en"]):
+                scrolls += 1
+                pid, window = our_window(bounds)
+                area = web_area_el(window, site)
+                result = base.scroll_down(area) if area is not None and scrolls <= a.max_scrolls else "scroll limit reached or no page"
+                emit({**rec, "action": result})
+                if not result.startswith("scrolled"):
+                    done = finish_phase("scroll-failed", fatal=True)
+                time.sleep(a.settle)
             elif ev["kind"] != "point":
                 emit({**rec, "action": "waiting (clarify): nothing pressed"})
             elif not ev.get("valid") or not ev.get("frame"):
