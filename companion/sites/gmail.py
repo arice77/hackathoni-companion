@@ -221,12 +221,17 @@ class GmailGuide:
                               "This is a new email draft. Open ‘Reply’ on the email you want to answer.")
         self._saw_editor = True
         fields = (TO, SUBJECT, BODY) if self._goal == "compose" else (BODY,)
-        for step in fields:
+        for index, step in enumerate(fields):
             target = step.target(snap)
             filled = target.filled if target is not None else None
-            if filled is False:
+            # Live test 22 Nov 04:10: after the address is typed and focus moves on, Gmail collapses the To box
+            # into a recipients summary (hidden or read as empty), so the guide bounced back to To. A collapsed
+            # To, or any later field already filled, means the person has moved past it.
+            later_filled = any((t := later.target(snap)) is not None and t.filled is True for later in fields[index + 1:])
+            collapsed_to = step == TO and target is None
+            if filled is False and not later_filled:
                 self._confirmed.discard(step)
-            elif filled is True or step == pending:
+            elif filled is True or step == pending or later_filled or collapsed_to:
                 self._confirmed.add(step)
         if pending == ATTACH:
             self._confirmed.add(ATTACH)
