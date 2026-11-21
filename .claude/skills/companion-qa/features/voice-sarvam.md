@@ -30,3 +30,7 @@ Not run in this QA pass (credits were not authorised); that check's PASS path is
 - Synthetic TTS→STT is not a microphone test, and its high similarity says nothing about accents, noise or shop-floor speech.
 - No test of 429 rate limiting (60 req/min), long audio over 30 s, or offline behaviour in the live path.
 - Malayalam wording and voice quality need a native speaker.
+
+## Added 22 Nov
+- `voice_keyterms.py` (automated): labels containing `,` or `;` never become Saaras keyterms (HTTP 400 "voice unavailable" in Abin's hand test).
+- `voice_english_panel_ml.py` (live Sarvam, 3 calls, synthetic Malayalam audio): English panel + Malayalam speech gets an English planner text (STT `language_code=unknown`, translate when Malayalam is detected). PASS on 22 Nov. A person speaking is still a human check.

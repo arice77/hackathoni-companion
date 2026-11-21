@@ -256,4 +256,75 @@ os.environ["QA_GMAIL_TO"], os.environ["QA_GMAIL_ALLOWED"] = "", ""
 o.allow_send = False
 assert d("gmail", "AXButton", "Send", "", o)[0] == "hold"
 assert drv.bounds_match((63, 67, 1190, 744), (63, 67, 1253, 811)) and not drv.bounds_match((0, 0, 1190, 744), (63, 67, 1253, 811))
+
+# ---------------------------------------------------------------- YouTube player controls (live check assessment + driver)
+import youtube_player_controls_e2e as pc  # noqa: E402
+
+
+def pcd(phase, label, text, role="AXButton", kind="point", action="pressed"):
+    return dec(0, phase, label, text, role, kind=kind, action=action)
+
+
+PC_GOOD = reindex(Q1 + [
+    pcd(2, "Mute (m)", "Click ‘Mute (m)’ to mute the sound."), pcd(2, None, "The sound is muted.", kind="complete", action="none"),
+    pcd(3, "Pause (k)", "Click ‘Pause (k)’ to pause the video."), pcd(3, None, "The video is paused.", kind="complete", action="none"),
+    pcd(4, "Play keyboard shortcut k", "Click ‘Play keyboard shortcut k’ to play the video."), pcd(4, None, "The video is playing.", kind="complete", action="none"),
+    pcd(5, "Settings", "Open ‘Settings’.", "AXPopUpButton"), pcd(5, "Playback speed Normal", "Open it.", "AXMenuItem"),
+    pcd(5, "1.25", "Choose ‘1.25’ for that playback speed."), pcd(5, None, "The video is set to 1.25×.", kind="complete", action="none"),
+    pcd(6, "Full screen (f)", "Click ‘Full screen (f)’ for a bigger picture. Press Esc to exit.", action="held: full screen pointer asserted; not pressed"),
+    pcd(7, "Settings", "Open ‘Settings’.", "AXPopUpButton"), pcd(7, "Subtitles/CC English", "Open it.", "AXMenuItem"),
+    pcd(7, None, "Malayalam isn’t listed in this video’s subtitle options.", kind="unsupported", action="none"),
+    {"event": "stop", "reason": "phase1=complete", "phases": {"1": "complete", "2": "complete", "3": "complete", "4": "complete",
+                                                              "5": "complete", "6": "reached-target", "7": "unsupported"},
+     "tidy": {"captions_off": True, "speed_restored": True, "menu_closed": True, "unmuted": True, "paused": True}},
+])
+pcg = statuses(pc.assess(PC_GOOD, 0, "", X, X, X))
+print("player controls good:", pcg)
+assert set(pcg.values()) == {"pass"}, pcg
+
+
+def pc_status(recs, needle):
+    return [v for k, v in statuses(pc.assess(recs, 0, "", X, X, X)).items() if k.startswith(needle)]
+
+
+def mutate(recs, **stop_changes):
+    recs = [dict(r) for r in recs]
+    recs[-1] = {**recs[-1], **stop_changes}
+    return recs
+
+
+assert pc_status(mutate(PC_GOOD, tidy={"captions_off": True, "speed_restored": False, "menu_closed": True, "unmuted": True, "paused": True}),
+                 "account left as found") == ["fail"]
+assert pc_status(mutate(PC_GOOD, tidy={"captions_off": True, "speed_restored": True, "menu_closed": True, "unmuted": False, "paused": True}),
+                 "account left as found") == ["fail"]
+no_esc = [dict(r) for r in PC_GOOD]
+for r in no_esc:
+    if r.get("target_label") == "Full screen (f)":
+        r["instruction_en"] = "Click it for a bigger picture."
+assert pc_status(no_esc, "[full screen]") == ["fail"]
+pressed_fs = [dict(r) for r in PC_GOOD]
+for r in pressed_fs:
+    if r.get("target_label") == "Full screen (f)":
+        r["action"] = "pressed"
+assert pc_status(pressed_fs, "[full screen]") == ["fail"]
+wrong_row = [dict(r) for r in PC_GOOD]
+wrong_row[-3] = dict(wrong_row[-3], target_label="Auto-translate")
+assert pc_status(wrong_row, "[malayalam subtitles]") == ["fail"]
+no_complete = mutate(PC_GOOD, phases={"1": "complete", "2": "decision-timeout", "3": "complete", "4": "complete", "5": "complete", "6": "reached-target", "7": "unsupported"})
+assert pc_status(no_complete, "[mute]") == ["fail"]
+
+# driver allowlist for player controls (pure function)
+o.player_controls, o.allow_presets = True, {"1.25"}
+o.stop_label, o.apply_speed = "", False
+for label, want in (("Pause (k)", "press"), ("Play keyboard shortcut k", "press"), ("Mute (m)", "press"), ("Unmute (m)", "press"),
+                    ("Full screen (f)", "hold"), ("Exit full screen (f)", "hold"), ("1.25", "press"), ("1.5", "refuse"), ("2.0", "refuse"),
+                    ("Save to playlist", "refuse"), ("Like this video along with 1,234 other people", "refuse"), ("Subscribe", "refuse")):
+    assert d("youtube", "AXButton", label, "", o)[0] == want, (label, d("youtube", "AXButton", label, "", o))
+assert d("youtube", "AXCheckBox", "Subtitles/closed captions (c)", "", o)[0] == "press"
+assert d("youtube", "AXCheckBox", "Subtitles/closed captions unavailable", "", o)[0] == "refuse"
+assert d("youtube", "AXMenuItem", "Subtitles/CC English", "", o)[0] == "press"
+assert d("youtube", "AXMenuItem", "Malayalam", "", o)[0] == "press" and d("youtube", "AXMenuItem", "Hindi (auto-generated)", "", o)[0] == "refuse"
+o.player_controls = False
+assert d("youtube", "AXButton", "Mute (m)", "", o)[0] == "refuse"  # off unless the player-controls walk asked for it
+
 print("site self-test OK")

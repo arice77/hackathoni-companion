@@ -60,6 +60,7 @@ SEARCH_ROLES = {"AXComboBox", "AXSearchField", "AXTextField"}
 MENU_ROLES = {"AXMenuItem", "AXMenuItemRadio", "AXMenuItemCheckbox", "AXButton"}
 FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
 SAY_NEXT = re.compile(r"say\s+[‘'\"]next[’'\"]", re.IGNORECASE)  # the pack asks the person to acknowledge a step
+PLAYER_SHORTCUT = re.compile(r"(?:\s*\([a-z]\)|\s+keyboard shortcut\s+[a-z])$")
 AD_WORDS = re.compile(r"\b(ad|ads|advert|advertisement|sponsored)\b", re.IGNORECASE)
 SKIP_AD = re.compile(r"^(?:skip ads?\b|skip$)", re.IGNORECASE)  # "Skip ad(s)" and the bare "Skip" ad button (AXButton only)
 SUBJECT_TEXT = "HackaThoni companion test"
@@ -119,6 +120,21 @@ def decide_action(site: str, role: str, label: str, url: str, opts) -> tuple[str
             if opts.decreases >= opts.max_decreases:
                 return "refuse", f"more than {opts.max_decreases} Decrease presses"
             return "press", "speed stepper (decrease)"
+        if getattr(opts, "player_controls", False):
+            pl = PLAYER_SHORTCUT.sub("", low)
+            if role == "AXButton" and pl in {"pause", "play", "mute", "unmute"}:
+                return "press", "player control"
+            if role == "AXButton" and pl in {"full screen", "exit full screen"}:
+                # AXPress would move Safari into its own full-screen Space; the pointer is asserted, nothing is pressed
+                return "hold", "full screen pointer asserted; not pressed (it would move Safari to its own Space)"
+            if role == "AXCheckBox" and pl.startswith("subtitles/closed captions") and "unavailable" not in pl:
+                return "press", "captions button"
+            if role in MENU_ROLES and pl.startswith("subtitles/cc"):
+                return "press", "subtitles menu"
+            if role in MENU_ROLES and re.fullmatch(r"(?:malayalam|മലയാളം)(?:\s*\([^)]*\))?", pl):
+                return "press", "Malayalam subtitles row"
+            if role == "AXButton" and low in set(getattr(opts, "allow_presets", ()) or ()):
+                return "press", "speed preset"
         if opts.stop_label and re.search(opts.stop_label, low):
             return "hold", "speed target reached; not pressed"
         return "refuse", "control is outside the YouTube allowlist"
@@ -382,6 +398,46 @@ def restore_speed(bounds) -> dict:
             "menu_closed": not panel_open(window) and not menu_open(window)}
 
 
+def final_tidy(bounds, speed_touched: bool = False) -> dict:
+    """Leave the account as found after a player-controls walk: captions off, speed Normal, menus closed, unmuted, paused."""
+    out = {}
+    try:
+        pid, window = our_window(bounds)
+    except SystemExit as exc:
+        return {"error": f"window gone: {str(exc)[:60]}"}
+
+    def reread():
+        return our_window(bounds)[1]
+
+    cc = find_by_label(window, "youtube", {"AXCheckBox"}, lambda l: l.lower().startswith("subtitles/closed captions") and "unavailable" not in l.lower())
+    if cc is not None and bool(base._get(cc[0], "AXValue")):
+        press(cc[0])
+        time.sleep(1.0)
+    cc = find_by_label(reread(), "youtube", {"AXCheckBox"}, lambda l: l.lower().startswith("subtitles/closed captions") and "unavailable" not in l.lower())
+    out["captions_off"] = cc is None or not bool(base._get(cc[0], "AXValue"))
+    out.update(restore_speed(bounds) if panel_open(reread()) or menu_open(reread()) or speed_touched else {"speed_restored": True, "menu_closed": True})
+    window = reread()
+    if panel_open(window) or menu_open(window):
+        gear = find_by_label(window, "youtube", {"AXPopUpButton"}, lambda l: l.strip().lower() == "settings")
+        if gear:
+            press(gear[0])
+            time.sleep(1.0)
+    window = reread()
+    out["menu_closed"] = not panel_open(window) and not menu_open(window)
+    unmute = find_by_label(window, "youtube", {"AXButton"}, lambda l: l.lower().startswith("unmute"))
+    if unmute:
+        press(unmute[0])
+        time.sleep(0.8)
+    out["unmuted"] = find_by_label(reread(), "youtube", {"AXButton"}, lambda l: l.lower().startswith("unmute")) is None
+    pause = find_by_label(reread(), "youtube", {"AXButton"}, lambda l: l.lower().startswith("pause"))
+    if pause:
+        press(pause[0])
+        time.sleep(0.8)
+    out["paused"] = find_by_label(reread(), "youtube", {"AXButton"}, lambda l: l.lower().startswith("pause")) is None
+    return out
+
+
+
 # ---- main --------------------------------------------------------------------------------------------
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -395,7 +451,13 @@ def main(argv=None) -> int:
                     help="youtube: type the text the planner's instruction quotes (between curly quotes) instead of --song-text")
     ap.add_argument("--song-token", default="darshana", help="youtube: a result link must contain this")
     ap.add_argument("--stop-label", default="", help="youtube: regex; stop (not pressing) when the pointer lands on it")
-    ap.add_argument("--then-ask", default="", help="after the first question completes, ask this in the panel")
+    ap.add_argument("--then-ask", action="append", default=[],
+                    help="after the previous question completes, ask this in the panel; repeatable; 'text::kind' (kind: speed|menu) "
+                         "runs that tidy-up when the question ends")
+    ap.add_argument("--player-controls", action="store_true",
+                    help="youtube: also press pause/play/mute/unmute, the captions button and Subtitles rows, allowed speed presets; "
+                         "Full screen is pointed at but never pressed; an honest 'unsupported' ends a question without failing the run")
+    ap.add_argument("--allow-presets", default="", help="youtube: comma-separated speed preset labels the driver may press, e.g. 1.25")
     ap.add_argument("--allow-send", action="store_true", help="gmail: Send may be pressed (needs the env gate too)")
     ap.add_argument("--keep-playing", action="store_true", help="youtube: do not pause the video between questions")
     ap.add_argument("--max-scrolls", type=int, default=4)
@@ -411,6 +473,8 @@ def main(argv=None) -> int:
     ap.add_argument("--settle", type=float, default=1.0)
     a = ap.parse_args(argv)
     a.sends = 0
+    a.allow_presets = {x.strip().lower() for x in a.allow_presets.split(",") if x.strip()}
+    asks = [tuple((item.split("::", 1) + [""])[:2]) for item in a.then_ask]
     a.decreases = 0
     nexts = 0
     bounds = tuple(float(x) for x in a.bounds.split(","))
@@ -420,7 +484,7 @@ def main(argv=None) -> int:
     phase, awaiting_q, scrolls = 0, False, 0
     phase_end, seen = {}, {}
     state = {"sends": 0, "sent_seen": None, "draft": None, "playing": None, "paused": None, "search_fallback": None,
-             "decreases": 0, "speed_restored": None, "menu_closed": None, "speed_after": None}
+             "decreases": 0, "speed_touched": False, "speed_restored": None, "menu_closed": None, "speed_after": None}
     start = last = time.time()
     dt = a.decision_timeout
 
@@ -437,9 +501,14 @@ def main(argv=None) -> int:
                 emit({**reader_diagnostic(), "ad_hints": ad_hints(our_window(bounds)[1])})
             except SystemExit:
                 emit(reader_diagnostic())
-        if fatal or reason != "complete" and reason != "reached-target":
+        ok_reasons = {"complete", "reached-target"} | ({"unsupported"} if a.player_controls else set())
+        if fatal and not (a.player_controls and reason == "unsupported") or reason not in ok_reasons:
             return True
-        if phase == 1 and a.then_ask and reason == "complete":
+        if phase >= 2 and asks[phase - 2][1]:
+            emit({"event": "tidy", "after": asks[phase - 2][0][:40], **tidy(asks[phase - 2][1])})
+        if phase - 1 >= len(asks):
+            return True
+        if phase == 1:
             pid, window = our_window(bounds)
             if site == "youtube":
                 url = web_area_url(window, site) or ""
@@ -450,17 +519,32 @@ def main(argv=None) -> int:
                 if state["playing"] and not a.keep_playing:
                     state["paused"] = press(pause[0]) == "pressed"  # keep the Mac quiet; not an account action
                     time.sleep(0.8)
-            if a.companion_pid is None:
-                phase_end[2] = "no --companion-pid to ask the second question"
-                return True
-            result = ask_companion(a.companion_pid, a.then_ask)
-            emit({"event": "ask", "result": result})
-            if result != "asked":
-                phase_end[2] = result
-                return True
-            awaiting_q, last = True, time.time()
-            return False
-        return True
+        if a.companion_pid is None:
+            phase_end[phase + 1] = "no --companion-pid to ask the next question"
+            return True
+        result = ask_companion(a.companion_pid, asks[phase - 1][0])
+        emit({"event": "ask", "result": result, "n": phase})
+        if result != "asked":
+            phase_end[phase + 1] = result
+            return True
+        awaiting_q, last = True, time.time()
+        return False
+
+    def tidy(kind: str) -> dict:
+        """Per-question tidy-up. speed: back to Normal and menus closed. menu: close an open Settings menu."""
+        try:
+            if kind == "speed":
+                return restore_speed(bounds)
+            pid, window = our_window(bounds)
+            if kind == "menu" and (panel_open(window) or menu_open(window)):
+                gear = find_by_label(window, "youtube", {"AXPopUpButton"}, lambda l: l.strip().lower() == "settings")
+                if gear:
+                    press(gear[0])
+                    time.sleep(1.0)
+            pid, window = our_window(bounds)
+            return {"menu_closed": not panel_open(window) and not menu_open(window)}
+        except SystemExit as exc:
+            return {"error": str(exc)[:80]}
 
     def say_next() -> str:
         nonlocal nexts
@@ -500,7 +584,7 @@ def main(argv=None) -> int:
                 done = finish_phase("complete")
             elif ev["kind"] == "unsupported":
                 emit({**rec, "action": "none"})
-                done = finish_phase("terminal-decision:unsupported", fatal=True)
+                done = finish_phase("unsupported") if a.player_controls else finish_phase("terminal-decision:unsupported", fatal=True)
             elif base.is_scroll_clarify(ev["kind"], rec["instruction_en"]):
                 scrolls += 1
                 pid, window = our_window(bounds)
@@ -555,7 +639,11 @@ def main(argv=None) -> int:
                             result = type_text(el, text)
                         else:
                             result = press(el)
+                            if why == "speed preset":
+                                state["decreases"] = max(state.get("decreases", 0), 0)
+                                state["speed_touched"] = True
                             if why == "speed stepper (decrease)":
+                                state["speed_touched"] = True
                                 a.decreases += 1
                                 state["decreases"] = a.decreases
                                 time.sleep(0.8)
@@ -598,7 +686,7 @@ def main(argv=None) -> int:
                 break
         time.sleep(a.poll)
 
-    if site == "youtube" and a.decreases > 0:
+    if site == "youtube" and a.decreases > 0 and not a.player_controls:
         try:
             pid, window = our_window(bounds)
             state.update(restore_speed(bounds))
@@ -613,9 +701,14 @@ def main(argv=None) -> int:
             state["draft"] = f"window gone: {exc}"
     first, second = phase_end.get(1), phase_end.get(2)
     ok = first == "complete" and (not a.then_ask or second in {"reached-target", "complete"})
+    if site == "youtube" and a.player_controls:
+        state["tidy"] = final_tidy(bounds, bool(state.get("speed_touched")))
+        emit({"event": "final-tidy", **state["tidy"]})
+        good = {"complete", "reached-target", "unsupported"}
+        ok = first == "complete" and len(phase_end) == 1 + len(asks) and all(r in good for r in phase_end.values())
     if site == "gmail":
         ok = list(phase_end.values())[-1:] and list(phase_end.values())[-1] in {"complete", "send-gated", "sent"}
-    stop = {"event": "stop", "reason": f"phase1={first}" + (f" phase2={second}" if a.then_ask else "") + (f" last={list(phase_end.values())[-1]}" if site == "gmail" else ""),
+    stop = {"event": "stop", "reason": f"phase1={first}" + (f" phase2={second}" if a.then_ask else "") + (f" last={list(phase_end.values())[-1]}" if len(phase_end) > 2 else "") + (f" last={list(phase_end.values())[-1]}" if site == "gmail" else ""),
             "phases": phase_end, "seconds": round(time.time() - start, 1),
             "decisions": sum(r["event"] == "decision" for r in records), **state}
     emit(stop)
