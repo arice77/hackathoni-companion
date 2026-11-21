@@ -32,7 +32,7 @@ Site packs must summarise message lists instead of sending rows. Probe in progre
 |---|---|---|---|---|
 | Every question after the first got the same refusal | app reused the background answer on an unchanged screen, ignoring the new question | new question clears the result; late answers dropped | coordinator | fixed + live-verified |
 | Broad questions ("how do I use this site?", "help me fill this form") refused | planner policy too strict | orientation line + point at the first sensible step | Codex sol (planner) | fixed (9a41569), eval pass; needs Abin retest |
-| Pizza size: "select Small", "select Medium", back and forth | reader reports no radio state; planner picks an option for the user | reader: radio `filled` + `group` label + group control filled when any option selected; planner: point at the whole choice set, list the options, user decides, move on once any is chosen | Codex sol (reader) + Codex sol (planner) | fixed (d6938df + 8182e86), 69/69 eval x2; needs Abin retest |
+| Pizza size: "select Small", "select Medium", back and forth (and the whole-form misorder from the 23:05 retest) | reader reports no radio state; planner picks an option for the user | reader: radio `filled` + `group` label + group control filled when any option selected; planner: point at the whole choice set, list the options, user decides, move on once any is chosen | Codex sol (reader + planner) + coordinator | fixed: form plan in code (`companion/guidance.py`); pizza follow-the-pointer 8/8 in 2 consecutive orchestrator runs (runs/qa/20261122-000933, -000942); needs Abin retest |
 
 ### Retest 21 Nov ~23:05 (httpbin pizza form, `web_any`, "Can you help me fill this form?")
 Failed: started at Delivery instructions, skipped Pizza Size, repeated "This is an order form" every step.
@@ -53,6 +53,17 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | 4 | Saaras `codemix` mode | next, after Abin's real-voice test | voice |
 | 5–7 | Streaming barge-in, AXObserver window tracking, Chrome `AXManualAccessibility` | deferred | — |
 | — | Shepherd / Intro.js / Skyvern code | idea-only (AGPL) | — |
+
+## Site packs (started 22 Nov ~00:15)
+
+| Piece | Owner | Status |
+|---|---|---|
+| Site-pack framework + KSEB Quick Pay pack + `web_site` task | Codex sol (planner) | building |
+| Local KSEB Quick Pay copy + KSEB follow-pointer check; flake hardening | Sonnet QA | building |
+| Gmail privacy gate (chrome-only labels, aggregated message list), To/Reply targets; YouTube sliders + speed menu probe | Codex sol (web) | building |
+
+Commit messages: AI co-author trailers stripped from all local branches on 22 Nov 00:13 (message-only rewrite,
+trees unchanged, base still origin/main e542f90). Backup refs in refs/original until Abin confirms.
 
 ## Shared-Mac rule
 
