@@ -95,6 +95,66 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(decision.instruction_en, 'Click "Save Draft".')
         self.assertTrue(validate(decision, snap)[0])
 
+    def test_practice_completion_uses_status_without_credentials_or_http(self):
+        cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        completed = [
+            case for case in cases if case["kind"] == "complete" and case["task"] in {"aims", "web_practice"}
+        ]
+        self.assertEqual({case["task"] for case in completed}, {"aims", "web_practice"})
+        with patch.object(sarvam, "_load_api_key", side_effect=sarvam.SarvamMissingKeyError):
+            for case in completed:
+                with self.subTest(case=case["id"]):
+                    row = eval_planner._case(DEFAULT_MODEL, case, screens[case["screen"]])
+                    self.assertTrue(row["correct"])
+                    self.assertEqual(row["calls"], [])
+                    self.assertTrue(row["cache_ok"])
+                    self.assertTrue(row["cold_validator"]["valid"])
+                    self.assertIn("Well done!", row["actual"]["instruction_en"])
+                    self.assertNotIn("[CONTROL]", row["actual"]["instruction"])
+                    self.assertNotIn("[CONTROL]", row["actual"]["instruction_en"])
+        self.http.assert_not_called()
+
+    def test_completion_requires_the_practice_status_and_an_exact_prefix(self):
+        status = Control("c02", "AXStaticText", "Training complete · receipt saved", (10, 90, 140, 24),
+                         identifier="status")
+        for task, control in (
+            ("web_any", status),
+            ("aims", status),
+            ("web_practice", replace(status, identifier=None)),
+            ("web_practice", replace(status, role="AXButton")),
+            ("web_practice", replace(status, label="Training completion pending")),
+            ("web_practice", replace(status, label="Training complete after saving")),
+        ):
+            with self.subTest(task=task, control=control):
+                self.http.reset_mock()
+                self.http.return_value = _response()
+                snap = replace(self.snapshot, controls=(*self.snapshot.controls, control))
+                planner = SarvamPlanner(task, log_calls=False)
+                self.assertEqual(planner.decide(QUESTION, snap).kind, "point")
+                self.http.assert_called_once()
+
+    def test_status_change_completes_the_same_question_and_keeps_explicit_requests_grounded(self):
+        status = Control("c02", "AXStaticText", "Ready for practice", (10, 90, 140, 24), identifier="status")
+        review = replace(self.snapshot, controls=(*self.snapshot.controls, status))
+        finished = replace(
+            review, snapshot_id="finished",
+            controls=(*self.snapshot.controls, replace(status, label="Training complete")),
+        )
+        self.http.side_effect = [_response(), _response()]
+        self.assertEqual(self.planner.decide(QUESTION, review).kind, "point")
+        self.assertEqual(self.planner.decide(QUESTION, finished).kind, "complete")
+        self.http.assert_called_once()
+        self.assertEqual(
+            self.planner.decide("Where is the button labeled ‘Delete Draft’?", finished).kind,
+            "unsupported",
+        )
+        self.assertEqual(
+            self.planner.decide("Where is the button labeled ‘Save Draft’?", finished).kind,
+            "point",
+        )
+        self.assertEqual(self.http.call_count, 2)
+
     def test_optional_task_and_conversations_route(self):
         self.http.return_value = _response()
         planner = SarvamPlanner(model="sarvam-105b-conversations", log_calls=False)
@@ -388,7 +448,7 @@ class PlannerTests(unittest.TestCase):
         cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         self.assertTrue({TYPED_QUESTION, QUESTION} <= {case["question"] for case in cases})
-        self.assertEqual(len(cases), 41)
+        self.assertEqual(len(cases), 45)
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual(
             {case["question_form"] for case in cases},

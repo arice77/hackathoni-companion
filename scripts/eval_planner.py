@@ -86,16 +86,18 @@ def _summary(rows: list[dict], total: int) -> dict:
     calls = [call for row in rows for call in row["calls"]]
     samples = [call["latency_ms"] for call in calls]
     invalid = sum(call["outcome"] == "unknown_id" for call in calls)
+    malformed = sum(call["outcome"] == "malformed" for call in calls)
     correct = sum(row["correct"] for row in rows)
     return {
         "correct": correct,
         "cases": len(rows),
         "expected_cases": total,
-        "met_target": len(rows) == total and correct * 17 >= total * 15 and invalid == 0,
+        "met_target": len(rows) == total and correct * 17 >= total * 15 and invalid == malformed == 0,
         "calls": len(calls),
         "local_decisions": sum(row["decision_path"] == "local" for row in rows),
         "invalid_ids": invalid,
         "invalid_id_rate": invalid / len(calls) if calls else None,
+        "malformed_replies": malformed,
         "label_fallbacks": sum(call["outcome"] == "local_label_fallback" for call in calls),
         "p50_ms": statistics.median(samples) if samples else None,
         "p95_ms": statistics.quantiles(samples, n=100, method="inclusive")[94] if len(samples) > 1

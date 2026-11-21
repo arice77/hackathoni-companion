@@ -368,5 +368,41 @@
     "kind": "point",
     "control_id": "c21",
     "question_form": "english"
+  },
+  {
+    "id": "safari-confirm-complete-malayalam",
+    "screen": "safari-complete",
+    "task": "web_practice",
+    "question": "പരിശീലന ഫോം പൂർത്തിയായോ?",
+    "kind": "complete",
+    "control_id": null,
+    "question_form": "malayalam"
+  },
+  {
+    "id": "aims-confirm-complete-english",
+    "screen": "aims-complete",
+    "task": "aims",
+    "question": "Has the training draft been completed?",
+    "kind": "complete",
+    "control_id": null,
+    "question_form": "english"
+  },
+  {
+    "id": "safari-review-still-needs-save",
+    "screen": "safari-review-ready",
+    "task": "web_practice",
+    "question": "My declaration is checked. How do I save the practice form?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "english"
+  },
+  {
+    "id": "aims-review-still-needs-declaration",
+    "screen": "aims-review",
+    "task": "aims",
+    "question": "How do I finish this training draft from Review?",
+    "kind": "point",
+    "control_id": "c07",
+    "question_form": "english"
   }
 ]

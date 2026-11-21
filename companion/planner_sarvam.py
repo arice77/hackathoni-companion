@@ -13,7 +13,7 @@ from threading import Lock
 from uuid import uuid4
 
 from .contracts import Control, Decision, Snapshot
-from .tasks import Task
+from .tasks import Task, load
 from .voice import sarvam
 
 DEFAULT_MODEL = "sarvam-105b-conversations"
@@ -44,8 +44,10 @@ Use the screen heading and ascending rank (top-to-bottom, then left-to-right):
 - If the question refers only to this, that, or one of several possible controls,
   return clarify and ask which control or action the user means. When the user has
   not chosen between distinct actions, ask what they want to accomplish first.
-- If visible status explicitly confirms the requested task finished, return complete.
-  Being on Review, having filled fields, or having a checked declaration is insufficient.
+- When asked about progress or what to do next, return complete if visible status confirms
+  the task finished, even if action buttons remain. Review, filled fields, and a checked
+  declaration alone are insufficient. For complete, give a short congratulation in each
+  language, with control_id null and no [CONTROL] marker.
 - For a specific request, point only when an enabled interactive control visibly
   supports the requested action. If the named control, action, or output format is
   absent, return unsupported and say that it is not on this screen. A similarly named
@@ -325,6 +327,10 @@ class SarvamPlanner:
         self.goal = explicit_goal or (
             _TASK_GOALS.get(task_name, task_name.replace("_", " ")) if task_name and task_name != "web_any" else None
         )
+        self._completion_pattern = None
+        if task_name in _TASK_GOALS:
+            fixture = task if isinstance(task, Task) else load(task_name)
+            self._completion_pattern = re.compile(rf"{re.escape(fixture.complete_status_prefix)}(?=$|\s*[·—:.,!…])")
         self.model = model
         self.calls: list[PlannerCall] = []
         self.log_path = _RUNS / f"sarvam-planner-{uuid4().hex}.jsonl" if log_calls else None
@@ -396,6 +402,14 @@ class SarvamPlanner:
                     snap, "ചോദിച്ച കാര്യം ചെയ്യാനുള്ള ബട്ടൺ ഈ സ്ക്രീനിൽ കാണുന്നില്ല.",
                     "This screen has no available button for the requested action.",
                 )
+        elif self._completion_pattern is not None and any(
+            c.identifier == "status" and c.role == "AXStaticText" and self._completion_pattern.match(c.label)
+            for c in ordered
+        ):
+            return Decision(
+                "complete", snap.snapshot_id, "നന്നായി! പരിശീലനം പൂർത്തിയായി.",
+                "Well done! The practice task is complete.", source="sarvam",
+            )
         point_ids = _point_ids(question, candidates)
         view = {
             "question": question,

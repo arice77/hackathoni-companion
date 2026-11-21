@@ -12,6 +12,8 @@ The provider returns a strict schema with `kind`, `control_id`, `instruction_ml`
 
 **Ambiguity policy.** Return `clarify` with a short question in the user's language and no pointer. Recognized standalone references to “this” or “that” in Malayalam, English, and Manglish get a local question asking which control the user means. The planner also asks when a target cannot be rebound uniquely. The prompt asks the model to clarify broader requests with competing goals.
 
+**Practice completion.** The AIMS and Safari practice tasks declare their own completion prefixes, “Training draft complete” and “Training complete”. When the fixture's static `status` text starts with its prefix, followed by punctuation or the end of the text, the planner returns a short bilingual congratulation with a null control ID. This consumes zero chat calls and the panel hides the pointer. Review and a checked declaration alone still allow the next step. Explicit control requests retain their grounding checks, and public pages use the model's visible-status rule.
+
 For each active question, the planner caches decisions by window and the set of `(identifier or label, role, filled)` values. It also tracks visible label text, enabled states, and repeated controls. Safari uses status and enabled-state changes to mark progress after attachment and saving, so those changes need a fresh decision. On a cache hit the planner rebinds the target by identifier or by an unambiguous label and role and uses the current snapshot ID. Failed replies remain cached for that screen and question. Call logs in `runs/sarvam-planner-*.jsonl` contain model, timing, request ID, and outcome.
 
 ## Model choice
@@ -23,7 +25,7 @@ The default is **`sarvam-105b-conversations`** on `POST https://api.sarvam.ai/v1
 
 `tests/fixtures/planner/screens.json` contains six AIMS and nine Safari practice snapshots captured using the Accessibility reader on 21 November 2026, two public Safari snapshots, and six hand-made snapshots. The test driver used only the practice fixtures, with synthetic inputs and the worktree loopback URL for Safari. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot.
 
-The 41 cases retain the previous 30, with additions for missing and present export controls, explicit labels, ambiguity, and the public pages. Each public snapshot was captured in a new Safari window, using the reader's URL-prefix constraint. The capture only read the page and its Accessibility controls. The public replays include host-only titles and synthetic viewports. All four expected public targets have no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
+The 45 cases cover progress through both practice fixtures, completion and still-actionable Review states, missing and present export controls, explicit labels, ambiguity, and public pages. Each public snapshot was captured in a new Safari window, using the reader's URL-prefix constraint. The capture only read the page and its Accessibility controls. The public replays include host-only titles and synthetic viewports. All four expected public targets have no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
 
 ```sh
 .venv/bin/python scripts/eval_planner.py
@@ -31,9 +33,22 @@ The 41 cases retain the previous 30, with additions for missing and present expo
 .venv/bin/python scripts/qa/run.py
 ```
 
-The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 37/41 exact matches with zero unknown IDs. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 40/45 exact matches, zero unknown IDs, and zero malformed replies. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
 
-### Current 41-case eval
+### Completion regression eval
+
+Both live runs used `sarvam-105b-conversations` inside the QA lock. All five practice completion cases returned `complete` locally with no control ID or marker, and both remaining-action Review cases pointed at the expected control. The hand-made saved screen also returned `complete` in both runs, using the provider. All 45 warm decisions rebound correctly in each run.
+
+| Run | Exact | Unknown IDs | Malformed replies | HTTP p50 | HTTP p95 | Chat calls | Local decisions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 43/45 | 0 | 0 | 603 ms | 2,572 ms | 33 | 12 |
+| 2 | 44/45 | 0 | 0 | 721 ms | 4,400 ms | 33 | 12 |
+
+Both runs asked for clarification when the user asked where to select the shop category. Run 1 also chose “Save »” too early on the AIMS loss-description question. Both cases had passed in the prior evals. The round spent 66 of the allotted 100 chat calls. See `runs/sarvam-planner-eval-20261121T171501.813130Z.json`, `runs/sarvam-planner-eval-20261121T171611.625106Z.json`, and `runs/qa/20261121-224424/report.md`.
+
+Separate locked QA walkthroughs finished both fixtures and produced fresh practice receipts. A Sarvam planner read each live finished screen and returned `complete` with no pointer and zero chat calls. QA passed 21 checks, including all 102 unit tests and fixture cleanup. One opt-in voice check was blocked and three human checks were skipped. See `runs/qa/20261121-224542/report.md`.
+
+### Earlier 41-case eval
 
 Both runs used `sarvam-105b-conversations` and the same frozen cases after adding label, export-format, and button-action grounding. Exactness compares decision kind and target ID.
 
@@ -87,5 +102,5 @@ All 19 planner mock tests and 84 unit tests passed. The stock locked QA run pass
 
 ### Open issues
 
-- The latest runs exposed intermittent completion handling and one unnecessary clarification on an explicit choice. Both Safari receipt questions returned malformed payloads in the final pair.
+- The latest runs exposed unnecessary clarification for the shop category and one premature “Save »” on the AIMS loss-description question.
 - Public-page evidence uses read-only captures. The end-to-end driver checks use the local practice fixtures. Malayalam instruction quality still needs a native-speaker review.
