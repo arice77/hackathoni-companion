@@ -12,6 +12,17 @@ Status words: planned · building · in QA · in review · merged · demo-ready.
    overlay language: done (coordinator). Voice: building.
 3. The problem domain (GST or something else) is chosen **after** these basics work. The GST plan below is parked.
 
+## Sarvam credits
+
+Organiser-provided: 600 credits (Abin, 21 Nov). Abin posts the remaining balance from the dashboard
+(https://indus.sarvam.ai/rate-limits) from time to time; log it here with the time. Every agent that calls Sarvam
+reports how many calls it made, by API. Rate limits: 60 req/min for speech-to-text, text-to-speech and translate.
+Both Sarvam MCPs (`sarvam`, `sarvam-docs`) are installed at user scope for new Claude sessions.
+
+| Time (IST) | Balance | Source |
+|---|---|---|
+| 21 Nov 20:10 | key verified with 1 chat call | orchestrator |
+
 ## Parked: GST hero demo (decided earlier on 21 Nov, on hold)
 
 **One person:** a Kerala shop owner (e.g. a hardware or textile shop in Alappuzha) on the GST
