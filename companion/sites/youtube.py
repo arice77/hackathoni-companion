@@ -52,7 +52,7 @@ _CONTROL_KEYS = {
                "play this video slower", "play slowly", "reduce the speed", "too fast", "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ",
                "പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ", "പതുക്കെ ആക്കൂ", "വേഗം കുറയ്ക്കൂ", "സ്പീഡ് കുറയ്ക്കൂ", "വേഗത കുറയ്ക്കൂ",
                "സാവധാനം", "സ്ലോ", "സ്ലോ ആക്കൂ", "slow ആക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
-    "faster": ("faster", "play it faster", "speed up", "speed it up", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
+    "faster": ("faster", "play it faster", "speed up", "speed it up", "make it faster", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
 }
 _SPEED_DEFAULTS = {"slower": Decimal("0.75"), "faster": Decimal("1.25")}
 INTENT_ACTIONS = ("find", *_CONTROL_KEYS)

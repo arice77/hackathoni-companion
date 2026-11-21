@@ -1,6 +1,7 @@
 """Replay YouTube Accessibility states without accessing a browser or Sarvam."""
 
 from dataclasses import replace
+from decimal import Decimal
 import json
 from pathlib import Path
 import time
@@ -10,7 +11,7 @@ from unittest.mock import patch
 from companion.contracts import Control, Snapshot
 from companion.planner_sarvam import SarvamPlanner
 from companion.sites import pack_for
-from companion.sites.youtube import PACK
+from companion.sites.youtube import PACK, Intent, parse_intent
 from companion.validator import validate
 from companion.voice import sarvam
 
@@ -289,6 +290,22 @@ class YouTubeTests(unittest.TestCase):
         self.assertIn("money 2x", search.decide(snapshot("home")).instruction_en)
         song = PACK.start_guidance("Please play the song called Darshana.")
         self.assertIn("Type ‘darshana’", song.decide(snapshot("home")).instruction_en)
+
+    def test_make_it_faster_points_at_player_settings_without_sarvam(self):
+        controls = (
+            Control("pause", "AXButton", "Pause (k)", (55, 548, 38, 35)),
+            Control("seek", "AXSlider", "Seek slider", (52, 529, 610, 10)),
+            Control("settings", "AXPopUpButton", "Settings", (610, 548, 40, 35)),
+        )
+        snap = Snapshot("synthetic-youtube-player", 0, "com.apple.Safari", 123, "www.youtube.com",
+                        (0, 0, 1200, 800), controls, viewport=(0, 60, 1200, 740))
+        self.assertEqual(parse_intent("make it faster"), Intent("speed", speed=Decimal("1.25")))
+        planner = SarvamPlanner("web_site", log_calls=False)
+        with patch.object(sarvam, "_post") as post:
+            decision = planner.decide("make it faster", snap)
+        self.assertEqual((decision.kind, decision.control_id), ("point", "settings"))
+        self.assertEqual(validate(decision, snap, now=snap.taken_at), (True, "ok"))
+        post.assert_not_called()
 
     def test_language_button_outside_subtitles_is_not_pointed_at(self):
         snap = snapshot("watch")
