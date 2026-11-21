@@ -117,6 +117,17 @@ dup.insert(7, dict(dup[6], index=99))  # Playback speed pointed a second time
 assert status_of(dup, "no target pointed at twice") == ["fail"]
 
 
+# the feed shortcut (start page already lists the song) is a valid route; a credit-list match is the wrong song
+short = reindex([dec(0, 1, LINK, "Open the video to play it.", "AXLink", url_watch=True),
+                 dec(0, 1, None, "The video is playing.", kind="complete", action="none"), Q1[4]] + q2() + [dict(STOP_OK)])
+assert set(statuses(yt.assess(short, 0, "", X, X, X)).values()) == {"pass"}
+nagumo = [dict(r) for r in short]
+nagumo[0] = dict(nagumo[0], target_label="Nagumo Video Song | Hridayam | Pranav | Darshana | Kalyani")
+assert status_of(nagumo, "find: the chosen video is the song itself") == ["fail"]
+assert status_of(nagumo, "find: pointed in order") == ["pass"]
+half = reindex(Q1[:1] + [dec(0, 1, LINK, "Open it.", "AXLink", url_watch=True), Q1[3], Q1[4]] + q2() + [dict(STOP_OK)])  # typed, then link: no Search button
+assert status_of(half, "find: pointed in order") == ["fail"]
+
 # optional scroll step on YouTube results
 yscroll = reindex(YGOOD[:2] + [dec(2, 1, None, "Scroll down to continue.", kind="clarify", action="scrolled page down to 0.50")] + YGOOD[2:])
 assert set(statuses(yt.assess(yscroll, 0, "", X, X, X)).values()) == {"pass"}

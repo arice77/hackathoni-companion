@@ -51,6 +51,24 @@ SPEED_STEPS = [
 ]
 
 
+def find_route(pts1):
+    """(ok, detail). Two valid routes: Search box -> Search button -> matching result, or, when the start page (a signed-in home
+    feed) already lists the song, pointing straight at that result (the shortcut)."""
+    ok, d = _site.order_check(pts1, FIND_STEPS)
+    if ok:
+        return True, f"route: search; {d}"
+    if pts1 and FIND_STEPS[2][1](pts1[0]) and not any(FIND_STEPS[0][1](r) or FIND_STEPS[1][1](r) for r in pts1):
+        return True, f"route: feed shortcut (the start page already listed the song); {d}"
+    return False, d
+
+
+def title_led(pts1):
+    """The chosen result is the song itself: its title starts with the name, not a credit-list match ('Nagumo ... | Darshana')."""
+    links = [r for r in pts1 if r.get("target_role") == "AXLink"]
+    labels = [(r.get("target_label") or "").strip() for r in links]
+    return bool(labels) and all(l.lower().startswith(SONG_TOKEN) for l in labels), labels
+
+
 def run():
     name = "youtube follow-the-pointer (Sarvam planner, Malayalam question, search -> play -> slower)"
     if os.environ.get("QA_LIVE_SARVAM") != "1":
@@ -92,8 +110,11 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
         out.append(result(FEATURE, check, "pass" if ok else "fail", "live-machine",
                           detail if ok else f"{detail}{fail_extra}\nDECISIONS:\n{full}"))
 
-    ok, d = _site.order_check(pts1, FIND_STEPS)
-    add("find: pointed in order Search box, Search button, matching result", ok, f"{d}; {where}")
+    ok, d = find_route(pts1)
+    add("find: pointed in order Search box, Search button, matching result (or straight at it when the start page lists it)", ok, f"{d}; {where}")
+    led, labels = title_led(pts1)
+    add("find: the chosen video is the song itself (title starts with the name), not a credit-list match", led,
+        f"chosen {[l[:60] for l in labels]}")
 
     last1 = [r for r in decisions if r.get("phase") == 1][-1:] or [None]
     playing = state.get("playing") is True and state.get("url_watch") is True

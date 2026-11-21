@@ -85,7 +85,7 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
         out.append(result(FEATURE, check, "pass" if ok else "fail", "live-machine", detail if ok else f"{detail}\nDECISIONS:\n{full}"))
 
     pts1 = _site.points(records, 1)
-    ok, d = _site.order_check(pts1, base_check.FIND_STEPS)
+    ok, d = base_check.find_route(pts1)
     state = next((r for r in records if r["event"] == "state"), {})
     last1 = [r for r in decisions if r.get("phase") == 1][-1:] or [None]
     add("find: Search box, Search button, matching result, complete with the video playing",
