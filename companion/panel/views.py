@@ -53,6 +53,11 @@ def stroke(path, tint, weight):
     path.stroke()
 
 
+def ink_disc(x, y, w, h, tint):
+    fill(A.NSBezierPath.bezierPathWithOvalInRect_(((x + 3, y + 3), (w - 6, h - 6))), tint)
+    stroke(A.NSBezierPath.bezierPathWithOvalInRect_(((x + 1, y + 4), (w - 4, h - 6))), tint, 1.4)
+
+
 def paper_edge(rect, base, edge):
     x, y, w, h = rect
     polygon = line_path([(x + 1, y + 2), (x + w - 2, y), (x + w, y + h - 2), (x, y + h)], 1, True)
@@ -108,9 +113,9 @@ class PaperSurface(A.NSView):
             fill(path, SHEET)
             stroke(path, HAIR, .9)
         if self.badge:
-            name, tint, x, y = self.badge
-            fill(A.NSBezierPath.bezierPathWithOvalInRect_(((x - 28, y - 28), (56, 56))), WASH)
-            draw_symbol(name, 33, tint, x, y)
+            x, y = self.badge
+            ink_disc(x - 38, y - 38, 76, 76, INK)
+            stroke(line_path([(x - 14, y), (x - 4, y + 12), (x + 15, y - 13)], 5), A.NSColor.whiteColor(), 5)
 
 
 class PaperButton(A.NSButton):
@@ -128,9 +133,7 @@ class PaperButton(A.NSButton):
         kind = self.kind
         ink = INK if self.isEnabled() else HAIR
         if kind == "mic":
-            disc = A.NSBezierPath.bezierPathWithOvalInRect_(((3, 3), (w - 6, h - 6)))
-            fill(disc, ink)
-            stroke(A.NSBezierPath.bezierPathWithOvalInRect_(((1, 4), (w - 4, h - 6))), ink, 1.4)
+            ink_disc(0, 0, w, h, ink)
             draw_symbol(self.glyph, w * .37, PAPER, cx, cy)
         elif kind in ("replay", "more"):
             if kind == "replay" or self.state():
@@ -165,8 +168,8 @@ class LanguagePills(A.NSSegmentedControl):
             title.drawAtPoint_((x + (w / 2 - size.width) / 2 - 1, (h - size.height) / 2))
 
 
-class ListeningMeter(A.NSView):
-    """Listening indicator. The voice adapter supplies recording state, not audio amplitudes."""
+class PanelActivityIndicator(A.NSView):
+    """Status animations for planning and recording. Bars indicate recording activity."""
     def isFlipped(self):
         return True
 
@@ -178,30 +181,42 @@ class ListeningMeter(A.NSView):
         if self.isHidden():
             return
 
-        def animate(layer, key, low, high, duration):
+        def animate(layer, key, low, high, duration, offset=0):
             if reduce_motion:
                 return
             pulse = Q.CABasicAnimation.animationWithKeyPath_(key)
             pulse.setFromValue_(low)
             pulse.setToValue_(high)
             pulse.setDuration_(duration)
+            pulse.setTimeOffset_(offset)
             pulse.setAutoreverses_(True)
             pulse.setRepeatCount_(float("inf"))
             pulse.setTimingFunction_(Q.CAMediaTimingFunction.functionWithName_(Q.kCAMediaTimingFunctionEaseInEaseOut))
             layer.addAnimation_forKey_(pulse, key)
 
+        center = self.bounds().size.width / 2
+        if self.mode == "thinking":
+            for i in range(3):
+                dot = Q.CALayer.layer()
+                dot.setFrame_(((center - 5 + (i - 1) * 19, 6), (10, 10)))
+                dot.setCornerRadius_(5)
+                dot.setBackgroundColor_(INK.CGColor())
+                root.addSublayer_(dot)
+                animate(dot, "opacity", .42, 1, .85, (2 - i) * .20)
+            return
+
         for diameter, alpha in ((112, .42), (126, .18)):
             ring = Q.CALayer.layer()
-            ring.setFrame_(((70 - diameter / 2, 66 - diameter / 2), (diameter, diameter)))
+            ring.setFrame_(((center - diameter / 2, 66 - diameter / 2), (diameter, diameter)))
             ring.setCornerRadius_(diameter / 2)
             ring.setBorderWidth_(1.3)
             ring.setBorderColor_(INK.colorWithAlphaComponent_(alpha).CGColor())
             root.addSublayer_(ring)
             animate(ring, "transform.scale", .95, 1.04, 1.3)
-        for i, h in enumerate((6, 12, 19, 10, 24, 15, 8, 18, 11, 6)):
+        for i, h in enumerate((12, 24, 38, 20, 48, 30, 16, 36, 22, 12)):
             bar = Q.CALayer.layer()
-            bar.setFrame_(((36 + i * 7, 148 - h / 2), (4, h)))
-            bar.setCornerRadius_(2)
+            bar.setFrame_(((center - 67 + i * 14, 165 - h / 2), (8, h)))
+            bar.setCornerRadius_(4)
             bar.setBackgroundColor_(INK.CGColor())
             root.addSublayer_(bar)
             animate(bar, "transform.scale.y", .48, 1, .4 + (i % 3) * .12)

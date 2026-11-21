@@ -8,7 +8,7 @@ import objc
 from Foundation import NSObject
 
 from .views import (
-    INK, MUTED, LanguagePills, ListeningMeter, PaperButton,
+    INK, MUTED, LanguagePills, PanelActivityIndicator, PaperButton,
     PaperPanelWindow, PaperSurface, hand, text_height, text_style,
 )
 
@@ -33,7 +33,7 @@ WORDS = {
     "en": {
         "prompt": "What can I help you do?", "intro": "Tell me, and I’ll point it out on screen.",
         "speak": "Tap to speak", "listen": "Listening…", "finish": "Tap again when you’ve finished.",
-        "think": "Finding your next step…", "type": "Type your question", "screen": "On screen",
+        "think": "Understanding…", "type": "Type your question", "screen": "On screen",
         "new": "New question", "replay": "Hear this step again", "details": "Technical details",
         "heard": "Heard", "again": "Let’s try again", "voice_error": "Voice is unavailable. Type your question or try speaking again.",
         "page_error": "Open the page you’d like help with.", "stop": "Stop", "skip": "Skip", "ask": "Ask",
@@ -153,7 +153,7 @@ class PaperPanel(NSObject):
         self.scroll.setScrollerStyle_(A.NSScrollerStyleOverlay)
         self.scroll.setDocumentView_(self.instruction)
         self.root.addSubview_(self.scroll)
-        self.meter = ListeningMeter.alloc().initWithFrame_(((0, 0), (140, 164)))
+        self.meter = PanelActivityIndicator.alloc().initWithFrame_(A.NSZeroRect)
         self.meter.setWantsLayer_(True)
         self.meter.setAccessibilityElement_(False)
         self.root.addSubview_positioned_relativeTo_(self.meter, A.NSWindowBelow, self.mic_button)
@@ -272,6 +272,9 @@ class PaperPanel(NSObject):
         public_state = {"voice_error": "error", "page_error": "error", "transcribing": "thinking"}.get(mode, mode)
         self.window.setAccessibilityValue_(public_state)
         self.window.setAccessibilityHelp_(mode)
+        self.meter.mode = public_state
+        stop_width = (inner - 76) / 2
+        stop_x = left + inner - stop_width
         y = 86
         if mode == "guiding":
             if self.heard_text:
@@ -305,24 +308,24 @@ class PaperPanel(NSObject):
             self.root.ticket = (left, top, inner, y - top)
             y += 14
             show(self.mic_button, left, y, 56, 56)
-            bw = (inner - 76) / 2
-            show(self.skip_button, left + 66, y + 3, bw, 50)
-            show(self.stop_button, left + 76 + bw, y + 3, bw, 50)
+            show(self.skip_button, left + 66, y + 3, stop_width, 50)
+            show(self.stop_button, stop_x, y + 3, stop_width, 50)
             y += 70
         elif mode == "listening":
-            show(self.meter, center - 70, y, 140, 164)
+            show(self.meter, center - 70, y, 140, 191)
             mic(y + 18, 96)
-            y = instruction(t["listen"], left, y + 174, inner, 100, centered=True)
+            y = instruction(t["listen"], left, y + 201, inner, 100, centered=True)
             y = caption(t["finish"], y, True) + 20
         elif mode in ("thinking", "transcribing"):
-            y = instruction(t["think"], left, y + 4, inner, 125)
+            show(self.meter, center - 30, y + 9, 60, 22)
+            y = instruction(t["think"], left, y + 40, inner, 125, centered=True)
             if mode == "thinking" and self.owner.active:
-                show(self.stop_button, left, y + 12, 116, 48)
-                y += 61
-            y += 18
+                show(self.stop_button, stop_x, y + 12, stop_width, 50)
+                y += 62
+            y += 14
         elif mode == "done":
-            self.root.badge = ("checkmark", INK, center, y + 32)
-            y = instruction(message, left, y + 80, inner, max_height - 330, centered=True)
+            self.root.badge = (center, y + 39)
+            y = instruction(message, left, y + 90, inner, max_height - 340, centered=True)
             show(self.new, left, y + 16, inner, 56)
             y += 86
         elif mode in ("error", "voice_error", "page_error"):

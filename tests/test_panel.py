@@ -85,6 +85,21 @@ class PaperPanelTests(unittest.TestCase):
         p.toggleDetails_(None)
         self.assertFalse(p.status.isHidden())
 
+    def test_thinking_dots_follow_reduce_motion_and_clear_when_guiding(self):
+        p = self.panel
+        show_sample(p, "thinking")
+        p.meter.update_motion(False)
+        dots = p.meter.layer().sublayers()
+        self.assertEqual(len(dots), 3)
+        self.assertTrue(all(dot.animationForKey_("opacity") for dot in dots))
+        p.meter.update_motion(True)
+        self.assertFalse(any(dot.animationKeys() for dot in p.meter.layer().sublayers()))
+        thinking_stop = p.stop_button.frame()
+        show_sample(p, "guiding")
+        self.assertEqual(thinking_stop.origin.x, p.stop_button.frame().origin.x)
+        self.assertEqual(thinking_stop.size, p.stop_button.frame().size)
+        self.assertFalse(p.meter.layer().sublayers())
+
     def test_long_steps_scroll_with_actions_inside_panel(self):
         p = self.panel
         p.set_state("guiding", en="Read the next line. " * 200, target="Search")
