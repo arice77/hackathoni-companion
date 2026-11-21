@@ -277,16 +277,17 @@ def pcd(phase, label, text, role="AXButton", kind="point", action="pressed"):
 
 
 PC_GOOD = reindex(Q1 + [
-    pcd(2, "Mute (m)", "Click ‘Mute (m)’ to mute the sound."), pcd(2, None, "The sound is muted.", kind="complete", action="none"),
-    pcd(3, "Pause (k)", "Click ‘Pause (k)’ to pause the video."), pcd(3, None, "The video is paused.", kind="complete", action="none"),
-    pcd(4, "Play keyboard shortcut k", "Click ‘Play keyboard shortcut k’ to play the video."), pcd(4, None, "The video is playing.", kind="complete", action="none"),
-    pcd(5, "Settings", "Open ‘Settings’.", "AXPopUpButton"), pcd(5, "Playback speed Normal", "Open it.", "AXMenuItem"),
-    pcd(5, "1.25", "Choose ‘1.25’ for that playback speed."), pcd(5, None, "The video is set to 1.25×.", kind="complete", action="none"),
-    pcd(6, "Full screen (f)", "Click ‘Full screen (f)’ for a bigger picture. Press Esc to exit.", action="held: full screen pointer asserted; not pressed"),
-    pcd(7, "Settings", "Open ‘Settings’.", "AXPopUpButton"), pcd(7, "Subtitles/CC English", "Open it.", "AXMenuItem"),
-    pcd(7, None, "Malayalam isn’t listed in this video’s subtitle options.", kind="unsupported", action="none"),
+    pcd(2, "Unmute (m)", "Click ‘Unmute (m)’ to turn the sound back on."), pcd(2, None, "The video sound is on.", kind="complete", action="none"),
+    pcd(3, "Mute (m)", "Click ‘Mute (m)’ to mute the sound."), pcd(3, None, "The sound is muted.", kind="complete", action="none"),
+    pcd(4, "Pause (k)", "Click ‘Pause (k)’ to pause the video."), pcd(4, None, "The video is paused.", kind="complete", action="none"),
+    pcd(5, "Play keyboard shortcut k", "Click ‘Play keyboard shortcut k’ to play the video."), pcd(5, None, "The video is playing.", kind="complete", action="none"),
+    pcd(6, "Settings", "Open ‘Settings’.", "AXPopUpButton"), pcd(6, "Playback speed Normal", "Open it.", "AXMenuItem"),
+    pcd(6, "1.25", "Choose ‘1.25’ for that playback speed."), pcd(6, None, "The video is set to 1.25×.", kind="complete", action="none"),
+    pcd(7, "Full screen (f)", "Click ‘Full screen (f)’ for a bigger picture. Press Esc to exit.", action="held: full screen pointer asserted; not pressed"),
+    pcd(8, "Settings", "Open ‘Settings’.", "AXPopUpButton"), pcd(8, "Subtitles/CC English", "Open it.", "AXMenuItem"),
+    pcd(8, None, "Malayalam isn’t listed in this video’s subtitle options.", kind="unsupported", action="none"),
     {"event": "stop", "reason": "phase1=complete", "phases": {"1": "complete", "2": "complete", "3": "complete", "4": "complete",
-                                                              "5": "complete", "6": "reached-target", "7": "unsupported"},
+                                                              "5": "complete", "6": "complete", "7": "reached-target", "8": "unsupported"},
      "tidy": {"captions_off": True, "speed_restored": True, "menu_closed": True, "unmuted": True, "paused": True}},
 ])
 pcg = statuses(pc.assess(PC_GOOD, 0, "", X, X, X))
@@ -319,10 +320,16 @@ for r in pressed_fs:
         r["action"] = "pressed"
 assert pc_status(pressed_fs, "[full screen]") == ["fail"]
 wrong_row = [dict(r) for r in PC_GOOD]
-wrong_row[-3] = dict(wrong_row[-3], target_label="Auto-translate")
+wrong_row[-3] = dict(wrong_row[-3], target_label="Auto-translate")  # the last point before the unsupported decision
 assert pc_status(wrong_row, "[malayalam subtitles]") == ["fail"]
-no_complete = mutate(PC_GOOD, phases={"1": "complete", "2": "decision-timeout", "3": "complete", "4": "complete", "5": "complete", "6": "reached-target", "7": "unsupported"})
+no_complete = mutate(PC_GOOD, phases={"1": "complete", "2": "complete", "3": "decision-timeout", "4": "complete", "5": "complete", "6": "complete", "7": "reached-target", "8": "unsupported"})
 assert pc_status(no_complete, "[mute]") == ["fail"]
+# the video autoplays muted: "unmute" pressed then "mute" answered at once is fine; both answered at once is not (press path never exercised)
+instant = [dict(r) for r in PC_GOOD if not (r.get("phase") in (2, 3) and r["event"] == "decision" and r["kind"] == "point")]
+assert pc_status(instant, "[unmute]") == ["pass"] and pc_status(instant, "[mute]") == ["pass"]
+assert pc_status(instant, "unmute / mute") == ["fail"]
+one = [dict(r) for r in PC_GOOD if not (r.get("phase") == 3 and r["event"] == "decision" and r["kind"] == "point")]
+assert pc_status(one, "unmute / mute") == ["pass"]
 
 # driver allowlist for player controls (pure function)
 o.player_controls, o.allow_presets = True, {"1.25"}

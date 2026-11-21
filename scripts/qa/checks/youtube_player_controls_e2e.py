@@ -4,7 +4,7 @@ LIVE + SARVAM (about 6 questions, 40-60 chat calls incl. intent calls). BLOCKED 
 and the process is Accessibility-trusted. Run only when nobody is using the Mac (it plays a video; sound is muted early).
 
 One Safari window of its own: Q1 finds and plays the Darshana song (as youtube_follow_pointer_e2e), then, with the video playing:
-  mute        -> Mute pressed, complete "muted"
+  unmute, mute -> the button is pressed, or an honest "already" answer (the video autoplays muted); at least one must press
   pause       -> Pause pressed, complete "paused"
   resume      -> Play pressed, complete "playing"
   speed it up -> Settings, Playback speed, the 1.25 preset pressed, complete "1.25" (then speed back to Normal, menus closed)
@@ -24,7 +24,7 @@ import youtube_follow_pointer_e2e as base_check
 
 FEATURE = "web-support"
 QUESTION = os.environ.get("QA_YT_QUESTION", "ദർശന പാട്ട് പ്ലേ ചെയ്യൂ")
-ASKS = [("mute", ""), ("pause", ""), ("resume", ""), ("speed it up", "speed"), ("full screen", ""), ("malayalam subtitles", "menu")]
+ASKS = [("unmute", ""), ("mute", ""), ("pause", ""), ("resume", ""), ("speed it up", "speed"), ("full screen", ""), ("malayalam subtitles", "menu")]
 SHORTCUT = re.compile(r"(?:\s*\([a-z]\)|\s+keyboard shortcut\s+[a-z])$")
 
 
@@ -36,14 +36,18 @@ def _pressed(r):
     return str(r.get("action", "")).startswith("pressed")
 
 
+# phase -> (question, ordered steps, expected end, expected text in the final decision, optional). The video autoplays muted on a
+# signed-in Safari, so "unmute" / "mute" may be answered at once with no pointer ("already in that state"): optional=True accepts that
+# honest answer, and a separate item requires that at least one of the pair really pointed at the button and was pressed.
 SPECS = {
-    2: ("mute", [("Mute", lambda r: _pl(r) == "mute")], "complete", "muted"),
-    3: ("pause", [("Pause", lambda r: _pl(r) == "pause")], "complete", "paused"),
-    4: ("resume", [("Play", lambda r: _pl(r) == "play")], "complete", "playing"),
-    5: ("speed it up", [("Settings", lambda r: _pl(r) == "settings"), ("Playback speed", lambda r: _pl(r).startswith("playback speed")),
-                        ("1.25 preset", lambda r: _pl(r) == "1.25")], "complete", "1.25"),
-    6: ("full screen", [("Full screen", lambda r: _pl(r) == "full screen")], "reached-target", None),
-    7: ("malayalam subtitles", [], None, None),  # honest either way: checked separately
+    2: ("unmute", [("Unmute", lambda r: _pl(r) == "unmute")], "complete", "sound is on", True),
+    3: ("mute", [("Mute", lambda r: _pl(r) == "mute")], "complete", "muted", True),
+    4: ("pause", [("Pause", lambda r: _pl(r) == "pause")], "complete", "paused", False),
+    5: ("resume", [("Play", lambda r: _pl(r) == "play")], "complete", "playing", False),
+    6: ("speed it up", [("Settings", lambda r: _pl(r) == "settings"), ("Playback speed", lambda r: _pl(r).startswith("playback speed")),
+                        ("1.25 preset", lambda r: _pl(r) == "1.25")], "complete", "1.25", False),
+    7: ("full screen", [("Full screen", lambda r: _pl(r) == "full screen")], "reached-target", None, False),
+    8: ("malayalam subtitles", [], None, None, False),  # honest either way: checked separately
 }
 
 
@@ -92,11 +96,12 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
         ok and phases.get(1) == "complete" and last1[0] is not None and last1[0]["kind"] == "complete" and state.get("playing") is True,
         f"{d}; phase 1 end={phases.get(1)}; playing={state.get('playing')}; {where}")
 
-    for phase, (label, steps, end, text) in SPECS.items():
+    pressed_mute = False
+    for phase, (label, steps, end, text, optional) in SPECS.items():
         pts = _site.points(records, phase)
         ds = [r for r in decisions if r.get("phase") == phase]
         last = ds[-1] if ds else None
-        if phase == 7:
+        if phase == 8:
             allowed = {"subtitles/closed captions", "settings", "subtitles/cc", "malayalam"}
             odd = [_pl(r) for r in pts if not any(_pl(r).startswith(a) for a in allowed)]
             honest = phases.get(phase) in {"complete", "unsupported"} and last is not None and last["kind"] in {"complete", "unsupported"}
@@ -105,11 +110,16 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
                 f"{(last or {}).get('instruction_en', '')[:70]!r}; unexpected targets {odd}")
             continue
         ok, d = _site.order_check(pts, steps)
+        if optional and not pts:
+            ok = True  # answered at once: already in that state
+            d = "answered at once, no pointer (already in that state)"
+        elif optional:
+            pressed_mute = pressed_mute or any(_pressed(r) for r in pts)
         kind_ok = phases.get(phase) == end and last is not None and (last["kind"] == "complete" if end == "complete" else True)
         text_ok = text is None or (last is not None and text in last.get("instruction_en", "").lower())
         acted = all(_pressed(r) for r in pts if steps and steps[-1][1](r)) if end == "complete" else True
         extra = ""
-        if phase == 6:
+        if phase == 7:
             fs = [r for r in pts if _pl(r) == "full screen"]
             esc = bool(fs) and "esc" in fs[0].get("instruction_en", "").lower()
             held = bool(fs) and str(fs[0].get("action", "")).startswith("held")
@@ -118,6 +128,8 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
         add(f"[{label}] pointed in order {', '.join(s[0] for s in steps)} and ended {end}" + (f" ('{text}')" if text else ""),
             ok and kind_ok and text_ok and acted, f"{d}; phase end={phases.get(phase)}{extra}")
 
+    add("unmute / mute: at least one of the pair really pointed at the button and was pressed", pressed_mute,
+        "a Unmute or Mute pointer was pressed" if pressed_mute else "both answers came with no pointer: the press path was not exercised")
     rep = _site.repeats(_site.points(records), allow={"settings": 1})
     add("no target pointed at twice within a question (one Settings retry allowed)", not rep, f"repeated: {rep}")
     invalid = [r["index"] for r in decisions if r["kind"] == "point" and r.get("valid") is not True]
