@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Literal
+from typing import Literal, get_args
 
 from companion.contracts import Transcript
 
@@ -21,7 +21,9 @@ from .microphone import (
     stop_recording as stop_recording,
 )
 
-LanguagePreference = Literal["ml-IN", "en-IN"]
+LanguagePreference = Literal["ml-IN", "en-IN", "hi-IN", "kn-IN"]
+_PREFERENCES = get_args(LanguagePreference)
+_QUOTED_LABEL = re.compile(r'''"[^"\n]+"|“[^”\n]+”|(?<!\w)'[^\n]+?'(?!\w)|‘[^\n]+?’(?!\w)''')
 _MALAYALAM_SCRIPT = re.compile(r"[\u0d00-\u0d7f]")
 _MALAYALAM_ROMAN_WORDS = frozenset({
     "enikku", "enikk", "enik", "kaananam", "kaanam", "kaanan", "kelkkanam", "venam", "vekku",
@@ -46,8 +48,8 @@ class VoicePlaybackError(RuntimeError):
 
 
 def _validate_preference(preference: LanguagePreference) -> None:
-    if preference not in ("ml-IN", "en-IN"):
-        raise ValueError("Voice preference must be ml-IN or en-IN")
+    if preference not in _PREFERENCES:
+        raise ValueError(f"Voice preference must be one of {', '.join(_PREFERENCES)}")
 
 
 def ask(
@@ -57,12 +59,43 @@ def ask(
     _validate_preference(preference)
     language = "unknown" if preference == "en-IN" else preference
     native = sarvam.transcribe(wav_path, language_code=language, keyterms=keyterms)
-    needs_translation = (
-        preference == "ml-IN" or native.language_code == "ml-IN" or _MALAYALAM_SCRIPT.search(native.text)
+    source = preference if preference != "en-IN" else native.language_code
+    if source not in ("hi-IN", "kn-IN", "ml-IN") and (
+        _MALAYALAM_SCRIPT.search(native.text)
         or not _MALAYALAM_ROMAN_WORDS.isdisjoint(re.findall(r"\b\w+\b", native.text.casefold()))
-    )
-    english = sarvam.translate_speech_to_english(wav_path, keyterms=keyterms) if needs_translation else None
+    ):
+        source = "ml-IN"
+    english = None
+    if source in ("hi-IN", "kn-IN", "ml-IN"):
+        english = sarvam.translate_speech_to_english(wav_path, language_code=source, keyterms=keyterms)
     return VoiceTranscript(**asdict(native), english_translation=english)
+
+
+def translate_instruction(text: str, preference: LanguagePreference) -> str:
+    """Translate a whole sentence while keeping quoted labels byte-for-byte intact."""
+    _validate_preference(preference)
+    labels = {}
+    number = 910001
+
+    def mask(match):
+        nonlocal number
+        while str(number) in text:
+            number += 1
+        token = str(number)
+        labels[token] = match.group()
+        number += 1
+        return token
+
+    masked = _QUOTED_LABEL.sub(mask, text)
+    translated = sarvam.translate_text(masked, "en-IN", preference).strip()
+    if not translated:
+        raise sarvam.SarvamError("Empty instruction translation")
+    if labels:
+        tokens = re.compile(r"(?<!\d)(?:" + "|".join(labels) + r")(?!\d)")
+        if sorted(tokens.findall(translated)) != sorted(labels):
+            raise sarvam.SarvamError("Instruction translation lost a quoted label")
+        translated = tokens.sub(lambda match: labels[match.group()], translated)
+    return translated
 
 
 def _interrupt_playback_locked() -> int:

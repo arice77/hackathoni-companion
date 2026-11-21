@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
+from companion import voice
 from companion.contracts import Transcript
 from companion.voice import sarvam
 from scripts import sarvam_smoke
@@ -123,10 +124,39 @@ class SarvamTests(unittest.TestCase):
                 sarvam.transcribe(self.wav, keyterms=terms)
         self.http.assert_not_called()
 
+    def test_hindi_and_kannada_voice_turns_use_the_selected_source_and_target(self):
+        for pref, native in (("hi-IN", "मुझे मदद चाहिए"), ("kn-IN", "ನನಗೆ ಸಹಾಯ ಬೇಕು")):
+            with self.subTest(pref=pref):
+                fields = []
+
+                def answer(request, **kwargs):
+                    fields.append(self.speech_fields())
+                    text = native if fields[-1]["mode"] == "transcribe" else "I need help"
+                    return self.response(transcript=text, language_code=pref)
+
+                self.http.side_effect = answer
+                heard = voice.ask(self.wav, pref, keyterms=("Search",))
+                self.assertEqual(heard.text, native)
+                self.assertEqual(heard.planner_text, "I need help")
+                self.assertEqual(fields, [
+                    {"model": "saaras:v4", "mode": mode, "language_code": pref, "keyterms": '["Search"]'}
+                    for mode in ("transcribe", "translate")
+                ])
+                self.http.side_effect = None
+                self.http.return_value = self.response(audios=[base64.b64encode(self.wav.read_bytes()).decode()])
+                sarvam.synthesize(native, language_code=pref)
+                body = self.json_fields("/text-to-speech")
+                self.assertEqual((body["text"], body["language_code"], body["model"], body["speaker"]),
+                                 (native, pref, "bulbul:v3", "shubh"))
+
     def test_translate_text_in_both_directions(self):
         for source, target, text, translated in (
             ("ml-IN", "en-IN", "നമസ്കാരം", "Hello"),
             ("en-IN", "ml-IN", "Hello", "നമസ്കാരം"),
+            ("en-IN", "hi-IN", "Hello", "नमस्ते"),
+            ("en-IN", "kn-IN", "Hello", "ನಮಸ್ಕಾರ"),
+            ("hi-IN", "en-IN", "नमस्ते", "Hello"),
+            ("kn-IN", "en-IN", "ನಮಸ್ಕಾರ", "Hello"),
         ):
             with self.subTest(source=source):
                 self.http.return_value = self.response(translated_text=translated, request_id="text-id")

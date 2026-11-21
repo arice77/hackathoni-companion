@@ -202,10 +202,10 @@ def transcribe(
 
 
 def translate_speech_to_english(
-    wav_path: str | Path, *, keyterms: Sequence[str] = ()
+    wav_path: str | Path, *, language_code: str = _MALAYALAM, keyterms: Sequence[str] = ()
 ) -> Transcript:
-    """Translate a short Malayalam WAV directly to English."""
-    return _speech(wav_path, _MALAYALAM, "translate", keyterms)
+    """Translate a short WAV from the supplied source language directly to English."""
+    return _speech(wav_path, language_code, "translate", keyterms)
 
 
 def translate_text(text: str, source: str, target: str) -> str:

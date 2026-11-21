@@ -37,6 +37,34 @@ class PaperPanelTests(unittest.TestCase):
         p.owner.speak.assert_called_once_with(decision)
         self.assertIsNone(p.owner.last_spoken)
 
+    def test_four_language_switch_preserves_ask_and_skip_accessibility(self):
+        from companion.contracts import Decision
+        from companion.panel import LANGUAGES, WORDS
+
+        p = self.panel
+        decision = Decision("point", "s", "തുറക്കൂ", "Open ‘Search’.", "c01")
+        for lang, step in (("hi", "‘Search’ खोलें।"), ("kn", "‘Search’ ತೆರೆಯಿರಿ.")):
+            with self.subTest(lang=lang):
+                p.owner.lang = lang
+                p.owner.text_for = lambda decision: step
+                for state in ("idle", "listening", "thinking", "guiding", "done", "error"):
+                    p.set_state("idle")
+                    if state == "guiding":
+                        p.set_state("decision", decision=decision, target="Search")
+                        self.assertEqual(p.instruction.stringValue(), step)
+                        self.assertEqual(p.chip.stringValue(), "Search")
+                        self.assertEqual(p.skip_button.accessibilityIdentifier(), "companion-skip")
+                    else:
+                        p.set_state(state)
+                    self.assertFalse(p.ask_button.isHidden())
+                    self.assertEqual(p.ask_button.accessibilityTitle(), "Ask")
+                    self.assertEqual(p.ask_button.title(), WORDS[lang]["ask"])
+                control = p.lang_switch
+                self.assertEqual(control.segmentCount(), 4)
+                self.assertEqual(control.selectedSegment(), LANGUAGES.index(lang))
+                self.assertLess(A.NSMaxX(control.frame()), A.NSMinX(p.more.frame()))
+                self.assertTrue(p.window.styleMask() & A.NSWindowStyleMaskNonactivatingPanel)
+
     def test_speech_failure_keeps_visible_guidance_and_replay(self):
         p = self.panel
         show_sample(p, "guiding")

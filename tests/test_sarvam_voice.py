@@ -24,7 +24,7 @@ class VoiceTests(unittest.TestCase):
         ):
             result = voice.ask("question.wav", "ml-IN", keyterms=("Save Draft",))
         transcribe.assert_called_once_with("question.wav", language_code="ml-IN", keyterms=("Save Draft",))
-        translate.assert_called_once_with("question.wav", keyterms=("Save Draft",))
+        translate.assert_called_once_with("question.wav", language_code="ml-IN", keyterms=("Save Draft",))
         self.assertIsInstance(result, Transcript)
         self.assertEqual(result.request_id, native.request_id)
         self.assertEqual(result.text, native.text)
@@ -55,7 +55,7 @@ class VoiceTests(unittest.TestCase):
                   patch.object(sarvam, "translate_speech_to_english", return_value=english) as translate):
                 result = voice.ask("question.wav", "en-IN", keyterms=("Search",))
                 transcribe.assert_called_once_with("question.wav", language_code="unknown", keyterms=("Search",))
-                translate.assert_called_once_with("question.wav", keyterms=("Search",))
+                translate.assert_called_once_with("question.wav", language_code="ml-IN", keyterms=("Search",))
                 self.assertEqual(result.text, text)
                 self.assertEqual(result.planner_text, english.text)
 
@@ -76,10 +76,10 @@ class VoiceTests(unittest.TestCase):
             player = popen.return_value
             player.wait.return_value = 0
             popen.side_effect = start_player
-            for preference in ("ml-IN", "en-IN"):
+            for preference in ("ml-IN", "en-IN", "hi-IN", "kn-IN"):
                 self.assertEqual(voice.speak("reply", preference), {"request_id": "tts"})
                 synthesize.assert_called_with("reply", language_code=preference)
-            self.assertEqual(len(paths), 2)
+            self.assertEqual(len(paths), 4)
             self.assertTrue(all(not path.exists() for path in paths))
 
     def test_stop_speaking_cancels_pending_synthesis(self):

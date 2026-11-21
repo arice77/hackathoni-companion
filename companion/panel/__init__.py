@@ -23,6 +23,8 @@ class PanelState:
 
 WORDS = {
     "ml": {
+        "language": "മലയാളം", "stopped": "നിർത്തി.", "speech_failed": "ശബ്ദം ലഭ്യമല്ല. നിർദേശം വായിക്കാം.",
+        "question_error": "ചോദ്യം വിവർത്തനം ചെയ്യാനായില്ല. വീണ്ടും ശ്രമിക്കൂ.",
         "prompt": "എന്താണ് സഹായം വേണ്ടത്?", "intro": "പറഞ്ഞാൽ മതി, സ്ക്രീനിൽ ഞാൻ കാണിച്ചുതരാം.",
         "speak": "സംസാരിക്കാൻ അമർത്തൂ", "listen": "കേൾക്കുന്നു…", "finish": "പറഞ്ഞു കഴിഞ്ഞാൽ വീണ്ടും അമർത്തൂ.",
         "think": "മനസ്സിലാക്കുന്നു…", "type": "ചോദ്യം ടൈപ്പ് ചെയ്യൂ", "screen": "സ്ക്രീനിൽ",
@@ -31,6 +33,8 @@ WORDS = {
         "page_error": "സഹായം വേണ്ട പേജ് തുറക്കൂ.", "stop": "നിർത്തൂ", "skip": "ഒഴിവാക്കൂ", "ask": "ചോദിക്കൂ",
     },
     "en": {
+        "language": "English", "stopped": "Stopped.", "speech_failed": "Voice is unavailable. You can read the step above.",
+        "question_error": "I couldn’t translate your question. Please try again.",
         "prompt": "What can I help you do?", "intro": "Tell me, and I’ll point it out on screen.",
         "speak": "Tap to speak", "listen": "Listening…", "finish": "Tap again when you’ve finished.",
         "think": "Understanding…", "type": "Type your question", "screen": "On screen",
@@ -38,7 +42,28 @@ WORDS = {
         "heard": "Heard", "again": "Let’s try again", "voice_error": "Voice is unavailable. Type your question or try speaking again.",
         "page_error": "Open the page you’d like help with.", "stop": "Stop", "skip": "Skip", "ask": "Ask",
     },
+    "hi": {
+        "language": "हिन्दी", "prompt": "आपको किस काम में मदद चाहिए?", "intro": "मुझे बताइए, मैं स्क्रीन पर दिखाऊँगा।",
+        "question_error": "सवाल का अनुवाद नहीं हो पाया। फिर से कोशिश करें।",
+        "speak": "बोलने के लिए दबाएँ", "listen": "सुन रहा हूँ…", "finish": "बात पूरी हो जाए तो फिर से दबाएँ।",
+        "think": "समझ रहा हूँ…", "type": "अपना सवाल लिखें", "screen": "स्क्रीन पर",
+        "new": "नया सवाल", "replay": "यह कदम फिर से सुनें", "details": "तकनीकी जानकारी",
+        "heard": "आपने कहा", "again": "फिर से कोशिश करें", "voice_error": "आवाज़ उपलब्ध नहीं है। अपना सवाल लिखें या फिर से बोलें।",
+        "page_error": "जिस पेज पर मदद चाहिए, उसे खोलें।", "stop": "रोकें", "skip": "छोड़ें", "ask": "पूछें",
+        "stopped": "रुक गया।", "speech_failed": "आवाज़ उपलब्ध नहीं है। ऊपर दिया निर्देश पढ़ें।",
+    },
+    "kn": {
+        "language": "ಕನ್ನಡ", "prompt": "ನಿಮಗೆ ಯಾವ ಕೆಲಸದಲ್ಲಿ ಸಹಾಯ ಬೇಕು?", "intro": "ಹೇಳಿ, ಪರದೆಯ ಮೇಲೆ ತೋರಿಸುತ್ತೇನೆ.",
+        "question_error": "ಪ್ರಶ್ನೆಯನ್ನು ಅನುವಾದಿಸಲು ಆಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+        "speak": "ಮಾತನಾಡಲು ಒತ್ತಿ", "listen": "ಕೇಳುತ್ತಿದ್ದೇನೆ…", "finish": "ಮಾತು ಮುಗಿದ ಮೇಲೆ ಮತ್ತೊಮ್ಮೆ ಒತ್ತಿ.",
+        "think": "ಅರ್ಥಮಾಡಿಕೊಳ್ಳುತ್ತಿದ್ದೇನೆ…", "type": "ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಬರೆಯಿರಿ", "screen": "ಪರದೆಯ ಮೇಲೆ",
+        "new": "ಹೊಸ ಪ್ರಶ್ನೆ", "replay": "ಈ ಸೂಚನೆಯನ್ನು ಮತ್ತೆ ಕೇಳಿ", "details": "ತಾಂತ್ರಿಕ ವಿವರಗಳು",
+        "heard": "ನೀವು ಹೇಳಿದ್ದು", "again": "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸೋಣ", "voice_error": "ಧ್ವನಿ ಲಭ್ಯವಿಲ್ಲ. ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಬರೆಯಿರಿ ಅಥವಾ ಮತ್ತೆ ಮಾತನಾಡಿ.",
+        "page_error": "ನಿಮಗೆ ಸಹಾಯ ಬೇಕಿರುವ ಪುಟವನ್ನು ತೆರೆಯಿರಿ.", "stop": "ನಿಲ್ಲಿಸಿ", "skip": "ಬಿಟ್ಟುಬಿಡಿ", "ask": "ಕೇಳಿ",
+        "stopped": "ನಿಲ್ಲಿಸಲಾಗಿದೆ.", "speech_failed": "ಧ್ವನಿ ಲಭ್ಯವಿಲ್ಲ. ಮೇಲಿನ ಸೂಚನೆಯನ್ನು ಓದಿ.",
+    },
 }
+LANGUAGES = tuple(WORDS)
 
 
 def position(view, x, y, w, h):
@@ -98,9 +123,8 @@ class PaperPanel(NSObject):
         self.field.setAccessibilityIdentifier_("companion-field")
         self.root.addSubview_(self.field)
         self.lang_switch = LanguagePills.segmentedControlWithLabels_trackingMode_target_action_(
-            ["മലയാളം", "English"], A.NSSegmentSwitchTrackingSelectOne, self.owner, "langChanged:")
-        for index in range(2):
-            self.lang_switch.setWidth_forSegment_(80, index)
+            [WORDS[lang]["language"] for lang in LANGUAGES],
+            A.NSSegmentSwitchTrackingSelectOne, self.owner, "langChanged:")
         self.lang_switch.setAccessibilityIdentifier_("companion-lang")
         self.root.addSubview_(self.lang_switch)
 
@@ -217,6 +241,10 @@ class PaperPanel(NSObject):
         state = self.state
         mode = self.voice_phase or state.name
         message = state.ml if self.lang == "ml" else state.en or state.ml
+        if self.current_decision is not None and self.lang in ("hi", "kn"):
+            message = self.owner.text_for(self.current_decision)
+        elif state.name == "idle" and state.en == WORDS["en"]["stopped"]:
+            message = t["stopped"]
         w = self.width
         left, inner = 24, w - 48
         center = w / 2
@@ -256,6 +284,7 @@ class PaperPanel(NSObject):
         self.field.setPlaceholderAttributedString_(text_style(t["type"], 16, ink=MUTED, system=True))
         self.field.setAccessibilityLabel_(t["type"])
         self.ask_button.setTitle_(t["ask"])
+        self.ask_button.setAccessibilityTitle_(t["ask"] if self.lang == "ml" else "Ask")
         self.stop_button.setTitle_(t["stop"])
         self.skip_button.setTitle_(t["skip"])
         self.replay.setTitle_(t["replay"])
@@ -265,11 +294,15 @@ class PaperPanel(NSObject):
         self.new.setTitle_(t["new"])
         self.mic_button.glyph = "stop.fill" if mode == "listening" else "mic.fill"
         self.mic_button.setAccessibilityLabel_(t["finish"] if mode == "listening" else t["speak"])
-        position(self.lang_switch, left, 20, 164, 34)
-        self.lang_switch.setSelectedSegment_(0 if self.lang == "ml" else 1)
+        switch_width = min(304, w - left - 76)
+        for i in range(len(LANGUAGES)):
+            self.lang_switch.setWidth_forSegment_((switch_width - 4) / len(LANGUAGES), i)
+        position(self.lang_switch, left, 20, switch_width, 34)
+        self.lang_switch.setSelectedSegment_(LANGUAGES.index(self.lang))
         self.lang_switch.setEnabled_(not self.voice_phase)
         position(self.more, w - 66, 16, 44, 42)
-        public_state = {"voice_error": "error", "page_error": "error", "transcribing": "thinking"}.get(mode, mode)
+        public_state = {"voice_error": "error", "page_error": "error", "question_error": "error",
+                        "transcribing": "thinking"}.get(mode, mode)
         self.window.setAccessibilityValue_(public_state)
         self.window.setAccessibilityHelp_(mode)
         self.meter.mode = public_state
@@ -328,7 +361,7 @@ class PaperPanel(NSObject):
             y = instruction(message, left, y + 90, inner, max_height - 340, centered=True)
             show(self.new, left, y + 16, inner, 56)
             y += 86
-        elif mode in ("error", "voice_error", "page_error"):
+        elif public_state == "error":
             y = instruction(t["again"], left, y, inner, 100)
             body = t.get(mode, message)
             value = text_style(body, 18, ink=MUTED)
@@ -351,8 +384,7 @@ class PaperPanel(NSObject):
             y += 164
 
         if self.speech_failed:
-            warning = "ശബ്ദം ലഭ്യമല്ല. നിർദേശം വായിക്കാം." if self.lang == "ml" else "Voice is unavailable. You can read the step above."
-            value = text_style(warning, 14, ink=MUTED, system=True)
+            value = text_style(t["speech_failed"], 14, ink=MUTED, system=True)
             self.feedback.setAttributedStringValue_(value)
             h = text_height(value, inner - 4)
             show(self.feedback, left, y, inner, h)

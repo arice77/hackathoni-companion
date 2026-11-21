@@ -157,15 +157,16 @@ class PaperButton(A.NSButton):
 class LanguagePills(A.NSSegmentedControl):
     def drawRect_(self, dirty):
         w, h = self.bounds().size
-        for i in range(2):
+        segment_width = w / self.segmentCount()
+        for i in range(self.segmentCount()):
             selected = i == self.selectedSegment()
-            x = i * w / 2
-            path = rounded(x + 1, 1, w / 2 - 4, h - 2, (h - 2) / 2)
+            x = i * segment_width
+            path = rounded(x + 1, 1, segment_width - 4, h - 2, (h - 2) / 2)
             fill(path, INK if selected else WASH)
             stroke(path, INK if selected else RULE, .8)
             title = text_style(self.labelForSegment_(i), 15, ink=PAPER if selected else INK)
             size = title.size()
-            title.drawAtPoint_((x + (w / 2 - size.width) / 2 - 1, (h - size.height) / 2))
+            title.drawAtPoint_((x + (segment_width - size.width) / 2 - 1, (h - size.height) / 2))
 
 
 class PanelActivityIndicator(A.NSView):
