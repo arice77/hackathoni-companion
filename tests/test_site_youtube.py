@@ -158,7 +158,9 @@ class YouTubeTests(unittest.TestCase):
             waiting = planner.decide("Play it slower", snapshot("generic_player_loading"))
             self.assertEqual((waiting.kind, waiting.control_id), ("clarify", None))
             self.assertEqual(planner.decide("Play it slower", snapshot("watch_paused")).control_id, "gear")
-            self.assertEqual(planner.decide("Play it slower", snapshot("menu")).control_id, "speed")
+            partial = planner.decide("Play it slower", snapshot("settings_partial"))
+            self.assertEqual((partial.kind, partial.control_id), ("clarify", None))
+            self.assertEqual(planner.decide("Play it slower", snapshot("settings_values")).control_id, "speed")
             self.assertEqual(planner.decide("Play it slower", snapshot("speed_menu")).control_id, "slow")
             post.assert_not_called()
 
@@ -181,3 +183,28 @@ class YouTubeTests(unittest.TestCase):
         self.assertIn("Guide YouTube search", view["task_goal"])
         self.assertNotIn("Account private display name", view["controls"])
         self.assertNotIn("Darshana", view["controls"])
+
+    def test_provider_sees_fixed_menu_names_and_pointer_binds_to_live_row(self):
+        planner = SarvamPlanner("web_site", log_calls=False)
+        reply = {"kind": "point", "control_id": "speed",
+                 "instruction_ml": "വേഗം മാറ്റാൻ അമർത്തൂ.", "instruction_en": "Open the playback settings."}
+        response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(reply)}}]}
+        screen = snapshot("settings_values")
+        new_controls = tuple(replace(c, id=f"fresh-{c.id}") for c in screen.controls if c.id != "timer")
+        refreshed = replace(screen, snapshot_id="refreshed", controls=new_controls)
+        with (
+            patch.object(sarvam, "_load_api_key", return_value="test-key"),
+            patch.object(sarvam, "_post", return_value=(response, 1.0)) as post,
+        ):
+            question = "Where are the advanced options?"
+            for snap, target in ((screen, "speed"), (refreshed, "fresh-speed")):
+                decision = planner.decide(question, snap)
+                self.assertEqual((decision.kind, decision.control_id), ("point", target))
+                self.assertEqual(validate(decision, snap), (True, "ok"))
+                self.assertIn("‘Playback speed Normal’", decision.instruction_en)
+        post.assert_called_once()
+        view = json.loads(json.loads(post.call_args.args[2])["messages"][1]["content"])
+        for label in ("Playback speed", "Subtitles/CC", "Quality"):
+            self.assertIn(f'"{label}"', view["controls"])
+        for suffix in ("Normal", "English", "720p", "Sleep timer"):
+            self.assertNotIn(suffix, view["controls"])

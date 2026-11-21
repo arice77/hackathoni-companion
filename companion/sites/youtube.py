@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from ..contracts import Control, Decision, Snapshot
 from . import PrivacyProfile, SitePack, SiteStep, _phrase
 
 _MENU = {"AXMenuItem", "AXMenuItemCheckbox", "AXMenuItemRadio", "AXButton"}
+_SETTINGS_ROLES = _MENU | {"AXMenuButton", "AXPopUpButton"}
+_SHARED_SETTINGS = ("Playback speed", "Subtitles/CC", "Quality")
+_SETTINGS_NAMES = {_phrase(label): label for label in (*_SHARED_SETTINGS, "Ambient mode", "Annotations", "Sleep timer")}
+_SETTINGS_ROW = re.compile(rf"^({'|'.join(map(re.escape, _SETTINGS_NAMES))})(?=$|[\s:(])")
 _SEARCH = {"AXComboBox", "AXSearchField", "AXTextField"}
 _CC = re.compile(r"^(?:subtitles/closed captions|closed captions|cc)(?:\b|\s|$)")
 _SPEED_PRESET = re.compile(r"(\d+(?:\.\d+)?)\s*[x×]?")
@@ -154,9 +158,14 @@ def _await_player(snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
                      "Waiting for YouTube’s player controls.")
 
 
+def _setting_name(control: Control) -> str | None:
+    if control.role in _SETTINGS_ROLES and (match := _SETTINGS_ROW.match(_phrase(control.label))):
+        return _SETTINGS_NAMES[match[1]]
+    return None
+
+
 def _menu(controls: tuple[Control, ...], label: str) -> Control | None:
-    head = re.compile(rf"^{re.escape(label)}(?=$|[\s:(])")
-    return next((c for c in controls if c.enabled and c.role in _MENU and head.search(_phrase(c.label))), None)
+    return next((c for c in controls if c.enabled and _setting_name(c) == label), None)
 
 
 def _decision(snap: Snapshot, kind: str, ml: str, en: str) -> Decision:
@@ -214,6 +223,9 @@ def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> Control
 
 
 def _settings(snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
+    if any(_setting_name(c) for c in controls):
+        return _decision(snap, "clarify", "സെറ്റിങ്‌സ് പട്ടിക തുറക്കുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
+                         "Wait for the Settings menu to finish opening.")
     if gear := _target(controls, {"AXPopUpButton", "AXButton"}, "settings"):
         return _point(snap, gear, "{label} അമർത്തൂ.", "Open {label}.")
     return _await_player(snap, controls)
@@ -389,7 +401,7 @@ class YouTubeGuide:
                 snap, "clarify", f"പട്ടികയിൽ {requested} കാണാൻ ഒന്ന് സ്ക്രോൾ ചെയ്യൂ.",
                 f"Scroll inside Playback speed to look for {requested}×.",
             )
-        if speed := _menu(controls, "playback speed"):
+        if speed := _menu(controls, "Playback speed"):
             value = _SPEED_VALUE.fullmatch(_phrase(speed.label))
             if requested is not None and value is not None and Decimal(value[1]) == requested:
                 return _decision(snap, "complete", f"വീഡിയോ {requested} മടങ്ങ് വേഗത്തിലാണ്.",
@@ -422,7 +434,7 @@ class YouTubeGuide:
                 return _decision(snap, "complete", "മലയാളം സബ്‌ടൈറ്റിൽ ഓണാണ്.", "Malayalam subtitles are selected.")
             return _point(snap, malayalam, "മലയാളം സബ്‌ടൈറ്റിലിന് {label} തിരഞ്ഞെടുക്കൂ.",
                           "Choose {label} for Malayalam subtitles.")
-        caption_menu = _menu(controls, "subtitles/cc")
+        caption_menu = _menu(controls, "Subtitles/CC")
         if language_list:
             return _decision(
                 snap, "unsupported", "ഈ വീഡിയോയുടെ സബ്‌ടൈറ്റിൽ പട്ടികയിൽ മലയാളം കാണുന്നില്ല.",
@@ -433,9 +445,20 @@ class YouTubeGuide:
         if self.last_key is not None and _MALAYALAM_CHOICE.fullmatch(self.last_key[1]):
             return _decision(snap, "clarify", "മലയാളം സബ്‌ടൈറ്റിൽ കാണുന്നുണ്ടോ എന്ന് നോക്കൂ.",
                              "Check the video for Malayalam subtitles.")
-        if cc is not None and cc.enabled and cc.filled is False:
+        if cc is not None and cc.enabled and cc.filled is False and not any(_setting_name(c) for c in controls):
             return _point(snap, cc, "സബ്‌ടൈറ്റിൽ ഓണാക്കാൻ {label} അമർത്തൂ.", "Click {label} to turn on captions.")
         return _settings(snap, controls)
+
+
+class YouTubePrivacy(PrivacyProfile):
+    def filter_snapshot(self, snap: Snapshot) -> Snapshot:
+        # Current settings can carry extra display text. Send only the known row name.
+        controls = tuple(
+            replace(control, label=name, identifier=None, group=None)
+            if (name := _setting_name(control)) in _SHARED_SETTINGS else control
+            for control in snap.controls
+        )
+        return super().filter_snapshot(replace(snap, controls=controls))
 
 
 class YouTubePack(SitePack):
@@ -457,10 +480,11 @@ PACK = YouTubePack(
     entry=SiteStep("AXComboBox", "Search", "വീഡിയോയുടെ പേര് ‘Search’ എന്നിടത്ത് ടൈപ്പ് ചെയ്യൂ.",
                    "Type the video name in ‘Search’."),
     steps=(),
-    privacy=PrivacyProfile(frozenset((role, _phrase(label)) for role, label in (
+    privacy=YouTubePrivacy(frozenset((role, _phrase(label)) for role, label in (
         *_PLAYER, *_PLAYER_SHORTCUT_LABELS, *(("AXButton", label) for label in _SKIP_LABELS),
         *((role, "Search") for role in {*_SEARCH, "AXButton"}),
-        *((role, label) for role in _MENU for label in ("Playback speed", "Subtitles/CC", "Malayalam")),
+        *((role, label) for role in _SETTINGS_ROLES for label in _SHARED_SETTINGS),
+        *((role, "Malayalam") for role in _MENU),
     ))),
     practice_result="",
 )

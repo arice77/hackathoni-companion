@@ -39,6 +39,7 @@
       {"id": "mix", "role": "AXLink", "label": "Mix – Darshana Rajendran", "identifier": "youtube-watch:mix"},
       {"id": "playlist", "role": "AXLink", "label": "Darshana Hridayam Song Playlist", "identifier": "youtube-watch:playlist-entry"},
       {"id": "short", "role": "AXLink", "label": "Darshana Hridayam Official Video Song #Shorts", "identifier": "youtube-watch:short"},
+      {"id": "unlabelled_short", "role": "AXLink", "label": "Darshana Hridayam Official Video Song", "identifier": "youtube-short:another-short"},
       {"id": "wrong", "role": "AXLink", "label": "Hridayam | Onakka Munthiri | Official Video Song", "identifier": "youtube-watch:other-song"},
       {"id": "plain", "role": "AXLink", "label": "Darshana Hridayam", "identifier": "youtube-watch:unmarked-song"},
       {"id": "best", "role": "AXLink", "label": "Darshana | Hridayam | Official Video Song", "identifier": "youtube-watch:official"}
@@ -119,6 +120,25 @@
       {"id": "speed", "role": "AXMenuItem", "label": "Playback speed"},
       {"id": "subs", "role": "AXMenuItem", "label": "Subtitles/CC"},
       {"id": "quality", "role": "AXMenuItem", "label": "Quality"}
+    ],
+    "settings_partial": [
+      {"id": "gear", "role": "AXPopUpButton", "label": "Settings"},
+      {"id": "ambient", "role": "AXMenuItemCheckbox", "label": "Ambient mode"},
+      {"id": "subs", "role": "AXMenuItem", "label": "Subtitles/CC Hindi"}
+    ],
+    "settings_quality_only": [
+      {"id": "gear", "role": "AXPopUpButton", "label": "Settings"},
+      {"id": "timer", "role": "AXMenuItem", "label": "Sleep timer Off"},
+      {"id": "quality", "role": "AXMenuItem", "label": "Quality Auto (720p)"}
+    ],
+    "settings_values": [
+      {"id": "gear", "role": "AXPopUpButton", "label": "Settings"},
+      {"id": "ambient", "role": "AXMenuItemCheckbox", "label": "Ambient mode"},
+      {"id": "annotations", "role": "AXMenuItemCheckbox", "label": "Annotations"},
+      {"id": "subs", "role": "AXMenuItem", "label": "Subtitles/CC English"},
+      {"id": "timer", "role": "AXMenuItem", "label": "Sleep timer Off"},
+      {"id": "speed", "role": "AXMenuItem", "label": "Playback speed Normal"},
+      {"id": "quality", "role": "AXMenuItem", "label": "Quality Auto (720p)"}
     ],
     "speed_menu": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
@@ -307,6 +327,8 @@
     {"id": "multiword-song-over-mixes-playlists-and-shorts", "language": "english", "question": "Play the Darshana Hridayam song", "walk": [["home", "point", "search", "Type ‘darshana hridayam song’"], ["typed", "point", "go"], ["song_results", "point", "best"], ["watch_paused", "point", "play"], ["watch", "complete", null, "playing"]]},
     {"id": "speed-after-player-controls-reappear", "language": "english", "question": "Play it slower", "walk": [["generic_player_loading", "clarify", null, "Waiting for YouTube’s player controls"], ["only_player_sliders", "clarify", null, "Move the pointer over the video"], ["watch_paused", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
     {"id": "ad-skip-label-variants", "language": "english", "question": "Play it slower", "walk": [["ad_skip_plain", "point", "skip"], ["ad_skip_plural", "point", "skip"], ["watch_paused", "point", "gear"], ["menu", "point", "speed"], ["speed_menu", "point", "slow"]]},
+    {"id": "speed-retries-partial-settings", "language": "english", "question": "Play it slower", "walk": [["watch_paused", "point", "gear"], ["settings_partial", "clarify", null, "Wait for the Settings menu"], ["settings_partial", "clarify", null, "Wait for the Settings menu"], ["settings_values", "point", "speed"], ["speed_menu", "point", "slow"]]},
+    {"id": "captions-retries-partial-settings", "language": "malayalam", "question": "മലയാളം സബ്‌ടൈറ്റിൽ വേണം", "walk": [["watch", "point", "gear"], ["settings_quality_only", "clarify", null, "Wait for the Settings menu"], ["settings_values", "point", "subs"], ["caption_menu", "point", "ml"], ["caption_selected", "complete", null, "Malayalam"]]},
     {"id": "scroll-to-find-a-match", "language": "english", "question": "Find and play Darshana Hridayam", "walk": [["home", "point", "search"], ["typed", "point", "go"], ["unmatched_more", "clarify", null, "Scroll down to see more results"], ["results", "point", "best"]]},
     {"id": "scroll-before-searching-again", "language": "manglish", "question": "Darshana Hridayam paattu play cheyyu", "walk": [["no_links_yet", "clarify", null, "Scroll down to see more results"], ["unmatched", "clarify", null, "search again"]]}
   ]

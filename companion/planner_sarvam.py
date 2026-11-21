@@ -117,7 +117,7 @@ _NEXT_STEP = re.compile(
     r"|(?:ഇനി എന്ത് ചെയ്യണം|എവിടെ തുടങ്ങണം)"
     r"|ini entha cheyyendathu"
 )
-_SKIP_PHRASES = {"skip", "next", "no", "വേണ്ട", "ഒഴിവാക്കൂ", "adutha", "venda"}
+_SKIP_PHRASES = {"skip", "next", "no", "വേണ്ട", "ഒഴിവാക്കൂ", "അടുത്തത്", "adutha", "aduthathu", "venda"}
 _OPTION_INTENT = re.compile(
     r"(?:i (?:want|would like|prefer|choose|pick)|(?:please )?(?:choose|select|pick|add)"
     r"|എനിക്ക്|enikku|enikk)\s+(?:(?:a|an|the)\s+)?"
@@ -529,6 +529,10 @@ class SarvamPlanner:
     def skip_current(self) -> bool:
         """Queue one skip for the current optional pointer without waiting for Sarvam."""
         version = self._question_version
+        if version == self._active_version:
+            skip = getattr(self._site_guide, "skip_current", None)
+            if skip is not None:
+                return skip("skip")
         return self._queue_skip(version, version)
 
     def _queue_skip(self, current_version: int, next_version: int) -> bool:
@@ -554,17 +558,21 @@ class SarvamPlanner:
             return _unsupported(snap, "ഈ സ്ക്രീനിൽ നിയന്ത്രണങ്ങൾ കാണുന്നില്ല.", "This screen exposes no controls.")
         with self._lock:
             version = self._question_version
+            site = pack_for(snap)
             skip_command = self.is_skip_phrase(question)
             if skip_command:
                 if not self._question:
                     return Decision("clarify", snap.snapshot_id, "ഒഴിവാക്കാൻ ഇപ്പോൾ ഒരു ഘട്ടമില്ല.",
                                     "There is no current step to skip.", source="sarvam")
                 if not self._skip_command or version != self._active_version:
-                    self._queue_skip(self._active_version, version)
+                    skip = getattr(self._site_guide, "skip_current", None) if site is self._guide_pack else None
+                    if skip is not None:
+                        skip(question)
+                    else:
+                        self._queue_skip(self._active_version, version)
                 self._active_version = version
                 question = self._question
             self._skip_command = skip_command
-            site = pack_for(snap)
             if self._site_only and site is None:
                 return _unsupported(snap, "ഈ സൈറ്റിന് ഇപ്പോൾ പ്രത്യേക സഹായം ലഭ്യമല്ല.",
                                     "This site does not have a guidance pack yet.")
@@ -576,12 +584,14 @@ class SarvamPlanner:
             if question != self._question or version != self._active_version:
                 self._cache.clear()
                 self._question = question
-                self._active_version = version
                 self._session = GuidanceSession()
                 self._last_presentation = None
                 self._intent = None
                 self._guide_pack, self._site_guide = None, None
+                self._active_version = version
             if self._guide_pack is not site:
+                with self._skip_lock:
+                    self._skip_target = None
                 self._guide_pack = site
                 factory = getattr(site, "start_guidance", None)
                 self._site_guide = factory(question) if factory is not None else None
@@ -760,7 +770,9 @@ class SarvamPlanner:
             if target is None:
                 return replace(decision, snapshot_id=snap.snapshot_id)
             key = control_key(target)
-            current = [c for c in candidates if control_key(c) == key and c.id in point_ids]
+            # A privacy profile can send a canonical label under the live control's ID.
+            candidate_ids = {c.id for c in candidates if c.id in point_ids}
+            current = [c for c in snap.controls if c.id in candidate_ids and control_key(c) == key]
             if len(current) == 1:
                 if target.filled is False and current[0].filled is True and not (requested_label or button_action):
                     step = _form_step(plan, self._session)
