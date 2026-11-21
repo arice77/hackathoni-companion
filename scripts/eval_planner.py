@@ -20,7 +20,7 @@ from companion.validator import MAX_SNAPSHOT_AGE_S, validate
 from companion.voice import sarvam
 
 FIXTURES = ROOT / "tests" / "fixtures" / "planner"
-MAX_CALLS = 126
+MAX_CALLS = 138
 
 
 def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
@@ -76,6 +76,11 @@ def _case(model: str, case: dict, screen: dict) -> dict:
             and quoted_label in decision.instruction_en
             and quoted_label in decision.instruction
         )
+    choice_guidance_ok = None
+    if fragments := case.get("instruction_contains"):
+        choice_guidance_ok = actual == expected and all(
+            phrase in getattr(decision, attribute) for attribute, phrases in fragments.items() for phrase in phrases
+        )
     return {
         "id": case["id"],
         "origin": screen["origin"],
@@ -84,6 +89,7 @@ def _case(model: str, case: dict, screen: dict) -> dict:
         "actual": asdict(decision),
         "correct": actual == expected,
         "orientation_ok": orientation_ok,
+        "choice_guidance_ok": choice_guidance_ok,
         "decision_path": "provider" if cold_calls else "local",
         "cold_validator": {"valid": cold_valid, "reason": cold_reason},
         "stale_case": case.get("stale", False),
@@ -100,12 +106,14 @@ def _summary(rows: list[dict], total: int) -> dict:
     malformed = sum(call["outcome"] == "malformed" for call in calls)
     correct = sum(row["correct"] for row in rows)
     orientations = [row["orientation_ok"] for row in rows if row["orientation_ok"] is not None]
+    choice_guidance = [row["choice_guidance_ok"] for row in rows if row["choice_guidance_ok"] is not None]
     return {
         "correct": correct,
         "cases": len(rows),
         "expected_cases": total,
         "met_target": (
-            len(rows) == total and correct * 17 >= total * 15 and invalid == malformed == 0 and all(orientations)
+            len(rows) == total and correct * 17 >= total * 15 and invalid == malformed == 0
+            and all(orientations) and all(choice_guidance)
         ),
         "calls": len(calls),
         "local_decisions": sum(row["decision_path"] == "local" for row in rows),
@@ -114,6 +122,8 @@ def _summary(rows: list[dict], total: int) -> dict:
         "malformed_replies": malformed,
         "orientations_correct": sum(orientations),
         "orientation_cases": len(orientations),
+        "choice_guidance_correct": sum(choice_guidance),
+        "choice_guidance_cases": len(choice_guidance),
         "label_fallbacks": sum(call["outcome"] == "local_label_fallback" for call in calls),
         "p50_ms": statistics.median(samples) if samples else None,
         "p95_ms": statistics.quantiles(samples, n=100, method="inclusive")[94] if len(samples) > 1

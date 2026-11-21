@@ -62,6 +62,11 @@ Use the screen heading and ascending rank (top-to-bottom, then left-to-right):
   then use the enabled primary action, such as Next, Continue, or Save. If an attachment
   is already shown as attached, advance to the primary action. A progress label or
   heading only describes the screen. Skip optional shortcuts such as sample autofill.
+- A control with group belongs to the choice set with that label. The user chooses
+  the value. For an undecided radio choice, point at the set and ask the user to
+  choose. Point at an option only if the user already named that value. Skip sets
+  with filled=true. Treat optional checkbox sets as optional and guide the next
+  required step. Do not suggest any particular option on your own.
 - Broad wording alone is in scope. Ask a short clarifying question if the page has
   competing purposes and you need the user's goal to select a starting point.
 - Use unsupported for off-topic requests, a missing requested control, or a screen
@@ -103,9 +108,25 @@ _GENERAL_HELP = re.compile(
     r"|(?:ethu|eth) (?:screen|page)(?:il)? help cheyyan pattum"
 )
 _ENTRY_ROLES = {"AXTextField", "AXTextArea", "AXSearchField", "AXComboBox", "AXPopUpButton"}
+_CHOICE_GROUP_ROLES = {"AXGroup", "AXRadioGroup"}
 _PRIMARY_ACTIONS = {"next", "continue", "save"}
 _WEB_PRIMARY_ACTIONS = _PRIMARY_ACTIONS | {"save draft", "search", "submit order"}
 _REQUIRED_LABEL = re.compile(r"(?:\*|\(required\))\s*:?$", re.IGNORECASE)
+_NEXT_STEP = re.compile(
+    r"what (?:is the next step|should i do next|do i do next|now)"
+    r"|where (?:do|can|should) i (?:start|begin|go next)"
+    r"|(?:ഇനി എന്ത് ചെയ്യണം|എവിടെ തുടങ്ങണം)"
+    r"|ini entha cheyyendathu"
+)
+_OPTION_INTENT = re.compile(
+    r"(?:i (?:want|would like|prefer|choose|pick)|(?:please )?(?:choose|select|pick|add)"
+    r"|എനിക്ക്|enikku|enikk)\s+(?:(?:a|an|the)\s+)?"
+)
+_OPTIONAL_QUESTION = re.compile(
+    r"(?:do i (?:need|have) to (?:choose|select|pick|add)(?: any)? (?P<required>.+)"
+    r"|(?:is|are) (?P<optional>.+) optional)"
+)
+_SENTENCE_END = re.compile(r"[.?!]+\s+| / ")
 _DEICTIC_QUESTION = re.compile(
     r"(?:can|should|do) i (?:use|click|press|select|pick) (?:this|that)(?: one| button| option| control)?"
     r"|is (?:this|that) the right (?:one|button|option)"
@@ -148,6 +169,20 @@ class PlannerCall:
     outcome: str
     request_id: str = ""
     http_status: int | None = None
+
+
+@dataclass(frozen=True)
+class _ChoiceSet:
+    control: Control
+    options: tuple[Control, ...]
+
+    @property
+    def filled(self) -> bool:
+        return self.control.filled is True or any(c.filled is True for c in self.options)
+
+    @property
+    def optional(self) -> bool:
+        return not _REQUIRED_LABEL.search(self.control.label) and all(c.role == "AXCheckBox" for c in self.options)
 
 
 def _unsupported(snap: Snapshot, ml: str, en: str) -> Decision:
@@ -228,8 +263,110 @@ def _is_general_help_question(question: str) -> bool:
     return any(_GENERAL_HELP.fullmatch(_question_phrase(part)) for part in question.split(" / ", 1))
 
 
-def _general_web_help(snap: Snapshot, heading: str, actionable: list[Control]) -> Decision | None:
-    fields = [c for c in actionable if c.role in _ENTRY_ROLES and c.filled is False]
+def _choice_option(control: Control) -> bool:
+    return control.role == "AXRadioButton" or (control.role == "AXCheckBox" and bool(control.group))
+
+
+def _choice_sets(controls: list[Control]) -> dict[str, _ChoiceSet]:
+    sets = [c for c in controls if c.role in _CHOICE_GROUP_ROLES and c.label]
+    counts = Counter(c.label for c in sets)
+    result = {}
+    for group in sets:
+        if counts[group.label] != 1:
+            continue
+        options = tuple(c for c in controls if c.group == group.label and _choice_option(c) and c.label)
+        if options:
+            result[group.id] = _ChoiceSet(group, options)
+    return result
+
+
+def _requested_options(question: str, requested_label: str | None, controls: list[Control]) -> list[Control]:
+    options = [c for c in controls if _choice_option(c) and c.label]
+    if not options:
+        return []
+    if requested_label is not None:
+        return [c for c in options if _label_key(c.label) == _label_key(requested_label)]
+
+    labels = {_label_key(c.label) for c in options} - {""}
+    named = set()
+    for part in _SENTENCE_END.split(question):
+        phrase = _question_phrase(part)
+        if match := _OPTION_INTENT.match(phrase):
+            choice = phrase[match.end():].lstrip(" ‘“'\"")
+            mentioned = {label for label in labels if re.search(rf"(?<!\w){re.escape(label)}(?!\w)", choice)}
+            for option in options:
+                label = _label_key(option.label)
+                leading = re.match(rf"{re.escape(label)}(?!\w)", choice) if label else None
+                if leading is None:
+                    continue
+                qualifier = choice[leading.end():].lstrip(" ’”'\"").split(maxsplit=1)
+                subjects = _label_key(option.group or "").split()
+                if qualifier and qualifier[0] not in {*subjects, "option", "please", "വേണം", "venam", "or"}:
+                    continue
+                named.update(mentioned)
+                break
+        else:
+            named.add(_label_key(phrase))
+    return [c for c in options if _label_key(c.label) in named]
+
+
+def _choice_instructions(group: _ChoiceSet) -> tuple[str, str]:
+    names = list(dict.fromkeys(f"‘{c.label}’" for c in group.options if c.enabled))
+    quoted = f"‘{group.control.label}’"
+    if not names:
+        return f"{quoted} ൽ നിങ്ങൾക്ക് വേണ്ട ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക.", f"Choose the option you want in {quoted}."
+    if len(names) == 1:
+        return (
+            f"{quoted} ൽ {names[0]} വേണമെങ്കിൽ തിരഞ്ഞെടുക്കുക.",
+            f"Choose {names[0]} in {quoted} if you want it.",
+        )
+    start = ", ".join(names[:-1])
+    return (
+        f"{quoted} ൽ {start} അല്ലെങ്കിൽ {names[-1]} തിരഞ്ഞെടുക്കുക.",
+        f"For {quoted}, choose {start} or {names[-1]}.",
+    )
+
+
+def _asked_about_optional_sets(phrases: list[str], groups: dict[str, _ChoiceSet]) -> set[str]:
+    topics = {
+        match.group("required") or match.group("optional")
+        for phrase in phrases if (match := _OPTIONAL_QUESTION.fullmatch(phrase))
+    }
+    return {
+        key for key, group in groups.items() if group.optional
+        and any(f" {_label_key(group.control.label)}".endswith(f" {topic}") for topic in topics)
+    }
+
+
+def _choice_guidance(
+    decision: Decision, snap: Snapshot, groups: dict[str, _ChoiceSet], asked_optional: set[str],
+) -> Decision:
+    target = snap.control(decision.control_id) if decision.control_id is not None else None
+    if decision.kind != "point" or target is None:
+        return decision
+    if group := groups.get(target.id):
+        ml, en = _choice_instructions(group)
+        decision = replace(decision, instruction=ml, instruction_en=en)
+    skipped = [
+        f"‘{g.control.label}’" for g in groups.values()
+        if g.control.id in asked_optional or (
+            g.optional and not g.filled
+            and (g.control.frame[1], g.control.frame[0]) < (target.frame[1], target.frame[0])
+        )
+    ]
+    if not skipped:
+        return decision
+    names = ", ".join(skipped)
+    return replace(decision, instruction=f"{names} നിർബന്ധമല്ല. {decision.instruction}",
+                   instruction_en=f"{names} {'is' if len(skipped) == 1 else 'are'} optional. {decision.instruction_en}")
+
+
+def _general_web_help(
+    snap: Snapshot, heading: str, actionable: list[Control], groups: dict[str, _ChoiceSet],
+) -> Decision | None:
+    fields = [
+        c for c in actionable if (c.role in _ENTRY_ROLES and c.filled is False) or c.id in groups
+    ]
     primary = [
         c for c in actionable if c.role == "AXButton" and _label_key(c.label).rstrip(" »›") in _WEB_PRIMARY_ACTIONS
     ]
@@ -291,7 +428,9 @@ def _decision_format(point_ids: list[str]) -> dict:
     }
 
 
-def _interpret(response: dict, snap: Snapshot, key: str, point_ids: list[str]) -> tuple[Decision, str]:
+def _interpret(
+    response: dict, snap: Snapshot, key: str, point_ids: list[str], groups: dict[str, _ChoiceSet],
+) -> tuple[Decision, str]:
     try:
         choice = response["choices"][0]
         if choice["finish_reason"] != "stop":
@@ -317,6 +456,11 @@ def _interpret(response: dict, snap: Snapshot, key: str, point_ids: list[str]) -
                 "Sarvam selected an unknown control ID on this screen.",
             ), "unknown_id"
         if control_id not in point_ids:
+            if _choice_option(target) and target.group:
+                group = next((g.control for g in groups.values()
+                              if g.control.label == target.group and g.control.id in point_ids), None)
+                if group is not None:
+                    return Decision("point", snap.snapshot_id, "", "", group.id, "sarvam"), "choice_group_fallback"
             return _unsupported(
                 snap, "ഈ നിയന്ത്രണം ഇപ്പോൾ ഉപയോഗിക്കാൻ കഴിയില്ല.", "This control is unavailable."
             ), "unavailable_target"
@@ -335,7 +479,7 @@ def _interpret(response: dict, snap: Snapshot, key: str, point_ids: list[str]) -
 def _screen_signature(snap: Snapshot) -> frozenset:
     # Labels such as a completion status can change even when their identifier stays put.
     states = Counter(
-        ((c.identifier or c.label, c.role, c.filled), c.label, c.enabled)
+        ((c.identifier or c.label, c.role, c.filled), c.label, c.enabled, c.group)
         for c in snap.controls
     )
     return frozenset(states.items())
@@ -346,7 +490,7 @@ def _bind(decision: Decision, target: Control | None, snap: Snapshot) -> Decisio
         return replace(decision, snapshot_id=snap.snapshot_id)
     candidates = [
         c for c in snap.controls
-        if (c.label, c.role, c.filled) == (target.label, target.role, target.filled)
+        if (c.label, c.role, c.filled, c.group) == (target.label, target.role, target.filled, target.group)
     ]
     identified = [c for c in candidates if target.identifier and c.identifier == target.identifier]
     candidates = identified or candidates
@@ -413,9 +557,30 @@ class SarvamPlanner:
             (c.label for c in ordered if c.label and (c.role == "AXHeading" or c.identifier == "screen-title")),
             "",
         )
-        actionable = [c for c in ordered if _pointable(c)]
+        groups = _choice_sets(ordered)
+        actionable = [
+            c for c in ordered
+            if _pointable(c) and not _choice_option(c)
+            and (c.role not in _CHOICE_GROUP_ROLES or
+                 (c.id in groups and not groups[c.id].filled and not groups[c.id].optional
+                  and any(option.enabled for option in groups[c.id].options)))
+        ]
         candidates = actionable
+        phrases = [_question_phrase(part) for part in _SENTENCE_END.split(question)]
+        asked_optional = _asked_about_optional_sets(phrases, groups)
         requested_label = _requested_label(question)
+        preferences = _requested_options(question, requested_label, ordered)
+        if len(preferences) > 1:
+            return _clarify_target(snap)
+        if preferences:
+            [option] = preferences
+            if not option.enabled:
+                return _unsupported(snap, "ആ ഓപ്ഷൻ ഇപ്പോൾ ലഭ്യമല്ല.", "This option is currently unavailable.")
+            if option.filled is not True:
+                label = f"‘{option.label}’"
+                return Decision("point", snap.snapshot_id, f"{label} തിരഞ്ഞെടുക്കുക.",
+                                f"Select {label}.", option.id, "sarvam")
+            requested_label = None
         button_action = _requested_button_action(question)
         formats = _file_formats(question)
         general_help = False
@@ -458,22 +623,24 @@ class SarvamPlanner:
                 "Well done! The practice task is complete.", source="sarvam",
             )
         else:
-            general_help = _is_general_help_question(question)
+            general_help = bool(preferences or asked_optional) or _is_general_help_question(question) or (
+                bool(groups) and any(_NEXT_STEP.fullmatch(phrase) for phrase in phrases)
+            )
             if general_help and not actionable:
                 return _unsupported(snap, "ഈ സ്ക്രീനിൽ ഉപയോഗിക്കാവുന്ന നിയന്ത്രണങ്ങളില്ല.",
                                     "This screen has no usable controls.")
-            if general_help and snap.viewport is not None:
-                decision = _general_web_help(snap, heading, actionable)
+            if general_help and (snap.viewport is not None or groups):
+                decision = _general_web_help(snap, heading, actionable, groups)
                 if decision is not None:
-                    return decision
+                    return _choice_guidance(decision, snap, groups, asked_optional)
         point_ids = _point_ids(general_help, candidates)
         view = {
             "question": question,
             "screen_title": heading or snap.window_title,
-            "unfinished_input_ids": [c.id for c in actionable if c.filled is False],
+            "unfinished_input_ids": [c.id for c in actionable if c.filled is False or c.id in groups],
             "controls": [
                 {"rank": rank, "id": c.id, "role": c.role, "label": c.label,
-                 "filled": c.filled, "enabled": c.enabled}
+                 "filled": c.filled, "enabled": c.enabled, "group": c.group}
                 for rank, c in enumerate(ordered, start=1)
             ],
         }
@@ -507,11 +674,11 @@ class SarvamPlanner:
             self._record(PlannerCall((time.perf_counter() - started) * 1000, outcome, http_status=status))
             detail = f" (HTTP {status})" if status is not None else ""
             return _unsupported(snap, "സർവം സേവനം ലഭ്യമല്ല.", f"Sarvam could not plan this step{detail}.")
-        decision, outcome = _interpret(response, snap, key, point_ids)
+        decision, outcome = _interpret(response, snap, key, point_ids, groups)
         request_id = response.get("id")
         request_id = request_id.replace(key, "[redacted]") if isinstance(request_id, str) else ""
         self._record(PlannerCall(latency, outcome, request_id, 200))
-        return decision
+        return _choice_guidance(decision, snap, groups, asked_optional)
 
     def _record(self, call: PlannerCall) -> None:
         self.calls.append(call)

@@ -584,5 +584,129 @@
     "control_id": "c09",
     "question_form": "manglish",
     "orientation_en": "This is the ‘Business Details’ page."
+  },
+  {
+    "id": "public-pizza-choose-size",
+    "screen": "httpbin-order-size-unset",
+    "task": "web_any",
+    "question": "What should I do next?",
+    "kind": "point",
+    "control_id": "c00",
+    "question_form": "english",
+    "instruction_contains": {
+      "instruction_en": [
+        "choose",
+        "‘Pizza Size’",
+        "‘Small’",
+        "‘Medium’",
+        "‘Large’"
+      ],
+      "instruction": [
+        "തിരഞ്ഞെടുക്കുക",
+        "‘Pizza Size’",
+        "‘Small’",
+        "‘Medium’",
+        "‘Large’"
+      ]
+    }
+  },
+  {
+    "id": "public-pizza-choose-size-malayalam",
+    "screen": "httpbin-order-size-unset",
+    "task": "web_any",
+    "question": "ഇനി എന്ത് ചെയ്യണം?",
+    "kind": "point",
+    "control_id": "c00",
+    "question_form": "malayalam",
+    "instruction_contains": {
+      "instruction_en": [
+        "choose",
+        "‘Pizza Size’",
+        "‘Small’",
+        "‘Medium’",
+        "‘Large’"
+      ],
+      "instruction": [
+        "അല്ലെങ്കിൽ",
+        "‘Pizza Size’",
+        "‘Small’",
+        "‘Medium’",
+        "‘Large’"
+      ]
+    }
+  },
+  {
+    "id": "public-pizza-skip-chosen-size",
+    "screen": "httpbin-order-size-chosen",
+    "task": "web_any",
+    "question": "What should I do next?",
+    "kind": "point",
+    "control_id": "c07",
+    "question_form": "english",
+    "instruction_contains": {
+      "instruction_en": [
+        "‘Pizza Toppings’ is optional.",
+        "‘Delivery instructions:’"
+      ],
+      "instruction": [
+        "‘Pizza Toppings’ നിർബന്ധമല്ല.",
+        "‘Delivery instructions:’"
+      ]
+    }
+  },
+  {
+    "id": "public-pizza-explicit-large",
+    "screen": "httpbin-order-size-unset",
+    "task": "web_any",
+    "question": "I want a large pizza",
+    "kind": "point",
+    "control_id": "c10",
+    "question_form": "english",
+    "instruction_contains": {
+      "instruction_en": [
+        "Select ‘Large’."
+      ],
+      "instruction": [
+        "‘Large’ തിരഞ്ഞെടുക്കുക."
+      ]
+    }
+  },
+  {
+    "id": "public-pizza-explicit-topping",
+    "screen": "httpbin-order-size-chosen",
+    "task": "web_any",
+    "question": "Please add Extra Cheese",
+    "kind": "point",
+    "control_id": "c12",
+    "question_form": "english",
+    "instruction_contains": {
+      "instruction_en": [
+        "Select ‘Extra Cheese’."
+      ],
+      "instruction": [
+        "‘Extra Cheese’ തിരഞ്ഞെടുക്കുക."
+      ]
+    }
+  },
+  {
+    "id": "public-pizza-skip-optional-toppings",
+    "screen": "httpbin-order-ready",
+    "task": "web_any",
+    "question": "Do I need to choose any toppings?",
+    "kind": "point",
+    "control_id": "c02",
+    "question_form": "english",
+    "instruction_contains": {
+      "instruction_en": [
+        "‘Pizza Toppings’ is optional.",
+        "‘Submit order’",
+        "if you’re ready"
+      ],
+      "instruction": [
+        "‘Pizza Toppings’ നിർബന്ധമല്ല.",
+        "‘Submit order’",
+        "തയ്യാറാണെങ്കിൽ"
+      ]
+    }
   }
 ]

@@ -84,9 +84,12 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(view["unfinished_input_ids"], [])
         self.assertIn("business practice form", view["task_goal"])
         self.assertEqual(view["controls"], [
-            {"rank": 1, "id": "c02", "role": "AXHeading", "label": "Business Details", "filled": None, "enabled": True},
-            {"rank": 2, "id": "c00", "role": "AXTextField", "label": "Business Name", "filled": True, "enabled": True},
-            {"rank": 3, "id": "c01", "role": "AXButton", "label": "Save Draft", "filled": None, "enabled": True},
+            {"rank": 1, "id": "c02", "role": "AXHeading", "label": "Business Details",
+             "filled": None, "enabled": True, "group": None},
+            {"rank": 2, "id": "c00", "role": "AXTextField", "label": "Business Name",
+             "filled": True, "enabled": True, "group": None},
+            {"rank": 3, "id": "c01", "role": "AXButton", "label": "Save Draft",
+             "filled": None, "enabled": True, "group": None},
         ])
         for private in ("local-only-input", "local-only-save", "example.private.app", "Private window title", KEY):
             self.assertNotIn(private, request.data.decode())
@@ -374,6 +377,68 @@ class PlannerTests(unittest.TestCase):
                 self.assertEqual(row["calls"], [])
         self.http.assert_not_called()
 
+    def test_choice_guidance_replays_public_cases_without_http(self):
+        cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        choice_cases = [case for case in cases if case.get("instruction_contains")]
+        self.assertEqual(len(choice_cases), 6)
+        for case in choice_cases:
+            with self.subTest(case=case["id"]):
+                row = eval_planner._case(DEFAULT_MODEL, case, screens[case["screen"]])
+                self.assertTrue(row["choice_guidance_ok"])
+                self.assertTrue(row["cold_validator"]["valid"])
+                self.assertTrue(row["cache_ok"])
+                self.assertEqual(row["calls"], [])
+        self.http.assert_not_called()
+
+    def test_choice_progress_invalidates_cache_on_selected_radio(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-size-unset"], False)
+        # Keep the aggregate flag unchanged to prove that a radio's own state invalidates the result.
+        controls = tuple(replace(c, role="AXRadioGroup") if c.id == "c00" else c for c in snap.controls)
+        snap = replace(snap, controls=controls)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        question = "What should I do next?"
+        self.assertEqual(planner.decide(question, snap).control_id, "c00")
+        selected = replace(
+            snap, snapshot_id="size-chosen",
+            controls=tuple(replace(c, filled=True) if c.id == "c09" else c for c in controls),
+        )
+        self.assertEqual(planner.decide(question, selected).control_id, "c07")
+        self.assertEqual(planner.decide("I want a medium pizza", selected).control_id, "c07")
+        self.assertEqual(planner.decide("I want a large pizza", selected).control_id, "c10")
+        optional = planner.decide("Are toppings optional?", snap)
+        self.assertEqual(optional.control_id, "c00")
+        self.assertIn("‘Pizza Toppings’ is optional.", optional.instruction_en)
+        self.http.assert_not_called()
+
+    def test_provider_uses_group_metadata_and_individual_suggestions_are_rebound_to_set(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-size-unset"], False)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        self.http.return_value = _response(_choice(control_id="c08", label="Small"))
+        decision = planner.decide("Can you suggest the best size?", snap)
+        payload = json.loads(self.http.call_args.args[0].data)
+        view = json.loads(payload["messages"][1]["content"])
+        self.assertEqual(next(c for c in view["controls"] if c["id"] == "c08")["group"], "Pizza Size")
+        self.assertEqual(view["unfinished_input_ids"], ["c00", "c07"])
+        ids = payload["response_format"]["json_schema"]["schema"]["properties"]["control_id"]["enum"]
+        self.assertIn("c00", ids)
+        self.assertTrue({"c01", "c08", "c09", "c10", "c11", "c12", "c13", "c14"}.isdisjoint(ids))
+        self.assertEqual((decision.kind, decision.control_id), ("point", "c00"))
+        self.assertEqual(decision.instruction_en, "For ‘Pizza Size’, choose ‘Small’, ‘Medium’ or ‘Large’.")
+        self.assertEqual(planner.calls[0].outcome, "choice_group_fallback")
+
+    def test_mention_without_a_value_choice_cannot_authorize_an_option(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-size-chosen"], False)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        self.http.return_value = _response(_choice(control_id="c10", label="Large"))
+        decision = planner.decide("I want a large font", snap)
+        self.assertNotEqual(decision.kind, "point")
+        self.assertIsNone(decision.control_id)
+        self.http.assert_called_once()
+
     def test_broad_help_prefers_unfinished_required_field_on_the_current_page(self):
         name, save = self.snapshot.controls
         optional = Control("c02", "AXTextField", "Nickname (not required)", (10, 30, 100, 10), filled=False)
@@ -485,7 +550,7 @@ class PlannerTests(unittest.TestCase):
         cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         self.assertTrue({TYPED_QUESTION, QUESTION} <= {case["question"] for case in cases})
-        self.assertEqual(len(cases), 63)
+        self.assertEqual(len(cases), 69)
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual(
             {case["question_form"] for case in cases},
@@ -497,7 +562,7 @@ class PlannerTests(unittest.TestCase):
             {"aims-reader", "safari-reader", "hand-made", "public-safari-reader"},
         )
         public_cases = [case for case in cases if screens[case["screen"]]["origin"] == "public-safari-reader"]
-        self.assertEqual(len(public_cases), 13)
+        self.assertEqual(len(public_cases), 19)
         for case in public_cases:
             snapshot = eval_planner._snapshot(case["screen"], screens[case["screen"]], False)
             self.assertIsNotNone(snapshot.viewport)

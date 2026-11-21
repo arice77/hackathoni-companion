@@ -2,7 +2,7 @@
 
 `SarvamPlanner(task)` implements the panel's `decide(question, snap) -> Decision` interface. The panel selects it with `--planner sarvam` and runs planning on a background thread. Pass `None` when calling the planner without a task. Named practice tasks contribute a goal. Typed questions can be native-only. Voice questions can contain the native wording followed by ` / ` and its English translation.
 
-The request carries the question, optional task goal, visible heading or window title, and each control's `id`, `role`, `label`, `filled`, `enabled`, and reading rank. The rank orders controls top-to-bottom and then left-to-right. The prompt asks for the first unfinished required field, any visible prerequisite, and then the screen's primary action. It includes a worked example. Each request lists unfinished input IDs and allows only enabled, labeled controls that can be acted on as point targets. For recognized generic form-filling questions such as `ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം?`, filled inputs stay out of the point choices. Once the inputs are finished, an unambiguous enabled `Next`, `Continue`, or `Save` is the point choice. Specific edit requests can still target filled inputs.
+The request carries the question, optional task goal, visible heading or window title, and each control's `id`, `role`, `label`, `filled`, `enabled`, `group`, and reading rank. The rank orders controls top-to-bottom and then left-to-right. The prompt asks for the first unfinished required field, any visible prerequisite, and then the screen's primary action. It includes a worked example. Each request lists unfinished input IDs and allows only enabled, labeled controls as point targets. For recognized generic form-filling questions such as `ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം?`, filled inputs stay out of the point choices. Once the inputs are finished, an unambiguous enabled `Next`, `Continue`, or `Save` is the point choice. Specific edit requests can still target filled inputs.
 
 Control identifiers, process metadata, geometry, and editable values stay out of the request. The prompt treats screen text as untrusted data and asks the model to decline decisions about payments, amounts, eligibility, and declarations.
 
@@ -14,9 +14,11 @@ The provider returns a strict schema with `kind`, `control_id`, `instruction_ml`
 
 **Broad web help.** Questions about using the site, which screen the companion can help with, or filling the form ask for a useful first step on the current page. For recognized English, Malayalam, and Manglish phrasing, the planner checks the visible browser controls locally. It prefers a marked required field, then the first unfinished entry field in reading order, then an unambiguous primary action such as Next or Save. The reply introduces the page and quotes the target in both languages. For example, the httpbin capture gives “This is an order form. Start with ‘Customer name:’.” The prompt follows the same policy when the model handles the question, and asks for clarification when competing goals make the first step unclear.
 
+**Choice sets.** The user chooses the value. An unfinished radio set uses the group rectangle as its pointer target. The reply lists the visible, enabled options in both languages and asks the user to choose. A clear preference such as “I want a large pizza” can point at the requested option. The planner advances when the set or one of its radios reports a selection. It skips optional checkbox sets and mentions them when progressing past them or when the user asks whether they are required. The provider's allowed targets omit individual choices. If it still names a member of an eligible set, the planner points at the set and supplies neutral wording locally.
+
 **Practice completion.** The AIMS and Safari practice tasks declare their own completion prefixes, “Training draft complete” and “Training complete”. When the fixture's static `status` text starts with its prefix, followed by punctuation or the end of the text, the planner returns a short bilingual congratulation with a null control ID. This consumes zero chat calls and the panel hides the pointer. Review and a checked declaration alone still allow the next step. Explicit control requests retain their grounding checks, and public pages use the model's visible-status rule.
 
-For each active question, the planner caches decisions by window and the set of `(identifier or label, role, filled)` values. It also tracks visible label text, enabled states, and repeated controls. Safari uses status and enabled-state changes to mark progress after attachment and saving, so those changes need a fresh decision. On a cache hit the planner rebinds the target by identifier or by an unambiguous label and role and uses the current snapshot ID. Failed replies remain cached for that screen and question. Call logs in `runs/sarvam-planner-*.jsonl` contain model, timing, request ID, and outcome.
+For each active question, the planner caches decisions by window and the set of `(identifier or label, role, filled)` values. It also tracks visible label text, enabled state, group membership, and repeated controls. A change to either a radio or the set's `filled` flag invalidates the cached decision. Safari status and enabled-state changes also trigger replanning after attachment and saving. On a cache hit the planner rebinds the target by identifier or by an unambiguous label, role, and group and uses the current snapshot ID. Failed replies remain cached for that screen and question. Call logs in `runs/sarvam-planner-*.jsonl` contain model, timing, request ID, and outcome.
 
 ## Model choice
 
@@ -27,7 +29,7 @@ The default is **`sarvam-105b-conversations`** on `POST https://api.sarvam.ai/v1
 
 `tests/fixtures/planner/screens.json` contains six AIMS and nine Safari practice snapshots captured using the Accessibility reader on 21 November 2026, two public Safari snapshots, and six hand-made snapshots. The test driver used only the practice fixtures, with synthetic inputs and the worktree loopback URL for Safari. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot.
 
-The 63 cases cover progress through both practice fixtures, completion and still-actionable Review states, missing and present export controls, explicit labels, ambiguity, and public pages. Each public snapshot was captured in a new Safari window, using the reader's URL-prefix constraint. The capture only read the page and its Accessibility controls. Safari replays have synthetic viewports and public replays have host-only titles. All 13 public cases expect targets with no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
+The 69 cases cover progress through both practice fixtures, completion and still-actionable Review states, missing and present export controls, explicit labels, ambiguity, and public pages. The original public snapshots came from read-only Accessibility captures in new Safari windows. The httpbin choice cases annotate the capture with the choice-set contract and vary the `filled` flags to replay progress. Safari replays have synthetic viewports and public replays have host-only titles. All 19 public cases expect targets with no AX or DOM identifier. [httpbin order form](https://httpbin.org/forms/post) · [Wikipedia search](https://www.wikipedia.org/)
 
 ```sh
 .venv/bin/python scripts/eval_planner.py
@@ -35,7 +37,18 @@ The 63 cases cover progress through both practice fixtures, completion and still
 .venv/bin/python scripts/qa/run.py
 ```
 
-The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 56/63 exact matches, zero unknown IDs, and zero malformed replies. Each orientation case also checks the expected page description and quoted target in both languages. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 61/69 exact matches, zero unknown IDs, and zero malformed replies. Orientation and choice-set cases also check the expected wording and quoted targets in both languages. The script marks each decision as local or provider-backed and checks the validator on the cold result and a fresh replay with all IDs shifted. p50 and p95 use provider HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+
+### Choice-set eval
+
+The six new cases cover an undecided size in English and Malayalam, continuing after a selection, an explicit Large preference, an explicit Extra Cheese preference, and proceeding without optional toppings. The progression case points at “Delivery instructions:” after Medium is chosen. The ready-to-submit replay notes that toppings are optional and asks the user to review the order before using “Submit order”.
+
+| Run | Exact | Choice guidance | Unknown IDs | Malformed | HTTP p50 | HTTP p95 | Chat calls |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 69/69 | 6/6 | 0 | 0 | 528 ms | 1,571 ms | 28 |
+| 2 | 69/69 | 6/6 | 0 | 0 | 1,091 ms | 6,807 ms | 28 |
+
+Both live evals ran under the QA lock and passed all 69 warm replays. The six choice cases used zero calls, and all 109 unit tests passed. Grouped choice behavior was tested using the captured httpbin layout and synthetic selection flags. The separate reader change supplies the group metadata in Safari. See `runs/sarvam-planner-eval-20261121T173109.190116Z.json`, `runs/sarvam-planner-eval-20261121T173209.794809Z.json`, and `runs/qa/20261121-230042/report.md`.
 
 ### Broad web help eval
 
