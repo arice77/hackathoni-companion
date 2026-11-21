@@ -99,6 +99,41 @@ class GmailPrivacyTests(unittest.TestCase):
         self.assertTrue(with_remove_button[0].filled)
         self.assertNotIn("meenakshi@example.test", repr(with_remove_button))
 
+    def test_send_notice_uses_only_exact_allowlisted_live_region_text(self):
+        nodes = {
+            "page": {"AXRole": "AXWebArea", "AXChildren": ["compose", "notice", "prose"]},
+            "compose": {"AXRole": "AXButton", "AXTitle": "Compose"},
+            "notice": {"AXRole": "AXGroup", "AXSubrole": "AXApplicationAlert",
+                       "AXChildren": ["status", "undo", "private", "hidden"]},
+            "status": {"AXRole": "AXStaticText", "AXValue": "Message sent", "frame": (25, 570, 110, 25)},
+            "undo": {"AXRole": "AXButton", "AXTitle": "Undo"},
+            "private": {"AXRole": "AXStaticText", "AXValue": "Message sent to person@example.test"},
+            "hidden": {"AXRole": "AXStaticText", "AXValue": "Sending…", "frame": (20, 700, 110, 25)},
+            "prose": {"AXRole": "AXStaticText", "AXValue": "Message sent"},
+        }
+        controls = self.collect(nodes, value_fields={"notice", "status", "private"})
+        self.assertEqual([(c.role, c.label, c.enabled) for c in controls], [
+            ("AXButton", "Compose", True), ("AXStaticText", "Message sent", False), ("AXButton", "Undo", True),
+        ])
+        self.assertEqual(controls[1].frame, (25, 570, 110, 25))
+        self.assertNotIn("person@example.test", repr(controls))
+
+    def test_localised_notice_is_canonical_and_message_body_cannot_supply_it(self):
+        nodes = {
+            "page": {"AXRole": "AXWebArea", "AXChildren": ["main", "notice"]},
+            "main": {"AXRole": "AXGroup", "AXSubrole": "AXLandmarkMain", "AXChildren": ["body-alert"]},
+            "body-alert": {"AXRole": "AXGroup", "AXSubrole": "AXApplicationAlert", "AXTitle": "Message sent"},
+            "notice": {"AXRole": "AXGroup", "AXARIALive": "polite", "AXChildren": ["status", "undo"]},
+            "status": {"AXRole": "AXStaticText", "AXValue": "സന്ദേശം അയയ്‌ക്കുന്നു…"},
+            "undo": {"AXRole": "AXLink", "AXTitle": "പഴയപടിയാക്കുക"},
+        }
+        url = INBOX + "/FMfcgzX0000000000"
+        controls = self.collect(nodes, url, value_fields={"notice", "status"})
+        self.assertEqual([c.label for c in controls], ["Sending…", "Undo", "Open email"])
+        nodes["status"]["AXValue"] = "സന്ദേശം അയച്ചു"
+        controls = self.collect(nodes, url, value_fields={"notice", "status"})
+        self.assertEqual([c.label for c in controls], ["Message sent", "Undo", "Open email"])
+
     def test_snapshot_uses_private_projection_for_gmail_host(self):
         with (patch.object(reader, "is_trusted", return_value=True),
               patch.object(reader, "_browser_pid", return_value=7),

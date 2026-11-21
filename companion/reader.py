@@ -79,6 +79,14 @@ GMAIL_ALIASES.update({"recipients": "To", "to recipients": "To", "add recipients
                       "more actions": "More", "send (⌘enter)": "Send"})
 GMAIL_FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
 GMAIL_BUTTON_ROLES = {"AXButton", "AXMenuButton", "AXPopUpButton"}
+GMAIL_NOTICE_ROLES = {"AXAlert", "AXStatus"}
+GMAIL_NOTICE_SUBROLES = {"AXApplicationAlert", "AXApplicationStatus"}
+GMAIL_NOTICE_ACTION_ROLES = GMAIL_BUTTON_ROLES | {"AXLink"}
+GMAIL_NOTICE_LABELS = {
+    "message sent": "Message sent", "സന്ദേശം അയച്ചു": "Message sent", "ഇമെയിൽ അയച്ചു": "Message sent",
+    "sending": "Sending…", "അയയ്ക്കുന്നു": "Sending…", "സന്ദേശം അയയ്ക്കുന്നു": "Sending…",
+    "undo": "Undo", "പഴയപടിയാക്കുക": "Undo", "പഴയപടിയിലാക്കുക": "Undo", "പിൻവലിക്കുക": "Undo",
+}
 GMAIL_ROW_ROLES = {"AXRow", "AXLayoutRow"}
 GMAIL_RECIPIENT_CHIPS = {"AXToken", "AXChip"}
 GMAIL_RECIPIENT_CONTAINERS = {"AXComboBox", "AXGroup", "AXList"}
@@ -399,10 +407,15 @@ class _Collection:
     below_fold_count: int
 
 
-def _gmail_name(value) -> str | None:
+def _gmail_text_key(value) -> str:
     if not isinstance(value, str) or len(value) > 80:
-        return None
-    token = " ".join("".join(char for char in value if unicodedata.category(char) != "Cf").split()).casefold()
+        return ""
+    text = unicodedata.normalize("NFC", value)
+    return " ".join("".join(char for char in text if unicodedata.category(char) != "Cf").split()).casefold()
+
+
+def _gmail_name(value) -> str | None:
+    token = _gmail_text_key(value)
     token = re.sub(r"^(inbox|drafts|spam)\s+\(?[\d,]+(?: unread)?\)?$", r"\1", token)
     token = re.sub(r"^send\s*\(\s*(?:⌘\s*enter|ctrl\s*\+\s*enter)\s*\)$", "send", token)
     return GMAIL_ALIASES.get(token)
@@ -426,6 +439,17 @@ def _gmail_label(el, role, get) -> str | None:
                 label = _gmail_name(get(relation, name))
                 if label in allowed:
                     return label
+    return None
+
+
+def _gmail_notice_label(el, role, get, *, is_region: bool) -> str | None:
+    attributes = ("AXTitle", "AXDescription", "AXLabel")
+    if role == "AXStaticText" or is_region:
+        attributes += ("AXValue",)
+    for name in attributes:
+        token = _gmail_text_key(get(el, name)).rstrip(".…").rstrip()
+        if token in GMAIL_NOTICE_LABELS:
+            return GMAIL_NOTICE_LABELS[token]
     return None
 
 
@@ -466,6 +490,9 @@ def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
     """Project fixed UI names, structural counts and field occupancy without retaining values."""
     controls: list[Control] = []
     clips: dict[int | None, Rect | None] = {}
+    notices: dict[str, tuple[str, Rect, bool]] = {}
+    notice_nodes: set[int] = set()
+    mail_nodes: set[int] = set()
     message_table: tuple[int, Rect] | None = None
     main_frame = viewport
     route = urlsplit(url).fragment.partition("?")[0]
@@ -475,16 +502,32 @@ def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
     for index, (el, role, parent) in enumerate(_walk(page, get, MAX_WEB_ELEMENTS, leaves)):
         clip = _scroll_clip(el, role, clips.get(parent, viewport), get)
         clips[index] = clip
-        if role == "AXGroup" and get(el, "AXSubrole") == "AXLandmarkMain":
+        subrole = get(el, "AXSubrole") if role == "AXGroup" else None
+        if subrole == "AXLandmarkMain":
             frame = _frame(el, get)
             main_frame = (_intersection(frame, viewport) if frame else None) or viewport
-        if role not in chrome_roles | {"AXTable", "AXLayoutTable"}:
+        in_mail = subrole == "AXLandmarkMain" or parent in mail_nodes
+        if in_mail:
+            mail_nodes.add(index)
+        is_region = not in_mail and (role in GMAIL_NOTICE_ROLES or subrole in GMAIL_NOTICE_SUBROLES
+                                     or (role == "AXGroup" and parent not in notice_nodes
+                                         and get(el, "AXARIALive") in {"polite", "assertive"}))
+        in_notice = not in_mail and (is_region or parent in notice_nodes)
+        if in_notice:
+            notice_nodes.add(index)
+        notice_candidate = in_notice and (is_region or role in GMAIL_NOTICE_ACTION_ROLES | {"AXStaticText"})
+        if not notice_candidate and role not in chrome_roles | {"AXTable", "AXLayoutTable"}:
             continue
         if role in GMAIL_FIELD_ROLES and get(el, "AXSubrole") == SECURE_ROLE:
             continue
         frame = _frame(el, get)
         frame = _intersection(frame, clip) if frame and clip is not None else None
         if frame is None:
+            continue
+        if notice_candidate and (notice := _gmail_notice_label(el, role, get, is_region=is_region)):
+            action = notice == "Undo" and role in GMAIL_NOTICE_ACTION_ROLES
+            if notice not in notices or action:
+                notices[notice] = (role if action else "AXStaticText", frame, action and _enabled(el, get))
             continue
         if role in {"AXTable", "AXLayoutTable"}:
             if not thread:
@@ -500,6 +543,9 @@ def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
             filled = _gmail_field_filled(el, get, label, frame) if role in GMAIL_FIELD_ROLES else None
             controls.append(Control(f"c{len(controls):02d}", role, label, frame, enabled=_enabled(el, get),
                                     filled=filled))
+    controls = controls[:MAX_WEB_CONTROLS - len(notices) - 1]
+    for label, (role, frame, enabled) in notices.items():
+        controls.append(Control(f"c{len(controls):02d}", role, label, frame, enabled=enabled))
     if thread:
         controls.append(Control(f"c{len(controls):02d}", "AXStaticText", "Open email", main_frame, enabled=False))
     elif message_table is not None:
