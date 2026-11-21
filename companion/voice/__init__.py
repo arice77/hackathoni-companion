@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Lock
@@ -43,11 +44,13 @@ def _validate_preference(preference: LanguagePreference) -> None:
         raise ValueError("Voice preference must be ml-IN or en-IN")
 
 
-def ask(wav_path: str | Path, preference: LanguagePreference) -> VoiceTranscript:
+def ask(
+    wav_path: str | Path, preference: LanguagePreference, *, keyterms: Sequence[str] = ()
+) -> VoiceTranscript:
     """Return the preferred-language transcript and its English companion when needed."""
     _validate_preference(preference)
-    native = sarvam.transcribe(wav_path, language_code=preference)
-    english = sarvam.translate_speech_to_english(wav_path) if preference == "ml-IN" else None
+    native = sarvam.transcribe(wav_path, language_code=preference, keyterms=keyterms)
+    english = sarvam.translate_speech_to_english(wav_path, keyterms=keyterms) if preference == "ml-IN" else None
     return VoiceTranscript(**asdict(native), english_translation=english)
 
 

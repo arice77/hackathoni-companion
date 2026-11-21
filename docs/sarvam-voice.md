@@ -11,13 +11,14 @@ LanguagePreference = Literal["ml-IN", "en-IN"]
 
 record_push_to_talk() -> None
 stop_recording() -> Path
-ask(wav_path: str | Path, preference: LanguagePreference) -> VoiceTranscript
+ask(wav_path: str | Path, preference: LanguagePreference, *, keyterms: Sequence[str] = ()) -> VoiceTranscript
 speak(text: str, preference: LanguagePreference) -> sarvam.SynthesisMeta | None
 stop_speaking() -> None
 ```
 
 - Map the panel's Malayalam and English options to `ml-IN` and `en-IN`. Keep the preference used for a voice turn through transcription, reply planning, overlay text and playback.
 - Start capture on press on a worker, then call `stop_recording()` on release after startup has completed. On a first-use permission prompt, grant access and make a fresh press-to-talk recording. Only one recorder is active per Python process. The helper caps capture at 29 seconds, and release finalizes a 16 kHz mono 16-bit PCM WAV under `runs/`.
+- Pass relevant visible English control labels as `keyterms`, for example `ask(wav_path, "ml-IN", keyterms=("Save Draft", "Next"))`. The adapter forwards them to both speech modes used for a Malayalam turn and to native transcription for an English turn.
 - `VoiceTranscript` extends the shared `Transcript`. Use `result.text` for the native transcript and `result.planner_text` for the English question. For Malayalam, `result.english_translation` is a second `Transcript` with its own request ID and latency. For English, `planner_text` uses the native transcript. Supply the planner with the observed English control labels and the preference for the reply.
 - Pass the same preference and localized instruction to `speak` and show that instruction on the overlay. `ask` and `speak` block and belong on workers. `speak` returns TTS metadata when playback finishes, or `None` if interrupted. `stop_speaking()` terminates the current `afplay` process and prevents any in-flight synthesis from starting late playback.
 
@@ -27,7 +28,7 @@ The Python process starts a local Swift executable whose bundled name is **Hacka
 
 On first capture the adapter compiles the helper into the gitignored `.context/voice-tools/` directory with the same `swiftc` toolchain used by the practice fixture. The helper embeds `NSMicrophoneUsageDescription` and records with `AVAudioRecorder`. Playback uses the system `/usr/bin/afplay`. No new Python dependencies are required. The PyObjC AVFoundation wrapper would also require CoreMedia and CoreAudio. [AVAudioRecorder](https://developer.apple.com/documentation/avfaudio/avaudiorecorder) · [Microphone usage description](https://developer.apple.com/documentation/bundleresources/information-property-list/nsmicrophoneusagedescription)
 
-The adapter loads `SARVAM_API_KEY` from the process environment or the gitignored repo-root `.env`, in that order. It authenticates with the `api-subscription-key` header on every request. Sarvam also documents Bearer authentication for OpenAI-compatible clients. [Sarvam authentication](https://docs.sarvam.ai/api-reference/authentication)
+The adapter uses standard-library HTTP and loads `SARVAM_API_KEY` from the process environment or the gitignored repo-root `.env`, in that order. It sends the `api-subscription-key` header. Treat HTTP `403` with `invalid_api_key_error` as an authentication failure and `402` with `insufficient_quota_error` as exhausted credits. [Sarvam authentication](https://docs.sarvam.ai/api-reference/authentication) · [Error codes](https://docs.sarvam.ai/api/getting-started/errors-troubleshooting)
 
 ## Speech-to-text and speech-to-English
 
@@ -35,10 +36,12 @@ Both calls use `POST https://api.sarvam.ai/speech-to-text` with `multipart/form-
 
 | Call | Multipart fields alongside `file` |
 |---|---|
-| Native transcript | `model=saarika:v2.5`, `language_code=ml-IN` or `en-IN` by preference |
+| Native transcript | `model=saaras:v4`, `language_code=ml-IN` or `en-IN` by preference, `mode=transcribe` |
 | Malayalam audio to English | `model=saaras:v4`, `language_code=ml-IN`, `mode=translate` |
 
-**Saarika v2.5 is deprecated.** The hosted endpoint accepted it with both language codes on 21 November 2026. Omit `mode` for Saarika. The current REST schema shows `saaras:v4` with `mode=transcribe` as the supported migration path. Saaras also supports `verbatim`, `translit`, and `codemix`, optional `with_timestamps`, and v4 `keyterms`. Omit the language code or pass `unknown` for automatic detection. [Saarika model guide](https://docs.sarvam.ai/api/getting-started/models/saarika) · [REST request reference](https://docs.sarvam.ai/api-reference/speech-to-text/transcribe)
+The adapter pins Saaras v4 for both calls. The API also supports `verbatim`, `translit`, `codemix`, optional `with_timestamps`, and automatic language detection with `language_code=unknown` or an omitted language code. Sarvam lists Saaras v3 as legacy and Saarika as deprecated. [REST request reference](https://docs.sarvam.ai/api-reference/speech-to-text/transcribe) · [Saarika model guide](https://docs.sarvam.ai/api/getting-started/models/saarika)
+
+Saaras v4 accepts `keyterms` as one JSON-encoded array in a multipart field. Each label is one array element, including labels with spaces. The adapter deduplicates labels and accepts up to 50 distinct terms with up to 64 characters each. These hints bias recognition. [Keyterm prompting](https://docs.sarvam.ai/api/api-guides-tutorials/speech-to-text/how-to/keyterms)
 
 REST accepts clips up to **30 seconds**. Supported containers and codecs include WAV, MP3, AAC, AIFF, Ogg, Opus, FLAC, MP4/M4A, AMR, WMA and WebM. Raw PCM requires `input_audio_codec` (`pcm_s16le`, `pcm_l16`, or `pcm_raw`) and 16 kHz input. The adapter accepts WAV files. Prefer mono WAV at 16 kHz for the demo. [Audio limits and recommendations](https://docs.sarvam.ai/api/api-guides-tutorials/speech-to-text/rest-api)
 
@@ -58,20 +61,20 @@ Supported output codecs are `wav`, `mp3`, `aac`, `flac`, `opus`, `linear16`, `mu
 
 ## Chat completions for the planner
 
-Use `POST https://api.sarvam.ai/v2/chat/completions` with `api-subscription-key` and a JSON body containing `model` and `messages` (role and content). `sarvam-105b` is a text-input model with a **128K-token context window** and support for Malayalam (`ml-IN`). Specify the desired language in the prompt. The chat request has no `language_code` field or audio input for this model. The V2 reference lists additional model IDs and `GET https://api.sarvam.ai/v2/models` provides model discovery. The legacy V1 route `POST https://api.sarvam.ai/v1/chat/completions` documents `sarvam-105b` and `sarvam-105b-conversations`. [Chat V2 reference](https://docs.sarvam.ai/api-reference/chat/chat-completions-v2) · [Chat V1 reference](https://docs.sarvam.ai/api-reference/chat/chat-completions-v1) · [Sarvam model and language coverage](https://docs.sarvam.ai/api/getting-started/models)
+Use the OpenAI-compatible `POST https://api.sarvam.ai/v2/chat/completions` with `api-subscription-key` and a JSON body containing `model` and `messages` (role and content). `sarvam-105b` is a Malayalam-capable text model with a **128K-token context window**. `sarvam-105b-conversations` is tuned for real-time dialogue, with a **32K-token context window**. Specify the desired language in the prompt. `GET https://api.sarvam.ai/v2/models` provides model discovery. The legacy V1 route `POST https://api.sarvam.ai/v1/chat/completions` also documents these two model IDs. [Chat V2 reference](https://docs.sarvam.ai/api-reference/chat/chat-completions-v2) · [Chat V1 reference](https://docs.sarvam.ai/api-reference/chat/chat-completions-v1) · [Sarvam model and language coverage](https://docs.sarvam.ai/api/getting-started/models)
 
 For a short call, send `stream: false`, set `max_tokens` to bound generation (default 2,048, including any reasoning tokens), and use `reasoning_effort: "none"` on V2 to disable reasoning. With `response_format.type` set to `json_schema`, pass the planner's schema in `response_format.json_schema`. Read `choices[0].message.content`, check `choices[0].finish_reason` for truncation, and retain the top-level `id` for tracing and `usage` for token counts. Validate the parsed control ID against the current Accessibility snapshot before showing a pointer. [V2 request and response reference](https://docs.sarvam.ai/api-reference/chat/chat-completions-v2) · [Sarvam reasoning settings](https://docs.sarvam.ai/api/token-factory/models)
 
 ## Smoke test
 
-The first attempt returned exit code 2 with `BLOCKED: no SARVAM_API_KEY`. After a key became available, the **live** synthetic smoke test passed on 21 November 2026. Both native transcripts matched their reference text at 100% character similarity for this run. Saaras translated the Malayalam audio to “How to fill out this form?” The report is `runs/sarvam-smoke-20261121T143628.346348Z.json` in the adapter worktree.
+The first attempt returned exit code 2 with `BLOCKED: no SARVAM_API_KEY`. The latest **live** synthetic run passed on 21 November 2026 with Saaras v4 across both preferences. All three speech requests accepted the sample keyterms `Save Draft` and `Next`. Both native transcripts matched their reference text at 100% character similarity. Saaras translated the Malayalam audio to “How to fill out this form?” The run used five provider calls. The report is `runs/sarvam-smoke-20261121T144028.202966Z.json` in the adapter worktree.
 
 1. Sign in to the Sarvam dashboard, open **API Keys**, and create a key. [Dashboard](https://indus.sarvam.ai/) · [Key setup](https://docs.sarvam.ai/api-reference/authentication)
 2. In the shell running the smoke test, set `export SARVAM_API_KEY='...'`. Alternatively, add `SARVAM_API_KEY=...` to the gitignored repo-root `.env`. Replace the ellipsis locally.
 3. Run the synthetic check. For real speech, capture a WAV with `--record` in an interactive terminal or supply the recording with `--wav`.
 
    ```sh
-   .venv/bin/python scripts/sarvam_smoke.py
+   .venv/bin/python scripts/sarvam_smoke.py --keyterm 'Save Draft' --keyterm Next
    .venv/bin/python scripts/sarvam_smoke.py --record --preference ml-IN
    .venv/bin/python scripts/sarvam_smoke.py --record --preference en-IN
    .venv/bin/python scripts/sarvam_smoke.py --wav /path/to/form-question.wav --preference en-IN

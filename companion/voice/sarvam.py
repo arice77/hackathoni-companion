@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import time
+from collections.abc import Sequence
 from http.client import HTTPException
 from pathlib import Path
 from typing import TypedDict
@@ -21,8 +22,7 @@ _TIMEOUT_SECONDS = 30
 _KEY_NAME = "SARVAM_API_KEY"
 _MALAYALAM = "ml-IN"
 _ENGLISH = "en-IN"
-_TRANSCRIPTION_MODEL = "saarika:v2.5"
-_SPEECH_TRANSLATION_MODEL = "saaras:v4"
+_SPEECH_MODEL = "saaras:v4"
 _TRANSLATE_MODEL = "sarvam-translate:v1"
 _TTS_MODEL = "bulbul:v3"
 _DEFAULT_SPEAKER = "shubh"
@@ -148,8 +148,21 @@ def _text_field(data: dict, name: str) -> str:
     return value
 
 
-def _speech(wav_path: str | Path, language_code: str, model: str, mode: str | None = None) -> Transcript:
+def _speech(
+    wav_path: str | Path, language_code: str, mode: str, keyterms: Sequence[str]
+) -> Transcript:
     key = _load_api_key()
+    fields = {"model": _SPEECH_MODEL, "mode": mode, "language_code": language_code}
+    if isinstance(keyterms, str) or any(
+        not isinstance(term, str) or not term.strip() or len(term) > 64 for term in keyterms
+    ):
+        raise ValueError("keyterms must be a sequence of nonempty strings up to 64 characters each")
+    terms = list(dict.fromkeys(keyterms))
+    if len(terms) > 50:
+        raise ValueError("keyterms supports at most 50 distinct terms")
+    if terms:
+        fields["keyterms"] = json.dumps(terms, ensure_ascii=False)
+
     with Path(wav_path).open("rb") as audio:
         header = audio.read(12)
         if not (header.startswith(b"RIFF") and header[8:12] == b"WAVE"):
@@ -157,9 +170,6 @@ def _speech(wav_path: str | Path, language_code: str, model: str, mode: str | No
         wav_bytes = header + audio.read()
 
     boundary = uuid4().hex
-    fields = {"model": model, "language_code": language_code}
-    if mode is not None:
-        fields["mode"] = mode
     parts = [
         f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
         for name, value in fields.items()
@@ -178,20 +188,24 @@ def _speech(wav_path: str | Path, language_code: str, model: str, mode: str | No
         # Sarvam's language_code describes the input even in translate mode.
         language_code=_ENGLISH if mode == "translate" else data.get("language_code") or language_code,
         provider="sarvam",
-        model=model,
+        model=_SPEECH_MODEL,
         request_id=data.get("request_id") or "",
         latency_ms=latency,
     )
 
 
-def transcribe(wav_path: str | Path, language_code: str = _MALAYALAM) -> Transcript:
+def transcribe(
+    wav_path: str | Path, language_code: str = _MALAYALAM, *, keyterms: Sequence[str] = ()
+) -> Transcript:
     """Transcribe a short WAV in the spoken language."""
-    return _speech(wav_path, language_code, _TRANSCRIPTION_MODEL)
+    return _speech(wav_path, language_code, "transcribe", keyterms)
 
 
-def translate_speech_to_english(wav_path: str | Path) -> Transcript:
+def translate_speech_to_english(
+    wav_path: str | Path, *, keyterms: Sequence[str] = ()
+) -> Transcript:
     """Translate a short Malayalam WAV directly to English."""
-    return _speech(wav_path, _MALAYALAM, _SPEECH_TRANSLATION_MODEL, mode="translate")
+    return _speech(wav_path, _MALAYALAM, "translate", keyterms)
 
 
 def translate_text(text: str, source: str, target: str) -> str:

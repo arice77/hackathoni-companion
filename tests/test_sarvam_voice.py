@@ -22,9 +22,9 @@ class VoiceTests(unittest.TestCase):
             patch.object(sarvam, "transcribe", return_value=native) as transcribe,
             patch.object(sarvam, "translate_speech_to_english", return_value=english) as translate,
         ):
-            result = voice.ask("question.wav", "ml-IN")
-        transcribe.assert_called_once_with("question.wav", language_code="ml-IN")
-        translate.assert_called_once_with("question.wav")
+            result = voice.ask("question.wav", "ml-IN", keyterms=("Save Draft",))
+        transcribe.assert_called_once_with("question.wav", language_code="ml-IN", keyterms=("Save Draft",))
+        translate.assert_called_once_with("question.wav", keyterms=("Save Draft",))
         self.assertIsInstance(result, Transcript)
         self.assertEqual(result.request_id, native.request_id)
         self.assertEqual(result.text, native.text)
@@ -38,7 +38,7 @@ class VoiceTests(unittest.TestCase):
             patch.object(sarvam, "translate_speech_to_english") as translate,
         ):
             result = voice.ask("question.wav", "en-IN")
-        transcribe.assert_called_once_with("question.wav", language_code="en-IN")
+        transcribe.assert_called_once_with("question.wav", language_code="en-IN", keyterms=())
         translate.assert_not_called()
         self.assertIsNone(result.english_translation)
         self.assertEqual(result.planner_text, native.text)

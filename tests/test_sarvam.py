@@ -75,13 +75,13 @@ class SarvamTests(unittest.TestCase):
         )
         result = sarvam.transcribe(self.wav)
         self.assertEqual(self.speech_fields(), {
-            "model": "saarika:v2.5", "language_code": "ml-IN",
+            "model": "saaras:v4", "language_code": "ml-IN", "mode": "transcribe",
         })
         self.assertIsInstance(result, Transcript)
         self.assertEqual(result.text, "നമസ്കാരം")
         self.assertEqual(result.language_code, "ml-IN")
         self.assertEqual(result.provider, "sarvam")
-        self.assertEqual(result.model, "saarika:v2.5")
+        self.assertEqual(result.model, "saaras:v4")
         self.assertEqual(result.request_id, "native-id")
         self.assertGreaterEqual(result.latency_ms, 0)
 
@@ -95,13 +95,20 @@ class SarvamTests(unittest.TestCase):
         self.http.return_value = self.response(
             transcript="Hello", language_code="ml-IN", request_id="english-id"
         )
-        result = sarvam.translate_speech_to_english(self.wav)
+        result = sarvam.translate_speech_to_english(self.wav, keyterms=("Save Draft", "Next", "Save Draft"))
         self.assertEqual(self.speech_fields(), {
             "model": "saaras:v4", "language_code": "ml-IN", "mode": "translate",
+            "keyterms": '["Save Draft", "Next"]',
         })
         self.assertEqual(result.text, "Hello")
         self.assertEqual(result.language_code, "en-IN")
         self.assertEqual(result.request_id, "english-id")
+
+    def test_invalid_keyterms_fail_before_http(self):
+        for terms in ("Save Draft", ("",), ("a" * 65,), tuple(str(i) for i in range(51))):
+            with self.subTest(terms=terms), self.assertRaisesRegex(ValueError, "keyterms"):
+                sarvam.transcribe(self.wav, keyterms=terms)
+        self.http.assert_not_called()
 
     def test_translate_text_in_both_directions(self):
         for source, target, text, translated in (
@@ -163,18 +170,20 @@ class SarvamTests(unittest.TestCase):
         self.http.assert_not_called()
 
     def test_http_error_preserves_status_and_redacts_key(self):
-        self.http.side_effect = HTTPError(
-            "https://api.sarvam.ai/speech-to-text", 403, "Forbidden", {},
-            self.response(error={"message": f"Rejected {FAKE_KEY}", "request_id": "error-id"}),
-        )
-        with self.assertRaises(sarvam.SarvamHTTPError) as raised:
-            sarvam.transcribe(self.wav)
-        error = raised.exception
-        self.assertEqual(error.status, 403)
-        self.assertIn("HTTP 403", str(error))
-        self.assertIn("error-id", str(error))
-        self.assertEqual(json.loads(error.body)["error"]["message"], "Rejected [redacted]")
-        self.assertNotIn(FAKE_KEY, str(error))
+        for status in (402, 403):
+            with self.subTest(status=status):
+                self.http.side_effect = HTTPError(
+                    "https://api.sarvam.ai/speech-to-text", status, "Request rejected", {},
+                    self.response(error={"message": f"Rejected {FAKE_KEY}", "request_id": "error-id"}),
+                )
+                with self.assertRaises(sarvam.SarvamHTTPError) as raised:
+                    sarvam.transcribe(self.wav)
+                error = raised.exception
+                self.assertEqual(error.status, status)
+                self.assertIn(f"HTTP {status}", str(error))
+                self.assertIn("error-id", str(error))
+                self.assertEqual(json.loads(error.body)["error"]["message"], "Rejected [redacted]")
+                self.assertNotIn(FAKE_KEY, str(error))
 
     def test_direct_and_wrapped_timeouts(self):
         for error in (TimeoutError(), URLError(TimeoutError())):
@@ -214,7 +223,7 @@ class SarvamTests(unittest.TestCase):
             self.response(audios=[encoded], request_id="en-tts"),
             self.response(transcript=sarvam_smoke.QUESTIONS["en-IN"], request_id="en-stt"),
         ]
-        status, output, errors = self.run_smoke()
+        status, output, errors = self.run_smoke("--keyterm", "Save Draft", "--keyterm", "Next")
         self.assertEqual((status, errors), (0, ""))
         self.assertIn(sarvam_smoke.SYNTHETIC_NOTE, output)
         for request_id in ("ml-tts", "ml-stt", "ml-to-en", "en-tts", "en-stt"):
@@ -222,6 +231,7 @@ class SarvamTests(unittest.TestCase):
         [report_path] = (self.root / "runs").glob("sarvam-smoke-*.json")
         report = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(report["evidence"], "live")
+        self.assertEqual(report["keyterms"], ["Save Draft", "Next"])
         ml, en = report["checks"]
         self.assertEqual([ml["preference"], en["preference"]], ["ml-IN", "en-IN"])
         self.assertEqual(ml["transcription"]["english_translation"]["request_id"], "ml-to-en")
@@ -237,6 +247,9 @@ class SarvamTests(unittest.TestCase):
             self.assertIn(language_part, stt.data)
         self.assertNotIn(FAKE_KEY, report_path.read_text(encoding="utf-8"))
         self.assertEqual(self.http.call_count, 5)
+        for index in (1, 2, 4):
+            request = self.http.call_args_list[index].args[0]
+            self.assertIn(b'name="keyterms"\r\n\r\n["Save Draft", "Next"]\r\n', request.data)
 
     def test_smoke_supplied_wav_skips_tts(self):
         self.http.side_effect = [

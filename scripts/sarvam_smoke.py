@@ -31,7 +31,7 @@ def _normalized(text: str) -> str:
 
 def _check(
     preference: voice.LanguagePreference, output: Path, timestamp: str, wav_path: Path | None,
-    audio_source: str,
+    audio_source: str, keyterms: list[str],
 ) -> dict:
     question = QUESTIONS[preference]
     tts_meta = None
@@ -42,7 +42,7 @@ def _check(
         print(f"[live] {preference} TTS {tts_meta['latency_ms']:.1f} ms, request_id={tts_meta['request_id']}")
         print(f"[live] Synthetic WAV saved to {wav_path}")
 
-    transcript = voice.ask(wav_path, preference)
+    transcript = voice.ask(wav_path, preference, keyterms=keyterms)
     english = transcript.english_translation
     similarity = SequenceMatcher(
         None, _normalized(question), _normalized(transcript.text), autojunk=False
@@ -75,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs.add_argument("--wav", type=Path, help="WAV of the form question, up to 30 s")
     inputs.add_argument("--record", action="store_true", help="Record one form question from the microphone")
     parser.add_argument("--preference", choices=tuple(QUESTIONS), help="Language of a single check")
+    parser.add_argument("--keyterm", action="append", default=[], help="Screen label to bias recognition toward. Repeat for multiple labels.")
     args = parser.parse_args(argv)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     output = ROOT / "runs"
@@ -101,13 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         if audio_source == "synthetic_tts":
             print(SYNTHETIC_NOTE)
         output.mkdir(parents=True, exist_ok=True)
-        checks = [_check(pref, output, timestamp, wav_path, audio_source) for pref in preferences]
+        checks = [_check(pref, output, timestamp, wav_path, audio_source, args.keyterm) for pref in preferences]
         passed = all(check["status"] == "pass" for check in checks)
         report = output / f"sarvam-smoke-{timestamp}.json"
         report.write_text(json.dumps({
             "evidence": "live",
             "status": "pass" if passed else "fail",
             "synthetic_note": SYNTHETIC_NOTE if audio_source == "synthetic_tts" else None,
+            "keyterms": args.keyterm,
             "checks": checks,
         }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except sarvam.SarvamMissingKeyError as exc:
@@ -119,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     except (EOFError, KeyboardInterrupt):
         print("Recording check cancelled.", file=sys.stderr)
         return 1
-    except (sarvam.SarvamError, voice.MicrophoneError, OSError) as exc:
+    except (sarvam.SarvamError, voice.MicrophoneError, OSError, ValueError) as exc:
         print(f"[live] FAIL: {exc}", file=sys.stderr)
         return 1
 
