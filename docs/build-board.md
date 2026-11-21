@@ -1,8 +1,8 @@
 # Build board
 
-> **Snapshot 22 Nov 01:47 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes, Q2 (speed) blocked on ad
-> handling. Running: planner builder (YouTube ads + retry_at), web builder (Gmail "sent" + YouTube ad
-> markers). QA holds the YouTube rerun until both land. Panel revamp merged. Orchestrator state:
+> **Snapshot 22 Nov 01:52 IST:** KSEB, pizza and Gmail pass live; YouTube Q1 passes. YouTube ad handling,
+> Settings retry, ad markers and Gmail "sent" wording merged (unit 207/0); QA rerunning YouTube Q2 live.
+> Panel revamp merged. Orchestrator state:
 > `.context/orchestrator-state.md`.
 
 
@@ -74,6 +74,15 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | YouTube Q1 (Malayalam "play Darshana") | PASS (2nd run picks "Darshana - Official Video Song") | done |
 | YouTube Q2 ("play it slower") | FAIL ×3: opens Settings; menu reduced to 2 rows (likely during an ad) | ad-state guidance + reopen Settings if reduced (planner builder) |
 | Gmail compose → send | **PASS** live (runs/qa/20261122-012836): Compose → To → Subject → Body → Attach skipped → Send; 1 test mail to Abin | say "sent" when Gmail shows "Message sent" (web builder) |
+
+### Fixes merged 22 Nov ~01:51 (orchestrator review; unit 207/0)
+| Commit | What | Review notes |
+|---|---|---|
+| 4eb0d64 (planner) | YouTube ads: point at Skip when enabled, else "The ad will finish in a few seconds"; no "playing" while ad markers show. Reduced Settings menu with no ad: wait 3 s, then one close-and-reopen pointer (`retry_at` cleared on every decide; fires once). Ad text sent to Sarvam only as fixed marker names | replay eval 37 cases / 122 decisions |
+| 02d6576 (web) | Gmail: "Message sent" notice (fixed labels only: Message sent / Sending… / Undo) → complete "Your email was sent"; only counts if it appears after a draft was seen | no mail text retained |
+| 49d4b42 (web) | Reader keeps YouTube static texts only when they match "Ad", "Sponsored", "Ad N of M" or an ad timer, as fixed labels, never pointable | compatible with planner markers |
+
+Next: QA reruns `youtube_follow_pointer_e2e` once, then orchestrator reruns it before Abin retests.
 
 ## Site packs (started 22 Nov ~00:15)
 
