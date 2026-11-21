@@ -8,3 +8,5 @@ node_modules/
 research-repos/
 *.app/
 .context/
+runs/
+apps/**/build/
