@@ -66,6 +66,8 @@ YOUTUBE_LINK_TEXT = re.compile(
 YOUTUBE_TITLE_IDS = {"video-title", "video-title-link", "channel-title", "playlist-title"}
 YOUTUBE_THUMBNAIL_IDS = {"thumbnail", "thumbnail-link"}
 YOUTUBE_ANCHOR_PREFIX = {"title": "a", "thumbnail": "b", "link": "c"}
+YOUTUBE_AD_POSITION = re.compile(r"ad ([1-9][0-9]?) of ([1-9][0-9]?)")
+YOUTUBE_AD_TIMER = re.compile(r"ad(?: [·•])? [0-9]{1,2}:[0-5][0-9]")
 GMAIL_HOST = "mail.google.com"
 GMAIL_FIELDS = {"Search mail", "To", "Cc", "Bcc", "Subject", "Message Body"}
 GMAIL_FOLDERS = {"Inbox", "Starred", "Snoozed", "Sent", "Drafts", "Important", "All Mail", "Spam", "Trash",
@@ -367,6 +369,17 @@ def _youtube_anchor_id(target: str, dom_id: str, in_heading: bool, label: str,
     return f"{target}:{YOUTUBE_ANCHOR_PREFIX[kind]}{digest}"
 
 
+def _youtube_ad_marker(label: str) -> str | None:
+    text = " ".join(label.casefold().split())
+    if text == "sponsored":
+        return "Sponsored"
+    if text == "ad" or YOUTUBE_AD_TIMER.fullmatch(text):
+        return "Ad"
+    if (position := YOUTUBE_AD_POSITION.fullmatch(text)) and int(position[1]) <= int(position[2]):
+        return f"Ad {int(position[1])} of {int(position[2])}"
+    return None
+
+
 def _icon_only(label: str) -> bool:
     glyphs = [char for char in label if not char.isspace() and char not in "\u200d\ufe0e\ufe0f"]
     return bool(glyphs) and all("\ue000" <= char <= "\uf8ff" for char in glyphs)
@@ -590,7 +603,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         if grouped_option:
             value = get(el, "AXValue")
             enclosing_set.observe(_filled(value, role))
-        if role not in roles and not is_set:
+        youtube_static = web and youtube and role == "AXStaticText"
+        if role not in roles and not is_set and not youtube_static:
             continue
         context = role == "AXHeading" or is_set
         if web and context and headings >= MAX_WEB_HEADINGS:
@@ -609,11 +623,15 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
                 below_fold_count += 1
             continue
         youtube_link = youtube and role == "AXLink"
-        ident = None if youtube_link else _identifier(el, get)
+        ident = None if youtube_link or youtube_static else _identifier(el, get)
         if not grouped_option:
             value = get(el, "AXValue") if role in value_roles else None
         if choice_set is not None:
             label = choice_set.label
+        elif youtube_static:
+            label = _youtube_ad_marker(_label(el, role, get))
+            if label is None:
+                continue
         elif role == "AXGroup":
             if ident not in WEB_TEXT_NOTES:
                 continue
@@ -643,7 +661,7 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         group_label = enclosing_set.label if grouped_option else ""
         control = Control(
             id=f"c{len(controls):02d}", role=role, label=label, frame=visible_frame,
-            enabled=not is_set and _enabled(el, get), identifier=ident, filled=filled,
+            enabled=not is_set and not youtube_static and _enabled(el, get), identifier=ident, filled=filled,
             group=group_label if group_label and not _icon_only(group_label) else None,
         )
         if dot:
