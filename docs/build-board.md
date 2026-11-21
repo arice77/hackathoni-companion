@@ -185,3 +185,14 @@ Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime:
 Abin asked for options for a 4th demo site built/promoted by the HackaThoni hosts. Not started; Abin decides.
 Candidates: Kochi Buzz (kochi.buzz, host Vaishakh Suresh), GasUndo (gasundo.live, hosts Vaishakh + Viswanatha),
 mashi.guru (Malayalam fonts, Viswanatha). None tested in Safari / our reader yet.
+
+## Live runs 22 Nov ~03:00 (Mac free; QA + GasUndo builder)
+| Check | Result | Run |
+|---|---|---|
+| YouTube player controls (mute, pause, resume, faster 1.25, full screen pointed + "Press Esc"; subtitles unavailable on this video) | PASS 13/0 (tidy-up read back) | runs/qa/20261122-025719 |
+| YouTube follow-pointer (driver regression) | PASS 11/0 | runs/qa/20261122-025812 |
+| Gmail compose → Send → "Your email was sent" | PASS 7/0 (2 test mails to the allowlisted address across 2 runs; first run's driver crashed after sending) | runs/qa/20261122-025950 |
+| GasUndo Ernakulam → Search → Bektash Kakkanad → status read, stale-report wording | PASS (live Safari) | port-louis runs/qa/20261122-030324 |
+| YouTube Abin's utterances | FLAKY: intent call unstable ("make it faster" → none 5/5), home feed "scroll down" then silent, a wrong pick ("Nagumo … Darshana") | …025345, …030011, …030234 → planner builder fixing (local phrases first, ask when unclear, home→Search, title-first ranking) |
+
+GasUndo pack merged (122ea48, 5ebe19e, 11a9b38); demo script now opens with GasUndo (71d6eb1). Pushed to GitHub main.
