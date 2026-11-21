@@ -62,6 +62,13 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | KSEB: `clarify` instead of pointing at "Submit to see the bill" | wider primary-action detection; no mid-walk clarify | planner builder (with KSEB pack) |
 | "Browser Accessibility did not respond in time" on real pages | larger budget, one retry, keep last good snapshot | web builder: merged (b0b1c9b): 750 ms deadline, retry, verified 1.5 s reuse; p95 YouTube 115 ms, Gmail 83 ms, KSEB 16 ms |
 
+### Live site runs 22 Nov ~01:05 (QA)
+| Site | Result | Next |
+|---|---|---|
+| YouTube Q1 (Malayalam "play Darshana") | PASS: search → search button → /watch link → playing | prefer the actual song over "Mix –" results |
+| YouTube Q2 ("play it slower") | FAIL: a single early clarify ended the session; paused Play label dropped | app fixed (clarify keeps watching); pack fixes briefed |
+| Gmail compose → send | FAIL: stuck on To ×112 (reader filled=None, pack ack path dead). 0 sends, draft discarded | reader computes filled bool only; pack ack fix briefed |
+
 ## Site packs (started 22 Nov ~00:15)
 
 | Piece | Owner | Status |
