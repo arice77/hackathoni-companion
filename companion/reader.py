@@ -68,6 +68,8 @@ YOUTUBE_THUMBNAIL_IDS = {"thumbnail", "thumbnail-link"}
 YOUTUBE_ANCHOR_PREFIX = {"title": "a", "thumbnail": "b", "link": "c"}
 YOUTUBE_AD_POSITION = re.compile(r"ad ([1-9][0-9]?) of ([1-9][0-9]?)")
 YOUTUBE_AD_TIMER = re.compile(r"ad(?: [·•])? [0-9]{1,2}:[0-5][0-9]")
+YOUTUBE_SPEED_STEPPER = re.compile(r"(decrease|increase) playback speed(?: 0\.05)?", re.IGNORECASE)
+YOUTUBE_SPEED_VALUE = re.compile(r"[0-4](?:\.[0-9]+)?")
 GMAIL_HOST = "mail.google.com"
 GMAIL_FIELDS = {"Search mail", "To", "Cc", "Bcc", "Subject", "Message Body"}
 GMAIL_FOLDERS = {"Inbox", "Starred", "Snoozed", "Sent", "Drafts", "Important", "All Mail", "Spam", "Trash",
@@ -380,6 +382,47 @@ def _youtube_ad_marker(label: str) -> str | None:
     return None
 
 
+def _youtube_speed_slider_label(value) -> str:
+    if isinstance(value, str) and YOUTUBE_SPEED_VALUE.fullmatch(value.strip()):
+        value = float(value)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.05 <= value <= 4.0:
+        return ""
+    speed = f"{value:.2f}".rstrip("0").rstrip(".")
+    return f"Playback speed slider {speed}"
+
+
+def _between_speed_steppers(frame: Rect, decrease: Rect, increase: Rect) -> bool:
+    left, top, width, height = frame
+    center_x, center_y = left + width / 2, top + height / 2
+    sides = []
+    for x, y, button_width, button_height in (decrease, increase):
+        button_x, button_y = x + button_width / 2, y + button_height / 2
+        if (abs(center_y - button_y) > max(height, button_height)
+                or not left - 2 * button_width <= button_x <= left + width + 2 * button_width):
+            return False
+        sides.append(button_x - center_x)
+    return sides[0] * sides[1] < 0
+
+
+def _youtube_speed_controls(controls: list[Control], sliders: dict[str, object], get) -> list[Control]:
+    steppers: dict[str, list[Rect]] = {"decrease": [], "increase": []}
+    for control in controls:
+        if control.role == "AXButton" and (step := YOUTUBE_SPEED_STEPPER.fullmatch(control.label)):
+            steppers[step[1].casefold()].append(control.frame)
+    result = []
+    for control in controls:
+        if control.id not in sliders or not any(
+            _between_speed_steppers(control.frame, decrease, increase)
+            for decrease in steppers["decrease"] for increase in steppers["increase"]
+        ):
+            result.append(control)
+            continue
+        label = _youtube_speed_slider_label(get(sliders[control.id], "AXValue"))
+        if label:
+            result.append(replace(control, label=label))
+    return result
+
+
 def _icon_only(label: str) -> bool:
     glyphs = [char for char in label if not char.isspace() and char not in "\u200d\ufe0e\ufe0f"]
     return bool(glyphs) and all("\ue000" <= char <= "\uf8ff" for char in glyphs)
@@ -583,6 +626,7 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
     value_roles = WEB_VALUE_ROLES if web else INPUT_ROLES
     youtube_headings: set[int] = set()
     youtube_anchors: Counter[tuple[str, str, str]] = Counter()
+    youtube_sliders: dict[str, object] = {}
     headings = 0
     below_fold_count = 0
     for index, (el, role, parent) in enumerate(_walk(start, get, limit, leaves)):
@@ -668,6 +712,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
             first_dot = control
             continue
         controls.append(control)
+        if youtube and role == "AXSlider" and not label:
+            youtube_sliders[control.id] = el
         if choice_set is not None:
             choice_rows[control.id] = choice_set
         headings += context
@@ -675,6 +721,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
             break
     if not controls and first_dot is not None:
         controls.append(first_dot)
+    if youtube_sliders:
+        controls = _youtube_speed_controls(controls, youtube_sliders, get)
     controls_with_groups = tuple(
         replace(control, filled=choice_rows[control.id].filled) if control.id in choice_rows else control
         for control in controls
