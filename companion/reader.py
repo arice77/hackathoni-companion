@@ -31,8 +31,11 @@ MAX_WEB_ELEMENTS = 1200
 MAX_WEB_CONTROLS = 96
 MAX_WEB_HEADINGS = 12
 MAX_WEB_LABEL_LENGTH = 160
-WEB_READ_BUDGET_S = 0.300
-WEB_AX_TIMEOUT_S = 0.040
+WEB_READ_BUDGET_S = 0.750
+WEB_FIRST_ATTEMPT_S = 0.400
+WEB_CACHE_CHECK_S = 0.100
+WEB_AX_TIMEOUT_S = 0.120
+WEB_CACHE_MAX_AGE_S = 1.500
 EMPTY_BOUNDS: Rect = (0.0, 0.0, 0.0, 0.0)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_BUNDLE_PREFIX = "in.hackathoni."
@@ -71,6 +74,10 @@ GMAIL_THREAD = re.compile(
 
 
 class ReaderError(RuntimeError):
+    pass
+
+
+class _WebReadTimeout(ReaderError):
     pass
 
 
@@ -166,14 +173,19 @@ def _walk(start, get, limit, leaf_roles):
             queue.extend((child, seen) for child in children[:remaining])
 
 
-def _web_getter(started):
+def _web_getter(started, *, deadline=None):
+    deadline = started + WEB_READ_BUDGET_S if deadline is None else deadline
+
     def get(el, name):
-        if time.monotonic() - started >= WEB_READ_BUDGET_S:
-            raise ReaderError("Browser Accessibility read exceeded its time budget.")
-        AX.AXUIElementSetMessagingTimeout(el, WEB_AX_TIMEOUT_S)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _WebReadTimeout("Browser Accessibility read exceeded its time budget.")
+        AX.AXUIElementSetMessagingTimeout(el, min(WEB_AX_TIMEOUT_S, remaining))
         err, value = AX.AXUIElementCopyAttributeValue(el, name, None)
         if err == AX.kAXErrorCannotComplete:
-            raise ReaderError("Browser Accessibility did not respond in time. Try again once the page is ready.")
+            raise _WebReadTimeout("Browser Accessibility did not respond in time. Try again once the page is ready.")
+        if time.monotonic() >= deadline:
+            raise _WebReadTimeout("Browser Accessibility read exceeded its time budget.")
         return value if err == 0 else None
     return get
 
@@ -506,28 +518,96 @@ def frontmost_bundle_id() -> str | None:
     return app.bundleIdentifier() if app else None
 
 
+@dataclass(frozen=True)
+class _WebView:
+    page: object
+    window_frame: Rect
+    viewport: Rect
+    url: str
+    scroll: tuple[float | None, ...]
+
+
+@dataclass(frozen=True)
+class _CachedWebSnapshot:
+    scope: tuple
+    view: _WebView
+    snapshot: Snapshot
+    cached_at: float
+
+
+_last_web_snapshot: _CachedWebSnapshot | None = None
+
+
+def _web_view(root, get, page_title, page_url_prefix) -> _WebView:
+    page, window_frame, viewport, url = _selected_web_page(root, get, page_title, page_url_prefix)
+    if not url:
+        raise ReaderError("The selected browser page has no readable URL. Wait for it to load.")
+    parent = get(page, "AXParent")
+    scroll = []
+    if parent is not None and get(parent, "AXRole") == "AXScrollArea":
+        for name in ("AXHorizontalScrollBar", "AXVerticalScrollBar"):
+            bar = get(parent, name)
+            value = get(bar, "AXValue") if bar is not None else None
+            scroll.append(float(value) if isinstance(value, (int, float)) else None)
+    return _WebView(page, window_frame, viewport, url, tuple(scroll))
+
+
+def _read_web_snapshot(view: _WebView, bundle_id: str, browser_pid: int, get) -> Snapshot:
+    practice = view.url == _practice_url()
+    host = _host(view.url)
+    if host == GMAIL_HOST:
+        collected = _gmail_collect(view.page, get, view.viewport, view.url)
+    else:
+        collected = _collect(view.page, get, MAX_WEB_ELEMENTS, view.viewport, practice=practice)
+    if str(get(view.page, "AXURL") or "") != view.url:
+        raise ReaderError("The selected page changed while it was being read. Try again.")
+    title = PRACTICE_TITLES[bundle_id] if practice else host or "Browser page"
+    return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, view.window_frame,
+                    collected.controls, view.viewport, below_fold_count=collected.below_fold_count)
+
+
+def _browser_snapshot(bundle_id, pid, page_title, page_url_prefix, started) -> Snapshot:
+    global _last_web_snapshot
+    browser_pid = _browser_pid(bundle_id, pid)
+    scope = (bundle_id, browser_pid, page_title, page_url_prefix)
+    root = AX.AXUIElementCreateApplication(browser_pid)
+    deadline = started + WEB_READ_BUDGET_S
+    failure = _WebReadTimeout("Browser Accessibility read exceeded its time budget.")
+    for attempt_deadline in (started + WEB_FIRST_ATTEMPT_S, deadline - WEB_CACHE_CHECK_S):
+        get = _web_getter(started, deadline=attempt_deadline)
+        try:
+            view = _web_view(root, get, page_title, page_url_prefix)
+            snap = _read_web_snapshot(view, bundle_id, browser_pid, get)
+        except _WebReadTimeout as exc:
+            failure = exc
+            continue
+        except ReaderError:
+            _last_web_snapshot = None
+            raise
+        _last_web_snapshot = _CachedWebSnapshot(scope, view, snap, time.monotonic())
+        return snap
+
+    cached = _last_web_snapshot
+    if cached is not None and cached.scope == scope and time.monotonic() - cached.cached_at < WEB_CACHE_MAX_AGE_S:
+        try:
+            get = _web_getter(started, deadline=deadline)
+            current = _web_view(root, get, page_title, page_url_prefix)
+            still_current = current == cached.view and str(get(current.page, "AXURL") or "") == current.url
+            if still_current and time.monotonic() - cached.cached_at < WEB_CACHE_MAX_AGE_S:
+                return cached.snapshot
+        except ReaderError:
+            pass
+    _last_web_snapshot = None
+    raise failure
+
+
 def snapshot(bundle_id: str, *, pid: int | None = None, page_title: str | None = None,
              page_url_prefix: str | None = None) -> Snapshot:
     started = time.monotonic()
     if not is_trusted():
         raise ReaderError("This process is not allowed to read other apps (Accessibility permission missing).")
     if bundle_id in PRACTICE_TITLES:
-        browser_pid = _browser_pid(bundle_id, pid)
-        get = _web_getter(started)
-        root = AX.AXUIElementCreateApplication(browser_pid)
-        page, window_frame, viewport, url = _selected_web_page(root, get, page_title, page_url_prefix)
-        if not url:
-            raise ReaderError("The selected browser page has no readable URL. Wait for it to load.")
-        practice = url == _practice_url()
-        if _host(url) == GMAIL_HOST:
-            collected = _gmail_collect(page, get, viewport, url)
-        else:
-            collected = _collect(page, get, MAX_WEB_ELEMENTS, viewport, practice=practice)
-        if str(get(page, "AXURL") or "") != url:
-            raise ReaderError("The selected page changed while it was being read. Try again.")
-        title = PRACTICE_TITLES[bundle_id] if practice else _host(url) or "Browser page"
-        return Snapshot(uuid.uuid4().hex[:12], time.time(), bundle_id, browser_pid, title, window_frame,
-                        collected.controls, viewport, below_fold_count=collected.below_fold_count)
+        return _browser_snapshot(bundle_id, pid, page_title, page_url_prefix, started)
     if bundle_id in UNSUPPORTED_BROWSERS or pid is not None:
         raise ReaderError("This browser or pid is not a supported practice target.")
     app = find_app(bundle_id)

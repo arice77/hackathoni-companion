@@ -70,3 +70,17 @@ The production reader now uses a separate projection on `mail.google.com`. It em
 The reader drops labels consisting only of Private Use Area glyphs and filters numbered carousel dot actions such as `1 of 5`; if dots are the only retained content, it keeps one. A fake tree covers mixed Malayalam or ordinary text, normal pagination, and a dot-only page. `scripts/qa/run.py unit`: **118 unit tests passed**, one suite check passed, zero failed. Live QA was not run.
 
 Gmail gate and slider follow-up: `scripts/qa/run.py unit` passed **131 tests** (one suite check, zero failures). No paid requests or live QA were run.
+
+## Reader timeout follow-up
+
+The retest log had two AX messaging timeouts. Browser reads now have a shared **750 ms** deadline and at most **120 ms** per AX request. A timeout triggers one fresh traversal; it does not publish a partial snapshot. If both attempts time out, the reader may reuse a snapshot younger than **1.5 s** only after confirming the same browser scope, AX page, URL, viewport and any exposed scrollbar positions. It preserves the original snapshot ID and timestamp. An unverified or changed page still fails closed.
+
+**Live-machine:** 20 fresh reads per already-open site, nearest-rank p95, excluding page load. The error column counts unsuccessful reads during sampling; their causes were not classified. No natural cached reads occurred in these samples.
+
+| Site | Median | p95 | Max | Unsuccessful reads |
+| --- | ---: | ---: | ---: | ---: |
+| YouTube watch | 85.6 ms | 115.4 ms | 274.3 ms | 3 |
+| Gmail inbox, gated | 19.3 ms | 83.4 ms | 110.2 ms | 3 |
+| KSEB Quick Pay | 15.3 ms | 16.0 ms | 18.9 ms | 1 |
+
+Two injected traversal timeouts on each of the three live pages returned the original snapshot after a real AX identity check. This exercises fallback without claiming the original machine load was reproduced. Automated tests cover the retry with a simulated slow AX getter, rejection after page or scroll changes, cache expiry, and the remaining deadline. Unit QA: **138 tests passed**, zero failed. All probe windows were closed; no form controls were operated.
