@@ -53,6 +53,14 @@ The Gmail reader exports a filled flag for each allowlisted input when its state
 
 The locked Safari draft walkthrough validated six pointers through Send and closed its own window. Sending to Abin's address and dismissing the composer still need a confirmed result.
 
+## GasUndo
+
+The pack matches `gasundo.live` and handles the read-only path locally. Try “Is Bektash Kakkanad open?”, “ബെക്താഷ് കാക്കനാടിന്റെ നില എങ്ങനെ നോക്കാം?”, or “Bektash Kakkanad open aano?”. The guide points to **Select district** if needed, **Search restaurants**, and the matching suggestion under the field. It then reads the displayed crowd report and its age. A stale or missing report leaves current opening status unknown.
+
+“Which restaurants are open in Ernakulam?” points to the **Open** filter and explains that it filters the map by reports. For a specific business, use the search suggestions. “When was this restaurant's status updated?” reads the details already on screen. The guide’s targets are district selection, search, search suggestions, and the status filter. It uses no chat calls and exposes no typed search value or URL path.
+
+The recommended opener uses Ernakulam and Bektash Kakkanad. The HTTP probe found an old limited-menu report, while the Alappuzha catalog returned an error. Replays cover the English, Malayalam, and Manglish paths, stale and missing reports, and the district error. [GasUndo probe](site-probes.md#gasundo)
+
 ## Optional steps on general forms
 
 The planner offers optional fields and sets in reading order. It names the checkbox choices and leaves each selection with the user. The panel's Skip action and the colloquial commands “skip”, “next”, “no”, “വേണ്ട”, “ഒഴിവാക്കൂ”, “adutha”, and “venda” advance an optional pointer under the same question. Filling a later unit also skips earlier optional units observed in that plan. Later instructions begin with “Next” or “അടുത്തത്”. A primary button whose visible label contains a recognized action phrase can be selected when it is the only candidate.

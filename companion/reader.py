@@ -23,6 +23,7 @@ import ApplicationServices as AX
 from AppKit import NSRunningApplication, NSWorkspace
 
 from .contracts import Control, Rect, Snapshot
+from .sites import gasundo
 
 CHOICE_ROLES = {"AXCheckBox", "AXRadioButton"}
 INPUT_ROLES = CHOICE_ROLES | {"AXTextField", "AXTextArea", "AXComboBox", "AXPopUpButton", "AXDateField"}
@@ -611,7 +612,34 @@ def _gmail_collect(page, get, viewport: Rect, url: str) -> _Collection:
     return _Collection(tuple(controls), 0)
 
 
-def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None, youtube=False) -> _Collection:
+def _gasundo_suggestions(controls: list[Control], buttons: dict[str, object], get) -> list[Control]:
+    searches = [c for c in controls if c.role in {"AXTextField", "AXSearchField"}
+                and c.label == gasundo.SEARCH.label and c.filled]
+    if len(searches) != 1:
+        return controls
+    left, top, width, height = searches[0].frame
+    for index, control in enumerate(controls):
+        x, y, w, _ = control.frame
+        if (control.id not in buttons or abs(x - left) > 12 or w < width * .8
+                or not top + height - 4 <= y <= top + height + 310):
+            continue
+        label = control.label
+        if not label:
+            label = next((text for child, role, _ in _walk(buttons[control.id], get, 8, WEB_LEAVES)
+                          if role == "AXStaticText" and (text := _label(child, role, get))), "")
+        label = re.sub(r"\s+select$", "", label.strip(), flags=re.I)
+        if not label or re.match(r"^(?:all(?: places)?|open|limited|closed)\s*[0-9,]*$", label, re.I):
+            continue
+        if re.match(r"^(?:report\b|confirm\b|sign in\b|clear search\b|back to map\b|comment\b|copy\b)", label, re.I):
+            continue
+        label = _safe_web_text(label)
+        key = sha256(label.casefold().encode()).hexdigest()[:10]
+        controls[index] = replace(control, label=label, identifier=f"{gasundo.SUGGESTION_PREFIX}{key}")
+    return controls
+
+
+def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=None, youtube=False,
+             gasundo_site=False) -> _Collection:
     controls: list[Control] = []
     first_dot: Control | None = None
     ancestry: dict[int | None, _ChoiceSet] = {}
@@ -627,6 +655,7 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
     youtube_headings: set[int] = set()
     youtube_anchors: Counter[tuple[str, str, str]] = Counter()
     youtube_sliders: dict[str, object] = {}
+    gasundo_buttons: dict[str, object] = {}
     headings = 0
     below_fold_count = 0
     for index, (el, role, parent) in enumerate(_walk(start, get, limit, leaves)):
@@ -648,7 +677,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
             value = get(el, "AXValue")
             enclosing_set.observe(_filled(value, role))
         youtube_static = web and youtube and role == "AXStaticText"
-        if role not in roles and not is_set and not youtube_static:
+        gasundo_static = web and gasundo_site and role == "AXStaticText"
+        if role not in roles and not is_set and not (youtube_static or gasundo_static):
             continue
         context = role == "AXHeading" or is_set
         if web and context and headings >= MAX_WEB_HEADINGS:
@@ -667,7 +697,7 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
                 below_fold_count += 1
             continue
         youtube_link = youtube and role == "AXLink"
-        ident = None if youtube_link or youtube_static else _identifier(el, get)
+        ident = None if youtube_link or youtube_static or gasundo_static else _identifier(el, get)
         if not grouped_option:
             value = get(el, "AXValue") if role in value_roles else None
         if choice_set is not None:
@@ -685,6 +715,15 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
             role = "AXStaticText"
         else:
             label = _web_label(el, role, get, value) if web else _label(el, role, get)
+        if gasundo_static:
+            if label not in gasundo.STATUS_NOTES and not (gasundo.REPORT_AGE.fullmatch(label)
+                                                          or gasundo.CATALOG_ERROR.fullmatch(label)):
+                continue
+        if gasundo_site and (ident in gasundo.DISTRICT_IDS or label == "Select district") and role == "AXPopUpButton":
+            selected = gasundo.DISTRICT_NAMES.get(value.casefold()) if isinstance(value, str) else None
+            label = f"Select district: {selected}" if selected else "Select district"
+        if gasundo_site and ident in gasundo.SEARCH_IDS and role in {"AXTextField", "AXSearchField"}:
+            label = gasundo.SEARCH.label
         if web:
             if youtube_link:
                 ident, label = _youtube_link(get(el, "AXURL"), label)
@@ -705,13 +744,16 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         group_label = enclosing_set.label if grouped_option else ""
         control = Control(
             id=f"c{len(controls):02d}", role=role, label=label, frame=visible_frame,
-            enabled=not is_set and not youtube_static and _enabled(el, get), identifier=ident, filled=filled,
+            enabled=not is_set and not (youtube_static or gasundo_static) and _enabled(el, get),
+            identifier=ident, filled=filled,
             group=group_label if group_label and not _icon_only(group_label) else None,
         )
         if dot:
             first_dot = control
             continue
         controls.append(control)
+        if gasundo_site and role == "AXButton" and control.enabled:
+            gasundo_buttons[control.id] = el
         if youtube and role == "AXSlider" and not label:
             youtube_sliders[control.id] = el
         if choice_set is not None:
@@ -723,6 +765,8 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         controls.append(first_dot)
     if youtube_sliders:
         controls = _youtube_speed_controls(controls, youtube_sliders, get)
+    if gasundo_buttons:
+        controls = _gasundo_suggestions(controls, gasundo_buttons, get)
     controls_with_groups = tuple(
         replace(control, filled=choice_rows[control.id].filled) if control.id in choice_rows else control
         for control in controls
@@ -792,7 +836,7 @@ def _read_web_snapshot(view: _WebView, bundle_id: str, browser_pid: int, get) ->
         collected = _gmail_collect(view.page, get, view.viewport, view.url)
     else:
         collected = _collect(view.page, get, MAX_WEB_ELEMENTS, view.viewport, practice=practice,
-                             youtube=host in YOUTUBE_HOSTS)
+                             youtube=host in YOUTUBE_HOSTS, gasundo_site=host in gasundo.HOSTS)
     if str(get(view.page, "AXURL") or "") != view.url:
         raise ReaderError("The selected page changed while it was being read. Try again.")
     title = PRACTICE_TITLES[bundle_id] if practice else host or "Browser page"
