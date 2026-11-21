@@ -15,6 +15,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 from companion.contracts import Control, Snapshot
+from companion.guidance import FormPlan, GuidanceSession, control_key, with_choice_group_bounds
 from companion.planner_sarvam import DEFAULT_MODEL, SarvamPlanner
 from companion.validator import MAX_SNAPSHOT_AGE_S, validate
 from companion.voice import sarvam
@@ -83,13 +84,10 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(view["screen_title"], "Business Details")
         self.assertEqual(view["unfinished_input_ids"], [])
         self.assertIn("business practice form", view["task_goal"])
-        self.assertEqual(view["controls"], [
-            {"rank": 1, "id": "c02", "role": "AXHeading", "label": "Business Details",
-             "filled": None, "enabled": True, "group": None},
-            {"rank": 2, "id": "c00", "role": "AXTextField", "label": "Business Name",
-             "filled": True, "enabled": True, "group": None},
-            {"rank": 3, "id": "c01", "role": "AXButton", "label": "Save Draft",
-             "filled": None, "enabled": True, "group": None},
+        self.assertEqual(view["controls"].splitlines(), [
+            '* ## "Business Details"',
+            '* [c00] AXTextField "Business Name" (filled, enabled)',
+            '* [c01] AXButton "Save Draft" (state unknown, enabled)',
         ])
         for private in ("local-only-input", "local-only-save", "example.private.app", "Private window title", KEY):
             self.assertNotIn(private, request.data.decode())
@@ -190,7 +188,7 @@ class PlannerTests(unittest.TestCase):
                 self.http.assert_called_once()
                 self.assertEqual(len(self.planner.calls), 1)
 
-    def test_progress_and_new_question_invalidate_cache(self):
+    def test_progress_reuses_intent_and_new_question_sends_only_changed_markers(self):
         input_control, save = self.snapshot.controls
         status = Control("c02", "AXStaticText", "Ready", (10, 90, 140, 24), identifier="status")
         initial = replace(self.snapshot, controls=(input_control, save, status))
@@ -200,12 +198,15 @@ class PlannerTests(unittest.TestCase):
             replace(initial, controls=(input_control, replace(save, enabled=False), status)),
             replace(initial, controls=(input_control, save, replace(status, label="Draft saved"))),
         )
-        self.http.side_effect = [_response() for _ in range(5)]
+        self.http.side_effect = [_response(), _response()]
         for snap in states:
             self.planner.decide(QUESTION, snap)
             self.planner.decide(QUESTION, snap)
         self.planner.decide("Different question", initial)
-        self.assertEqual(self.http.call_count, 5)
+        self.assertEqual(self.http.call_count, 2)
+        view = json.loads(json.loads(self.http.call_args.args[0].data)["messages"][1]["content"])
+        self.assertIn('* [c02] AXStaticText "Ready"', view["controls"])
+        self.assertNotIn('* [c00]', view["controls"])
 
     def test_concurrent_ticks_send_one_request(self):
         self.http.return_value = _response()
@@ -336,7 +337,7 @@ class PlannerTests(unittest.TestCase):
         view = json.loads(body["messages"][1]["content"])
         schema = body["response_format"]["json_schema"]["schema"]
         self.assertEqual(view["unfinished_input_ids"], ["c00"])
-        self.assertEqual(view["controls"][0]["label"], "2. Documents")
+        self.assertIn('[c02] AXStaticText "2. Documents"', view["controls"].splitlines()[0])
         self.assertEqual(schema["properties"]["control_id"]["enum"], [None, "c00"])
         self.assertEqual((result.kind, result.control_id), ("unsupported", None))
         self.assertEqual(self.planner.calls[0].outcome, "unavailable_target")
@@ -404,8 +405,8 @@ class PlannerTests(unittest.TestCase):
             snap, snapshot_id="size-chosen",
             controls=tuple(replace(c, filled=True) if c.id == "c09" else c for c in controls),
         )
-        self.assertEqual(planner.decide(question, selected).control_id, "c07")
-        self.assertEqual(planner.decide("I want a medium pizza", selected).control_id, "c07")
+        self.assertEqual(planner.decide(question, selected).control_id, "c02")
+        self.assertEqual(planner.decide("I want a medium pizza", selected).control_id, "c02")
         self.assertEqual(planner.decide("I want a large pizza", selected).control_id, "c10")
         optional = planner.decide("Are toppings optional?", snap)
         self.assertEqual(optional.control_id, "c00")
@@ -420,8 +421,9 @@ class PlannerTests(unittest.TestCase):
         decision = planner.decide("Can you suggest the best size?", snap)
         payload = json.loads(self.http.call_args.args[0].data)
         view = json.loads(payload["messages"][1]["content"])
-        self.assertEqual(next(c for c in view["controls"] if c["id"] == "c08")["group"], "Pizza Size")
-        self.assertEqual(view["unfinished_input_ids"], ["c00", "c07"])
+        self.assertIn('AXGroup "Pizza Size" (empty, disabled) (choose one, unchosen):', view["controls"])
+        self.assertIn('  ( ) * [c08] AXRadioButton "Small" (empty, enabled) group="Pizza Size"', view["controls"])
+        self.assertEqual(view["unfinished_input_ids"], ["c00"])
         ids = payload["response_format"]["json_schema"]["schema"]["properties"]["control_id"]["enum"]
         self.assertIn("c00", ids)
         self.assertTrue({"c01", "c08", "c09", "c10", "c11", "c12", "c13", "c14"}.isdisjoint(ids))
@@ -447,6 +449,148 @@ class PlannerTests(unittest.TestCase):
         decision = self.planner.decide("ഈ പേജ് എങ്ങനെ ഉപയോഗിക്കാം? / How do I use this page?", snap)
         self.assertEqual((decision.kind, decision.control_id), ("point", email.id))
         self.assertEqual(decision.instruction_en, "This is a form. Start with ‘E-mail (required)’.")
+        self.http.assert_not_called()
+
+    def test_pizza_walk_follows_each_pointer_under_one_question(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        initial = eval_planner._snapshot("httpbin", screens["httpbin-order-form"], False)
+        question = "Can you help me fill this form?"
+        for delivery_required, delivery_steps in ((False, []), (True, ["c06", "c07"])):
+            with self.subTest(delivery_required=delivery_required):
+                controls = tuple(
+                    replace(c, label=f"{c.label} (required)", filled=False)
+                    if delivery_required and c.id in {"c06", "c07"} else c
+                    for c in reversed(initial.controls)
+                )
+                snap = replace(initial, controls=controls)
+                planner = SarvamPlanner("web_any", log_calls=False)
+                expected = ["c03", "c04", "c05", "c00", *delivery_steps, "c02"]
+                visited, instructions = [], []
+                for number, next_id in enumerate(expected):
+                    decision = planner.decide(question, snap)
+                    self.assertEqual((decision.kind, decision.control_id), ("point", next_id))
+                    self.assertEqual(validate(decision, snap), (True, "ok"))
+                    visited.append(decision.control_id)
+                    instructions.append(decision.instruction_en)
+                    target = snap.control(decision.control_id)
+                    self.assertIsNot(target.filled, True)
+                    if target.role in {"AXGroup", "AXRadioGroup"}:
+                        self.assertEqual(target.label, "Pizza Size")
+                        for text in (decision.instruction, decision.instruction_en):
+                            for option in ("‘Small’", "‘Medium’", "‘Large’"):
+                                self.assertIn(option, text)
+                        first_option = min(
+                            (c for c in snap.controls if c.group == target.label and c.enabled),
+                            key=lambda c: (c.frame[1], c.frame[0]),
+                        )
+                        completed = {target.id, first_option.id}
+                    elif target.role == "AXButton":
+                        self.assertEqual(target.label, "Submit order")
+                        break
+                    else:
+                        completed = {target.id}
+                    snap = replace(
+                        snap, snapshot_id=f"pizza-{number}", taken_at=time.time(),
+                        controls=tuple(replace(c, filled=True) if c.id in completed else c for c in snap.controls),
+                    )
+                self.assertEqual(len(visited), len(set(visited)))
+                self.assertEqual(sum("This is an order form." in line for line in instructions), 1)
+                self.assertIn("This is an order form.", instructions[0])
+                self.assertEqual(sum("‘Pizza Toppings’ is optional." in line for line in instructions), 1)
+                self.assertIn("‘Pizza Toppings’ is optional.", instructions[4])
+                receipt = replace(
+                    snap, snapshot_id="receipt", window_title="127.0.0.1",
+                    controls=(
+                        Control("result-title", "AXHeading", "Order received (practice)", (20, 2, 240, 12)),
+                        *snap.controls,
+                    ),
+                )
+                complete = planner.decide(question, receipt)
+                self.assertEqual((complete.kind, complete.control_id), ("complete", None))
+                self.assertNotIn("This is an order form.", planner.decide(question, initial).instruction_en)
+                planner.reset_question()
+                self.assertIn("This is an order form.", planner.decide(question, initial).instruction_en)
+        self.http.assert_not_called()
+
+    def test_choice_set_without_container_uses_union_and_stable_progress(self):
+        small = Control("c00", "AXRadioButton", "Small", (10, 20, 140, 18), group="Pizza Size", filled=False)
+        large = replace(small, id="c01", label="Large", frame=(20, 45, 120, 18))
+        snap = replace(self.snapshot, controls=(large, small), viewport=self.snapshot.window_frame)
+        normalized = with_choice_group_bounds(snap)
+        plan = FormPlan.from_snapshot(normalized)
+        self.assertEqual(len(plan.units), 1)
+        choice = plan.units[0]
+        self.assertEqual(choice.control.frame, (10, 20, 140, 43))
+        self.assertEqual([c.id for c in choice.options], ["c00", "c01"])
+        decision = SarvamPlanner("web_any", log_calls=False).decide("What should I do next?", normalized)
+        self.assertEqual((decision.kind, decision.control_id), ("point", choice.control.id))
+        self.assertEqual(validate(decision, normalized), (True, "ok"))
+        session = GuidanceSession()
+        session.observe(plan)
+        self.assertEqual(session.next_unit(plan), choice)
+        selected = FormPlan.from_snapshot(replace(snap, controls=(replace(small, id="new-id", filled=True), large)))
+        session.observe(selected)
+        self.assertIn(control_key(choice.control), session.done_keys)
+        self.assertIsNone(session.next_unit(selected))
+        session.intro_done = True
+        session.observe(FormPlan.from_snapshot(replace(snap, window_title="Another page")))
+        self.assertFalse(session.intro_done)
+        self.assertEqual(session.done_keys, set())
+        self.http.assert_not_called()
+
+    def test_one_provider_intent_then_ordered_progress_with_changed_ids(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-form"], False)
+        question = "I'd like to order a pizza for pickup."
+        planner = SarvamPlanner("web_any", log_calls=False)
+        self.http.return_value = _response(_choice(control_id="c03", label="Customer name:"))
+        self.assertEqual(planner.decide(question, snap).control_id, "c03")
+        filled = replace(
+            snap, snapshot_id="after-name",
+            controls=tuple(replace(c, id=f"new-{c.id}", filled=True) if c.id == "c03"
+                           else replace(c, id=f"new-{c.id}") for c in snap.controls),
+        )
+        self.assertEqual(planner.decide(question, filled).control_id, "new-c04")
+        self.http.assert_called_once()
+
+    def test_confirmation_requires_new_evidence_after_a_pointed_form_action(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-ready"], False)
+        heading = Control("result-title", "AXHeading", "Order received (practice)", (20, 2, 240, 12))
+        initial = replace(snap, controls=(heading, *snap.controls))
+        question = "Can you help me fill this form?"
+        planner = SarvamPlanner("web_any", log_calls=False)
+        self.assertEqual(planner.decide(question, initial).control_id, "c02")
+        self.assertEqual(planner.decide(question, replace(initial, snapshot_id="unchanged")).control_id, "c02")
+        uncertain = replace(
+            initial, snapshot_id="uncertain",
+            controls=(replace(heading, label="Confirmation"), *snap.controls),
+        )
+        self.assertEqual((decision := planner.decide(question, uncertain)).kind, "clarify")
+        self.assertIsNone(decision.control_id)
+        received = replace(
+            initial, snapshot_id="received",
+            controls=(replace(heading, label="Your order has been confirmed"), *snap.controls),
+        )
+        self.assertEqual((decision := planner.decide(question, received)).kind, "complete")
+        self.assertIsNone(decision.control_id)
+        self.http.assert_not_called()
+
+    def test_broad_help_does_not_jump_to_delivery_or_submit_from_a_lower_viewport(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-form"], False)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        question = "Can you help me fill this form?"
+        lower = replace(
+            snap, snapshot_id="lower",
+            controls=tuple(c for c in snap.controls if c.frame[1] >= snap.control("c01").frame[1]),
+        )
+        decision = planner.decide(question, lower)
+        self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+        self.assertIn("Scroll up to the start", decision.instruction_en)
+        first = planner.decide(question, snap)
+        self.assertEqual(first.control_id, "c03")
+        self.assertIn("This is an order form.", first.instruction_en)
         self.http.assert_not_called()
 
     def test_broad_web_help_does_not_reuse_off_topic_answer_or_guess_without_controls(self):

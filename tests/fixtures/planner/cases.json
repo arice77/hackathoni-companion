@@ -641,16 +641,16 @@
     "task": "web_any",
     "question": "What should I do next?",
     "kind": "point",
-    "control_id": "c07",
+    "control_id": "c02",
     "question_form": "english",
     "instruction_contains": {
       "instruction_en": [
         "‘Pizza Toppings’ is optional.",
-        "‘Delivery instructions:’"
+        "‘Submit order’"
       ],
       "instruction": [
         "‘Pizza Toppings’ നിർബന്ധമല്ല.",
-        "‘Delivery instructions:’"
+        "‘Submit order’"
       ]
     }
   },
