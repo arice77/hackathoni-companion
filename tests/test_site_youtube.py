@@ -85,6 +85,22 @@ class YouTubeTests(unittest.TestCase):
         guide = PACK.start_guidance("Find and play {my title}")
         self.assertIn("{my title}", guide.decide(snapshot("home")).instruction_en)
 
+    def test_polite_intent_and_video_title_with_a_number(self):
+        faster = PACK.start_guidance("Could you please play at 1.25x?")
+        self.assertEqual(faster.decide(snapshot("speed_menu")).control_id, "fast")
+        search = PACK.start_guidance("Find and play Money 2x")
+        self.assertIn("money 2x", search.decide(snapshot("home")).instruction_en)
+
+    def test_language_button_outside_subtitles_is_not_pointed_at(self):
+        snap = snapshot("watch")
+        snap = replace(
+            snap, controls=(*snap.controls, Control("other", "AXMenuItem", "Malayalam", (20, 290, 125, 20)))
+        )
+        guide = PACK.start_guidance("How do I turn on Malayalam subtitles?")
+        self.assertEqual(guide.decide(snap).control_id, "gear")
+        self.assertEqual(guide.decide(snapshot("menu")).control_id, "subs")
+        self.assertEqual(guide.decide(snapshot("menu", 2)).control_id, "subs")
+
     def test_web_site_planner_keeps_a_guide_until_the_next_question(self):
         planner = SarvamPlanner("web_site", log_calls=False)
         with patch.object(sarvam, "_post") as post:
