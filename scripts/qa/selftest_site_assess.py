@@ -135,6 +135,13 @@ retry2 = YGOOD[:7] + [dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton",
                       dec(5, 2, "Settings", "Open 'Settings'.", "AXPopUpButton", times_pointed=3)] + YGOOD[7:]
 assert [v for k, v in statuses(yt.assess(retry2, 0, "", X, X, X)).items() if k.startswith("no target pointed at twice")] == ["fail"]
 
+# landing on the decrease-speed stepper (no 0.75 button exists) counts as the target; "scroll inside" is not a page scroll
+stepper = [dict(r) for r in YGOOD]
+stepper[7] = dec(6, 2, "Decrease playback speed 0.05", "Press 'Decrease playback speed 0.05' five times.", action="held: speed target reached; not pressed")
+assert set(statuses(yt.assess(stepper, 0, "", X, X, X)).values()) == {"pass"}
+inside = YGOOD[:7] + [dec(5, 2, None, "Scroll inside Playback speed to look for 0.75×.", kind="clarify", action="waiting (clarify): nothing pressed")] + YGOOD[7:]
+assert set(statuses(yt.assess(inside, 0, "", X, X, X)).values()) == {"pass"}
+
 # a bare "Skip" ad button pointed at is allowed (not an ad link); an ad link is still a failure
 skip = [dict(r) for r in YGOOD]
 skip.insert(2, dec(2, 1, "Skip", "Use 'Skip' to skip the ad.", "AXButton"))
@@ -159,7 +166,7 @@ import drive_follow_site as drv  # noqa: E402
 
 
 class O:
-    song_token, stop_label, allow_send, sends = "darshana", r"^0?\.75$", True, 0
+    song_token, stop_label, allow_send, sends = "darshana", yt.STOP_LABEL, True, 0
 
 
 o = O()
@@ -176,6 +183,11 @@ assert d("youtube", "AXButton", "Play keyboard shortcut k", "", o)[0] == "press"
 for no in (("AXLink", "Skip"), ("AXButton", "Skip navigation"), ("AXButton", "Skipper")):
     assert d("youtube", no[0], no[1], "https://www.youtube.com/watch?v=a", o)[0] == "refuse", no
 assert d("youtube", "AXButton", "0.75", "", o)[0] == "hold"
+assert d("youtube", "AXButton", "Decrease playback speed 0.05", "", o)[0] == "hold"
+assert d("youtube", "AXButton", "Increase playback speed 0.05", "", o)[0] == "refuse"
+import drive_follow_pointer as _bp
+assert not _bp.is_scroll_clarify("clarify", "Scroll inside Playback speed to look for 0.75×.")
+assert _bp.is_scroll_clarify("clarify", "Scroll down to continue.")
 assert d("youtube", "AXButton", "1.25", "", o)[0] == "refuse"
 for banned in ("Like this video along with 1,234 other people", "Subscribe", "Add a comment...", "Join"):
     assert d("youtube", "AXButton", banned, "", o)[0] == "refuse", banned
