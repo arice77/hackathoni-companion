@@ -69,7 +69,9 @@ class GasUndoTests(unittest.TestCase):
         self.assertEqual(len({c.identifier for c in suggestions}), 2)
 
     def test_malayalam_and_manglish_requests(self):
-        for question in ("ബെക്താഷ് കാക്കനാടിന്റെ നില എങ്ങനെ നോക്കാം?", "Bektash Kakkanad open aano?"):
+        self.enterContext(patch.object(sarvam, "transliterate_text", side_effect=sarvam.SarvamMissingKeyError()))
+        for question in ("ബെക്താഷ് കാക്കനാടിന്റെ നില എങ്ങനെ നോക്കാം?", "Bektash Kakkanad open aano?",
+                         "Bektash Kakkanad thurannittundo?", "Bektash Kakkanad open aano ennu ariyanam"):
             with self.subTest(question=question):
                 snap = snapshot()
                 decision = PACK.start_guidance(question).decide(snap)
@@ -79,6 +81,34 @@ class GasUndoTests(unittest.TestCase):
         answer = PACK.start_guidance("എറണാകുളത്ത് ഇപ്പോൾ തുറന്നിരിക്കുന്ന ഹോട്ടലുകൾ ഏതൊക്കെ?").decide(snap)
         self.assertEqual(snap.control(answer.control_id).label, "Open 35")
         self.assertIn("filters the map", answer.instruction_en)
+
+    def test_english_transcript_supplies_latin_name_without_a_provider_call(self):
+        with patch.object(sarvam, "transliterate_text") as transliterate:
+            guide = PACK.start_guidance("റഹ്മാനിയ ഹോട്ടൽ തുറന്നിട്ടുണ്ടോ എന്ന് അറിയണം / Is Rahmaniya Hotel open?")
+            answer = guide.decide(snapshot())
+        self.assertEqual(answer.kind, "point")
+        self.assertIn("rahmaniya hotel", answer.instruction_en)
+        transliterate.assert_not_called()
+
+    def test_malayalam_name_transliterates_once_for_the_whole_replay(self):
+        planner = SarvamPlanner("web_site", log_calls=False)
+        question = "റഹ്മാനിയ ഹോട്ടൽ തുറന്നിട്ടുണ്ടോ എന്ന് അറിയണം"
+        with patch.object(sarvam, "transliterate_text", return_value="Rahmaniya Hotel") as transliterate:
+            answer = planner.decide(question, snapshot())
+            self.assertIn("Rahmaniya Hotel", answer.instruction_en)
+            results = snapshot(("result", "AXButton", "Rahmaniya Hotel select", (35, 294, 300, 42)),
+                               search="Rahmaniya")
+            result = planner.decide(question, results)
+            self.assertEqual(results.control(result.control_id).label, "Rahmaniya Hotel")
+            transliterate.assert_called_once_with("റഹ്മാനിയ ഹോട്ടൽ", "ml-IN", "en-IN")
+        self.assertFalse(planner.calls)
+
+    def test_unavailable_transliteration_asks_for_catalog_spelling(self):
+        for response in ("", "റഹ്മാനിയ", "https://example.test", "it"):
+            with self.subTest(response=response), patch.object(sarvam, "transliterate_text", return_value=response):
+                answer = PACK.start_guidance("റഹ്മാനിയ തുറന്നിട്ടുണ്ടോ എന്നറിയണം").decide(snapshot())
+                self.assertEqual(answer.kind, "clarify")
+                self.assertIn("English letters", answer.instruction_en)
 
     def test_missing_report_and_catalog_error_are_explicit(self):
         guide = PACK.start_guidance("When was this restaurant's status updated?")

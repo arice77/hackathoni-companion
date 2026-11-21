@@ -129,7 +129,7 @@ def _post(endpoint: str, key: str, body: bytes, content_type: str) -> tuple[dict
         raise SarvamError(f"Sarvam {endpoint} returned invalid JSON") from None
     if not isinstance(data, dict):
         raise SarvamError(f"Sarvam {endpoint} returned an unexpected JSON response")
-    for name in ("transcript", "translated_text", "request_id", "language_code"):
+    for name in ("transcript", "translated_text", "transliterated_text", "request_id", "language_code"):
         if isinstance(data.get(name), str):
             data[name] = data[name].replace(key, "[redacted]")
     return data, elapsed_ms
@@ -217,6 +217,16 @@ def translate_text(text: str, source: str, target: str) -> str:
         "model": _TRANSLATE_MODEL,
     })
     return _text_field(data, "translated_text")
+
+
+def transliterate_text(text: str, source: str, target: str) -> str:
+    """Transliterate text without translating its meaning."""
+    data, _ = _post_json("/transliterate", {
+        "input": text,
+        "source_language_code": source,
+        "target_language_code": target,
+    })
+    return _text_field(data, "transliterated_text")
 
 
 def synthesize(

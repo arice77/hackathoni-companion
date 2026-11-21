@@ -85,6 +85,13 @@ class SarvamTests(unittest.TestCase):
         self.assertEqual(result.request_id, "native-id")
         self.assertGreaterEqual(result.latency_ms, 0)
 
+    def test_transliterate_name_uses_explicit_language_pair(self):
+        self.http.return_value = self.response(transliterated_text="Rahmaniya")
+        self.assertEqual(sarvam.transliterate_text("റഹ്മാനിയ", "ml-IN", "en-IN"), "Rahmaniya")
+        self.assertEqual(self.json_fields("/transliterate"), {
+            "input": "റഹ്മാനിയ", "source_language_code": "ml-IN", "target_language_code": "en-IN",
+        })
+
     def test_transcribe_fallback_to_requested_language(self):
         self.http.return_value = self.response(transcript="Hello", language_code=None)
         result = sarvam.transcribe(str(self.wav), language_code="en-IN")
