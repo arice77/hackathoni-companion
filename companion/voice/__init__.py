@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 from collections.abc import Sequence
@@ -21,6 +22,11 @@ from .microphone import (
 )
 
 LanguagePreference = Literal["ml-IN", "en-IN"]
+_MALAYALAM_SCRIPT = re.compile(r"[\u0d00-\u0d7f]")
+_MALAYALAM_ROMAN_WORDS = frozenset({
+    "enikku", "enikk", "enik", "kaananam", "kaanam", "kaanan", "kelkkanam", "venam", "vekku",
+    "cheyyu", "cheyyanam", "pathukke", "kuraykku", "kurakku", "koottu",
+})
 _playback_lock = Lock()
 _playback_generation = 0
 _player: subprocess.Popen[bytes] | None = None
@@ -47,10 +53,15 @@ def _validate_preference(preference: LanguagePreference) -> None:
 def ask(
     wav_path: str | Path, preference: LanguagePreference, *, keyterms: Sequence[str] = ()
 ) -> VoiceTranscript:
-    """Return the preferred-language transcript and its English companion when needed."""
+    """Return the spoken-language transcript and its English companion when needed."""
     _validate_preference(preference)
-    native = sarvam.transcribe(wav_path, language_code=preference, keyterms=keyterms)
-    english = sarvam.translate_speech_to_english(wav_path, keyterms=keyterms) if preference == "ml-IN" else None
+    language = "unknown" if preference == "en-IN" else preference
+    native = sarvam.transcribe(wav_path, language_code=language, keyterms=keyterms)
+    needs_translation = (
+        preference == "ml-IN" or native.language_code == "ml-IN" or _MALAYALAM_SCRIPT.search(native.text)
+        or not _MALAYALAM_ROMAN_WORDS.isdisjoint(re.findall(r"\b\w+\b", native.text.casefold()))
+    )
+    english = sarvam.translate_speech_to_english(wav_path, keyterms=keyterms) if needs_translation else None
     return VoiceTranscript(**asdict(native), english_translation=english)
 
 

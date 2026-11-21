@@ -91,6 +91,12 @@ class SarvamTests(unittest.TestCase):
         self.assertEqual(self.speech_fields()["language_code"], "en-IN")
         self.assertEqual(result.language_code, "en-IN")
 
+    def test_transcribe_auto_detect_uses_saaras_language_code(self):
+        self.http.return_value = self.response(transcript="നമസ്കാരം", language_code="ml-IN")
+        result = sarvam.transcribe(self.wav, language_code="unknown")
+        self.assertEqual(self.speech_fields()["language_code"], "unknown")
+        self.assertEqual(result.language_code, "ml-IN")
+
     def test_translate_speech_malayalam_to_english(self):
         self.http.return_value = self.response(
             transcript="Hello", language_code="ml-IN", request_id="english-id"
@@ -243,7 +249,8 @@ class SarvamTests(unittest.TestCase):
             tts = self.http.call_args_list[tts_index].args[0]
             self.assertEqual(json.loads(tts.data)["language_code"], check["preference"])
             stt = self.http.call_args_list[stt_index].args[0]
-            language_part = f'name="language_code"\r\n\r\n{check["preference"]}\r\n'.encode()
+            speech_language = "unknown" if check["preference"] == "en-IN" else "ml-IN"
+            language_part = f'name="language_code"\r\n\r\n{speech_language}\r\n'.encode()
             self.assertIn(language_part, stt.data)
         self.assertNotIn(FAKE_KEY, report_path.read_text(encoding="utf-8"))
         self.assertEqual(self.http.call_count, 5)

@@ -36,10 +36,12 @@ Both calls use `POST https://api.sarvam.ai/speech-to-text` with `multipart/form-
 
 | Call | Multipart fields alongside `file` |
 |---|---|
-| Native transcript | `model=saaras:v4`, `language_code=ml-IN` or `en-IN` by preference, `mode=transcribe` |
+| Native transcript | `model=saaras:v4`, `language_code=ml-IN` in Malayalam mode or `unknown` in English mode, `mode=transcribe` |
 | Malayalam audio to English | `model=saaras:v4`, `language_code=ml-IN`, `mode=translate` |
 
 The adapter pins Saaras v4 for both calls. The API also supports `verbatim`, `translit`, `codemix`, optional `with_timestamps`, and automatic language detection with `language_code=unknown` or an omitted language code. Sarvam lists Saaras v3 as legacy and Saarika as deprecated. [REST request reference](https://docs.sarvam.ai/api-reference/speech-to-text/transcribe) · [Saarika model guide](https://docs.sarvam.ai/api/getting-started/models/saarika)
+
+In English panel mode, `ask()` adds the translation call if Sarvam detects Malayalam or the transcript contains Malayalam script or common romanized Malayalam words. It keeps the native transcript alongside the English translation and makes at most two speech calls.
 
 Saaras v4 accepts `keyterms` as one JSON-encoded array in a multipart field. Each label is one array element, including labels with spaces. The adapter deduplicates labels and accepts up to 50 distinct terms with up to 64 characters each. These hints bias recognition. [Keyterm prompting](https://docs.sarvam.ai/api/api-guides-tutorials/speech-to-text/how-to/keyterms)
 

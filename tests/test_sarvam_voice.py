@@ -38,10 +38,26 @@ class VoiceTests(unittest.TestCase):
             patch.object(sarvam, "translate_speech_to_english") as translate,
         ):
             result = voice.ask("question.wav", "en-IN")
-        transcribe.assert_called_once_with("question.wav", language_code="en-IN", keyterms=())
+        transcribe.assert_called_once_with("question.wav", language_code="unknown", keyterms=())
         translate.assert_not_called()
         self.assertIsNone(result.english_translation)
         self.assertEqual(result.planner_text, native.text)
+
+    def test_english_panel_translates_detected_or_romanized_malayalam_once(self):
+        english = Transcript("I want to watch Darshana.", "en-IN", "sarvam", request_id="translation")
+        for text, detected in (
+            ("എനിക്ക് ദർശന കാണണം", "ml-IN"),
+            ("എനിക്ക് ദർശന കാണണം", "unknown"),
+            ("Enikku darshana kaaranam", "en-IN"),
+        ):
+            with (self.subTest(text=text, detected=detected),
+                  patch.object(sarvam, "transcribe", return_value=Transcript(text, detected, "sarvam")) as transcribe,
+                  patch.object(sarvam, "translate_speech_to_english", return_value=english) as translate):
+                result = voice.ask("question.wav", "en-IN", keyterms=("Search",))
+                transcribe.assert_called_once_with("question.wav", language_code="unknown", keyterms=("Search",))
+                translate.assert_called_once_with("question.wav", keyterms=("Search",))
+                self.assertEqual(result.text, text)
+                self.assertEqual(result.planner_text, english.text)
 
     def test_speak_uses_preference_and_temporary_wav(self):
         with (
