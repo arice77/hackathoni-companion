@@ -34,6 +34,23 @@ A search task points at the search box, then the Search button once the box is f
 
 If the requested video is outside the visible results and the reader reports more below the fold, the guide asks the viewer to scroll down. It suggests searching again once the results are exhausted. Known goals require zero chat calls. For an off-script request, the provider can see an allowlist of standard search and player controls. Video result titles and account labels stay out of that payload. The recorded-state eval exercises 29 multilingual cases with 81 expected decisions in [`tests/fixtures/planner/youtube.json`](../tests/fixtures/planner/youtube.json).
 
+## Gmail
+
+This pack matches `mail.google.com` and uses the reader’s Gmail chrome gate. It never uses an inbox row as a pointer target. Use a fresh email composer or a conversation the user has already opened. Recognized requests resolve locally and no question or snapshot is sent to the Sarvam chat planner. The profile permits fixed chrome labels, masks email addresses and number-shaped strings, and strips identifiers and group metadata.
+
+| Goal | Malayalam / other examples | Guidance |
+| --- | --- | --- |
+| Write an email | “പുതിയ ഇമെയിൽ എങ്ങനെ എഴുതാം?”, “Oru mail ayakkanam” | Compose → To → Subject → Message Body → optional Attach files → Send. The user checks the address and content, then decides whether to press Send. |
+| Reply | “ഈ മെയിലിന് മറുപടി എഴുതണം”, “Reply engane cheyyam” | Reply → Message Body → Send. Never opens a conversation for the user. |
+| Find an email | “മെയിൽ എങ്ങനെ തിരയാം?”, “Find an email” | Point to the editable Search mail field. The user types a remembered name or word and presses Enter. |
+| Attach a photo | “ഫോട്ടോ എങ്ങനെ ചേർക്കാം?”, “Photo engane attach cheyyam” | Point to Attach files. Explain how to choose the photo and click Open. No picker pointer without a supported reader. |
+
+The local guide can follow confirmed filled flags or an explicit, one-time “Next” acknowledgement for unknown field state. A known empty field cannot be skipped. The locked Safari driver uses the Gmail reader, guide, validator and real overlay, and acknowledges each private field after typing the known test text. The standard companion panel still needs to route acknowledgements to the same Gmail guide session and stop logging raw question/transcript text before offering a real-mail rehearsal from the panel.
+
+`.venv/bin/python -m tests.test_site_gmail_live` uses a placeholder and stops at Send. The explicitly opted-in `--send` route requires `QA_GMAIL_TO` and the comma-separated `QA_GMAIL_ALLOWED`, from the environment or git-ignored `.env`. The driver checks the committed recipient and verifies the synthetic subject and body before attempting Send. It cannot retry Send, even on an uncertain result, and never logs either the recipient or the draft text.
+
+The locked Safari draft walkthrough validated six pointers through Send and closed its own window. Sending to Abin's address and dismissing the composer still need a confirmed result.
+
 ## Optional steps on general forms
 
 The planner offers optional fields and sets in reading order. It names the checkbox choices and leaves each selection with the user. The panel's Skip action and the colloquial commands “skip”, “next”, “no”, “വേണ്ട”, “ഒഴിവാക്കൂ”, “adutha”, and “venda” advance an optional pointer under the same question. Filling a later unit also skips earlier optional units observed in that plan. Later instructions begin with “Next” or “അടുത്തത്”. A primary button whose visible label contains a recognized action phrase can be selected when it is the only candidate.
