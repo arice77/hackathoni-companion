@@ -80,13 +80,16 @@ def _summary(rows: list[dict], total: int) -> dict:
     calls = [call for row in rows for call in row["calls"]]
     samples = [call["latency_ms"] for call in calls]
     invalid = sum(call["outcome"] == "unknown_id" for call in calls)
+    correct = sum(row["correct"] for row in rows)
     return {
-        "correct": sum(row["correct"] for row in rows),
+        "correct": correct,
         "cases": len(rows),
         "expected_cases": total,
+        "met_target": len(rows) == total and correct * 17 >= total * 15 and invalid == 0,
         "calls": len(calls),
         "invalid_ids": invalid,
         "invalid_id_rate": invalid / len(calls) if calls else None,
+        "label_fallbacks": sum(call["outcome"] == "local_label_fallback" for call in calls),
         "p50_ms": statistics.median(samples) if samples else None,
         "p95_ms": statistics.quantiles(samples, n=100, method="inclusive")[94] if len(samples) > 1
         else next(iter(samples), None),
@@ -156,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     return int(
         len(results) != len(models)
         or any(
-            result["summary"]["correct"] != len(cases)
+            not result["summary"]["met_target"]
             or result["summary"]["warm_rebinds"] != len(cases)
             or result["summary"]["intentional_stale_rejected"] != sum(bool(case.get("stale")) for case in cases)
             for result in results

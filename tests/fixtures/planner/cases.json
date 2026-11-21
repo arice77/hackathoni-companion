@@ -18,8 +18,8 @@
   {
     "id": "safari-business-name",
     "screen": "safari-business-empty",
-    "task": null,
-    "question": "Where do I enter the business name?",
+    "task": "web_practice",
+    "question": "ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം?",
     "kind": "point",
     "control_id": "c04"
   },
@@ -27,7 +27,7 @@
     "id": "safari-business-next",
     "screen": "safari-business-filled",
     "task": "web_practice",
-    "question": "പൂരിപ്പിച്ചുകഴിഞ്ഞു. ഇനി എങ്ങനെ മുന്നോട്ട് പോകാം? / I filled the business details. How do I continue?",
+    "question": "ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം? / How do I fill this form?",
     "kind": "point",
     "control_id": "c09"
   },
