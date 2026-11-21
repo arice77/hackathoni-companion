@@ -288,6 +288,33 @@ def discard_draft(pid, window) -> str:
     return "draft discarded" if press(cand[0]) == "pressed" else "draft discard failed"
 
 
+MENU_NAMES = ("settings", "playback", "quality", "subtitles", "ambient", "annotations", "sleep", "skip", "play", "pause")
+
+
+AD_HINT = re.compile(r"^(skip|ad\b|my ad centre|video will play after|ad will end|sponsored)", re.IGNORECASE)
+
+
+def ad_hints(window) -> list[str]:
+    """Raw labels in our window that suggest an ad is playing (public YouTube UI strings, never page content)."""
+    out = []
+    for el in walk(window):
+        label = base._label(el)
+        if label and AD_HINT.match(label) and not label.lower().startswith("skip navigation") and label[:40] not in out:
+            out.append(label[:40])
+    return out[:8]
+
+
+def reader_diagnostic() -> dict:
+    """What the reader itself reports for the player menu right now: role, label, enabled (public YouTube labels)."""
+    try:
+        snap = reader.snapshot(BUNDLE, page_url_prefix="https://www.youtube.com/")
+    except Exception as exc:  # noqa: BLE001
+        return {"event": "diagnostic", "error": str(exc)[:160]}
+    rows = [[c.role, c.label[:50], c.enabled, c.filled] for c in snap.controls
+            if c.role.startswith("AXMenu") or c.label.lower().startswith(MENU_NAMES)]
+    return {"event": "diagnostic", "controls": len(snap.controls), "rows": rows}
+
+
 # ---- main --------------------------------------------------------------------------------------------
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -332,6 +359,11 @@ def main(argv=None) -> int:
         """Record why this question's walk ended. Returns True when the whole run is over."""
         nonlocal awaiting_q, last
         phase_end[phase] = reason
+        if site == "youtube" and reason in {"decision-timeout", "total-timeout"}:
+            try:
+                emit({**reader_diagnostic(), "ad_hints": ad_hints(our_window(bounds)[1])})
+            except SystemExit:
+                emit(reader_diagnostic())
         if fatal or reason != "complete" and reason != "reached-target":
             return True
         if phase == 1 and a.then_ask and reason == "complete":

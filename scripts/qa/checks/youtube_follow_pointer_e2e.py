@@ -99,8 +99,10 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
 
     ok, d = _site.order_check(pts2, SPEED_STEPS)
     reached = phases.get("2", phases.get(2)) == "reached-target"
+    diag = next((r for r in records if r["event"] == "diagnostic"), None)
     add("slower: pointed in order Settings, Playback speed, 0.75 (target asserted)", ok and reached,
-        f"{d}; phase 2 end={phases.get('2', phases.get(2))}; {where}")
+        f"{d}; phase 2 end={phases.get('2', phases.get(2))}; {where}",
+        f"\nREADER ROWS at the stall (role, label, enabled, filled): {diag}" if diag else "")
 
     pressed_target = [r["index"] for r in pts2 if SPEED_STEPS[2][1](r) and str(r.get("action", "")).startswith("pressed")]
     add("no setting applied: the driver stopped at 0.75 and pressed nothing there",
