@@ -82,6 +82,14 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 Commit messages: AI co-author trailers stripped from all local branches on 22 Nov 00:13 (message-only rewrite,
 trees unchanged, base still origin/main e542f90). Backup refs in refs/original until Abin confirms.
 
+## Panel revamp (decided 22 Nov ~01:25)
+
+Research: `.context/ui-research/` (3 mockups). Decision: **A "Paper note", with restraint**. Rough pen only on panel
+edge, mic, step card and primary action; flat cream inputs/Skip/Stop; 96 pt idle mic → 56 pt while guiding; step text
+26–28 pt; replay in card; "on screen: <label>" chip; wide plum "new question" button on done (from C); dev timings
+behind ⋯. Builder: Codex astra (`companion/panel/**`, limited `app.py` edits). Must keep `companion-skip`, first
+AXTextField, and an "Ask"/"ചോദിക്കൂ" button in every state; must not steal focus from Safari.
+
 ## Shared-Mac rule
 
 Abin uses this Mac during the build. Live checks fail when he moves windows; rerun on an idle screen before calling a
