@@ -29,7 +29,17 @@ Pages: Think Music's official [Darshana video from *Hridayam*](https://www.youtu
 
 **Candidate parent tasks:** search for a Malayalam song and find the named result; find play/pause on the current video; go full screen; find the mute toggle. Changing playback speed or quality and enabling available captions need a separate read of those states before claiming support.
 
-**Player follow-up, live and read-only:** the reader now retains both sliders with labels and visible frames, without reading their values. Four watch-page reads took 88.1 ms median / 134.5 ms max and reported 199 below-fold controls. With Settings untouched, its `AXPopUpButton` advertised `AXPress`, reported `AXExpanded=false`, had no `AXMenu` and had zero children. No speed or quality action appeared elsewhere in the observed tree. That confirms a readable gear, not readable submenu items: a human-opened menu still needs an AX check. The current reader does not descend into popup buttons or retain `AXMenuItem`; sibling `AXButton` items would be eligible if YouTube adds them when opened.
+**Closed-menu baseline, live and read-only:** the reader retained both sliders with labels and visible frames, without reading their values. Four watch-page reads took 88.1 ms median / 134.5 ms max and reported 199 below-fold controls. With Settings untouched, its `AXPopUpButton` advertised `AXPress`, reported `AXExpanded=false`, had no `AXMenu` and had zero children. No speed or quality action appeared elsewhere in the closed tree.
+
+**Approved menu-opening follow-up:** AXPress opened Settings on [Darshana](https://www.youtube.com/watch?v=epAFDEJImrU) and [TED's The Power of Vulnerability](https://www.youtube.com/watch?v=iCvmsMzlF7o). Safari exposed the visible entries separately from the gear, even though the gear still reported `AXExpanded=false` and zero children. The reader now keeps `AXMenuItem` and its checkbox/radio variants. On the TED page, it retained all three top-level entries (`Playback speed`, `Quality`, `Subtitles/CC`) and the controls exposed by one more AXPress on each:
+
+| Panel | Live reader controls |
+| --- | --- |
+| Playback speed | `AXButton` presets, including 1.0, 1.25, 1.5, 2.0, and 3.0, plus increase/decrease buttons in 0.05 steps. |
+| Quality | `AXMenuItem` choices including Auto and resolutions from 144p through 1080p. |
+| Subtitles/CC | `AXMenuItem` language choices on TED; Off, English (auto-generated), and Auto-translate on one Darshana load. Malayalam availability was not verified. |
+
+Menus were closed through Settings and the dedicated windows were closed. No setting option, like, subscribe, or comment control was pressed. This verifies AX visibility and submenu navigation, not applying a new setting.
 
 ## KSEB Quick Pay
 
@@ -64,6 +74,8 @@ The production reader now uses a separate projection on `mail.google.com`. It em
 
 - **Inbox, live:** one `AXTable` labeled `Inbox: 50 messages`, plus 13 standard chrome controls. Four reads took 24.3 ms median / 49.1 ms max; below-fold count was 0. The first message row and its links yielded no conversation `AXURL`. No conversation was opened and Reply remains unverified live; a synthetic conversation test exposes it without the header or body.
 - **Compose, live:** the same direct new-compose URL exposed a labeled recipient `AXComboBox`, normalized to `To` from its recipient accessibility name. Four reads retained all five expected controls (To, Subject, Message Body, Attach files, Send), took 29.3 ms median / 141.6 ms max, and reported zero below-fold controls. The dedicated window was closed without entering anything or operating its controls.
+
+- **Sent conversation, live:** opened the [Sent view](https://mail.google.com/mail/u/0/#sent), checked the first row's already-read indicator, and opened only that row with AXPress. The gate returned `Open email` and `Reply`. `Back to Sent Mail` was exposed as `AXButton` and pressed to return to Sent; a repeat confirmed the gate now normalizes it to `Back`. Neither `Reply all` nor `Forward` was visible on the sampled conversation; no message action menu was opened. No subject, recipient, body, or conversation URL was recorded, and no mail actions besides opening the read row and navigating Back were taken.
 
 ## Reader cleanup and QA
 
