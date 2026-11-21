@@ -203,3 +203,9 @@ Case: real baseline "make it faster" on a synthetic player screen fails at 329cc
 Flow: replay at base → developer approves the case → Devin adapter → PR into `devin-case/make-it-faster` (never main) → same replay at the PR head → review card in docs/devin-cases/. Merge stays manual.
 Mode: SIMULATED by default (a real PR with our builder's 93c6dea patch, labelled "[SIMULATED Devin]"); LiveDevin behind `--live`, after checking the current API and credits. No DEVIN_API_KEY yet.
 Builder: web builder (Codex sol), new files in tools/devin_case/. Hindi + Kannada languages: panel builder (Codex astra), offline only.
+
+### Devin case: simulated rehearsal 22 Nov ~03:42
+PR #1 [SIMULATED Devin] https://github.com/arice77/hackathoni-companion/pull/1 (base `devin-case/make-it-faster`, open for review).
+Replay `make-it-faster`: 329cc68 FAIL (clarify, no target, 1 intent call) → PR head edd27ae PASS (Settings pointer, local 1.25×, 0 intent calls). Re-verified independently by the orchestrator.
+Record: docs/devin-cases/make-it-faster-2026-11-22.md. Live run pending: Abin confirms the GitHub repo connection in Devin + credits, then types the live approval himself.
+Also merged: Hindi + Kannada (fa1f7e0, offline-tested), pitch script docs/pitch-script.md (0c7e84c + 21b5dcb), YouTube utterances: zero intent calls in all runs; last run 3/3 pairs pass.
