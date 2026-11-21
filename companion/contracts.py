@@ -25,6 +25,9 @@ class Control:
     frame: Rect
     enabled: bool = True
     identifier: str | None = None  # AXIdentifier when the app provides one
+    # Whether an input holds something (text typed, option chosen, box ticked).
+    # The reader records only this boolean, never the content. None = not an input.
+    filled: bool | None = None
 
 
 @dataclass(frozen=True)
