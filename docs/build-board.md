@@ -68,7 +68,9 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 |---|---|---|
 | Site-pack framework + KSEB Quick Pay pack + `web_site` task; optional units offered, Skip, "Next…" | Codex sol (planner) | merged (f8af958). Orchestrator runs ×2: KSEB 8/8, pizza 11/11 (runs/qa/20261122-003028, -003100); eval 78/78 |
 | Local KSEB Quick Pay copy + KSEB follow-pointer check; flake hardening | Sonnet QA | building |
-| Gmail privacy gate (chrome-only labels, inbox = one 'Inbox: N messages' control), To found in compose; YouTube sliders kept | Codex sol (web) | merged (8b0d1d8). Reply: unit-tested only. YouTube speed menu: not yet probed |
+| Gmail privacy gate (chrome-only labels, inbox = one 'Inbox: N messages' control), To in compose, Reply on a Sent conversation; YouTube sliders + Settings menu items (speed, quality, subtitles) | Codex sol (web) | merged (8b0d1d8, 28ad214) |
+| YouTube site pack (search+play, full screen, pause/mute, Malayalam subtitles, speed) | Codex sol (planner) | building; live walk on real YouTube within limits |
+| Gmail site pack (compose, reply, search, attach) | Codex sol (web) | building; live walk never presses Send |
 
 Commit messages: AI co-author trailers stripped from all local branches on 22 Nov 00:13 (message-only rewrite,
 trees unchanged, base still origin/main e542f90). Backup refs in refs/original until Abin confirms.
