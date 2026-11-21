@@ -1,0 +1,270 @@
+{
+  "recorded_at": "2026-11-21T10:15:43.850416+00:00",
+  "passed": true,
+  "scope": "One stationary Companion Test Pad window on the main display; known Export PDF target; human click",
+  "run_id": "1a3ffaccd5404d38a50d90d3c60eecb2",
+  "reader_passed": true,
+  "reader_controls_count": 15,
+  "reader_walk_seconds": 0.00699224999971193,
+  "reader_checks": [
+    "known buttons found",
+    "valid positive rectangles",
+    "typed input values excluded"
+  ],
+  "pointer_source": "accessibility",
+  "pointer_geometry_passed": true,
+  "accessibility_frame": [
+    402,
+    462,
+    162,
+    36
+  ],
+  "fixture_frame": [
+    403,
+    463,
+    160,
+    34
+  ],
+  "pointer_center": [
+    483,
+    480
+  ],
+  "pointer_center_delta_points": [
+    0.0,
+    0.0
+  ],
+  "visual_alignment_verified": true,
+  "visual_evidence": "User-supplied Screenshot 2026-11-21 at 3.41.47 PM.png inspected: highlight surrounds Export PDF. User also confirmed alignment.",
+  "click_through_flag_enabled": true,
+  "manual_click_receipt": {
+    "clicked": "Export PDF"
+  },
+  "click_receipt_at": "2026-11-21T10:14:27.880969+00:00",
+  "click_seconds_after_pointer_started": 1.334,
+  "click_through_verified": true,
+  "user_confirmed_exact_status": "Export PDF clicked \u2014 test only; no file created",
+  "permission_resolution": "Removed/re-added only the unchanged fixture to refresh a stale code-hash requirement. No separate Python grant.",
+  "utter_dictation_tested": false,
+  "ai_planner_tested": false,
+  "automatic_clicks": false,
+  "limitations": [
+    "Known target only; question not connected to a planner",
+    "Single stationary main-display fixture",
+    "No scrolling, moving-window or multi-monitor check",
+    "No real PDF export or external application task completed"
+  ],
+  "reader_snapshot": {
+    "run_id": "1a3ffaccd5404d38a50d90d3c60eecb2",
+    "recorded_at": "2026-11-21T10:14:26.494611+00:00",
+    "passed": true,
+    "scope": "in.hackathoni.component-fixture",
+    "title": "Companion Test Pad",
+    "walk_seconds": 0.00699224999971193,
+    "checks": [
+      "known buttons found",
+      "valid positive rectangles",
+      "typed input values excluded"
+    ],
+    "controls": [
+      {
+        "role": "AXStaticText",
+        "name": "Companion Test Pad",
+        "frame": [
+          457.0,
+          137.0,
+          136.0,
+          16.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXStaticText",
+        "name": "Test status",
+        "frame": [
+          404.0,
+          576.0,
+          658.0,
+          72.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "Stop pointer",
+        "frame": [
+          816.0,
+          522.0,
+          152.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "2 \u00b7 Show pointer",
+        "frame": [
+          609.0,
+          522.0,
+          197.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "1 \u00b7 Read controls",
+        "frame": [
+          402.0,
+          522.0,
+          197.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "Preview invoice",
+        "frame": [
+          746.0,
+          462.0,
+          182.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "Save draft",
+        "frame": [
+          574.0,
+          462.0,
+          162.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "Export PDF",
+        "frame": [
+          402.0,
+          462.0,
+          162.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXTextField",
+        "name": "Customer name",
+        "frame": [
+          402.0,
+          414.0,
+          512.0,
+          30.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXStaticText",
+        "name": "Practice invoice",
+        "frame": [
+          404.0,
+          375.0,
+          648.0,
+          30.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXButton",
+        "name": "Use question",
+        "frame": [
+          922.0,
+          312.0,
+          144.0,
+          36.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXTextField",
+        "name": "Your question",
+        "frame": [
+          402.0,
+          312.0,
+          512.0,
+          34.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXStaticText",
+        "name": "Your question \u2014 dictate with Utter or type",
+        "frame": [
+          404.0,
+          276.0,
+          648.0,
+          30.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXStaticText",
+        "name": "Local practice window \u2022 no AI calls \u2022 no automatic clicks",
+        "frame": [
+          404.0,
+          224.0,
+          648.0,
+          30.0
+        ],
+        "value": null
+      },
+      {
+        "role": "AXStaticText",
+        "name": "Companion component test",
+        "frame": [
+          404.0,
+          194.0,
+          648.0,
+          30.0
+        ],
+        "value": null
+      }
+    ]
+  },
+  "pointer_snapshot": {
+    "run_id": "1a3ffaccd5404d38a50d90d3c60eecb2",
+    "recorded_at": "2026-11-21T10:14:26.546809+00:00",
+    "started": true,
+    "target": "Export PDF",
+    "frame": [
+      402,
+      462,
+      162,
+      36
+    ],
+    "source": "accessibility",
+    "center": [
+      483,
+      480
+    ],
+    "click_through": true,
+    "independent_geometry_check": {
+      "verified": true,
+      "target_center_inside_fixture_button": true,
+      "center_delta_points": [
+        0.0,
+        0.0
+      ],
+      "fixture_frame": [
+        403,
+        463,
+        160,
+        34
+      ]
+    },
+    "visual_alignment_verified": false,
+    "automatic_clicks": false
+  }
+}

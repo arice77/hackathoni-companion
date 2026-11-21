@@ -1,0 +1,29 @@
+{
+  "name": "Abin — selected sketch style",
+  "selected_on": "2026-11-21",
+  "selection_source": "User screenshot 2026-11-21 at 4.09.46 PM",
+  "ink_name": "Plum",
+  "ink": "#674064",
+  "roughness": 1.9,
+  "playfulness": 35,
+  "font": {
+    "family": "Shantell Sans",
+    "informality_axis": 35,
+    "bounce_axis": 16,
+    "weight_axis": 500,
+    "instruction_size_css_px": 25,
+    "subtitle_size_css_px": 17
+  },
+  "paper": {
+    "fill": "#fff4d8",
+    "stroke": "#d9c8a6",
+    "roughness": 0.65,
+    "shape": "asymmetric polygon"
+  },
+  "outline_stroke_width_css_px": 1.8,
+  "stable_seeds": {
+    "desktop": 31,
+    "browser": 47
+  },
+  "scope": "Approved visual-preview values; not yet applied to the live native overlay"
+}

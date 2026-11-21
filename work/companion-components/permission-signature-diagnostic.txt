@@ -1,0 +1,18 @@
+2026-11-21 15:37:21.976 I  tccd[405:18020] [com.apple.TCC:access] -[TCCDAccessIdentity matchesCodeRequirement:]: SecStaticCodeCheckValidity() static code (0x7a8e8f1200) from in.hackathoni.component-fixture : cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"; status: -67050
+2026-11-21 15:37:21.976 Df tccd[405:18020] [com.apple.TCC:access] Failed to match existing code requirement for subject in.hackathoni.component-fixture and service kTCCServiceAccessibility
+	cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"
+	cdhash H"f85afe0669e25e922c54a271bb5a7e857835c51b"
+2026-11-21 15:37:21.977 I  tccd[405:186a1] [com.apple.TCC:access] -[TCCDAccessIdentity matchesCodeRequirement:]: SecStaticCodeCheckValidity() static code (0x7a8e8f1800) from in.hackathoni.component-fixture : cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"; status: -67050
+2026-11-21 15:37:21.977 Df tccd[405:186a1] [com.apple.TCC:access] Failed to match existing code requirement for subject in.hackathoni.component-fixture and service kTCCServiceAccessibility
+	cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"
+	cdhash H"f85afe0669e25e922c54a271bb5a7e857835c51b"
+2026-11-21 15:37:22.142 I  tccd[405:18020] [com.apple.TCC:access] -[TCCDAccessIdentity matchesCodeRequirement:]: SecStaticCodeCheckValidity() static code (0x7a8e8f1200) from in.hackathoni.component-fixture : cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"; status: -67050
+2026-11-21 15:37:22.142 Df tccd[405:18020] [com.apple.TCC:access] Failed to match existing code requirement for subject in.hackathoni.component-fixture and service kTCCServiceAccessibility
+	cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"
+	cdhash H"f85afe0669e25e922c54a271bb5a7e857835c51b"
+2026-11-21 15:37:22.143 Df tccd[405:186a1] [com.apple.TCC:access] AUTHREQ_SUBJECT: msgID=8024.2, subject=in.hackathoni.component-fixture,
+2026-11-21 15:37:22.143 I  tccd[405:186a1] [com.apple.TCC:access] -[TCCDAccessIdentity matchesCodeRequirement:]: SecStaticCodeCheckValidity() static code (0x7a8e8f1800) from in.hackathoni.component-fixture : cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"; status: -67050
+2026-11-21 15:37:22.143 Df tccd[405:186a1] [com.apple.TCC:access] Failed to match existing code requirement for subject in.hackathoni.component-fixture and service kTCCServiceAccessibility
+	cdhash H"187d0dd4586aa1d81aff4a74ba8f115c51abfcaf"
+	cdhash H"f85afe0669e25e922c54a271bb5a7e857835c51b"
+2026-11-21 15:37:22.143 Df tccd[405:186a1] [com.apple.TCC:access] AUTHREQ_RESULT: msgID=8024.2, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),

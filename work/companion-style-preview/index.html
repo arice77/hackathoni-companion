@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Companion · Sketch style preview</title>
+<style>
+@font-face{font-family:Shantell;src:url('./assets/ShantellSans.ttf') format('truetype');font-weight:300 800;font-display:swap}
+*{box-sizing:border-box}body{margin:0;background:#f4f0e8;color:#302c34;font:14px -apple-system,BlinkMacSystemFont,system-ui,sans-serif}.shell{max-width:1240px;margin:auto;padding:34px 36px 28px}.eyebrow{font-size:11px;letter-spacing:.16em;font-weight:700;color:#857c79;text-transform:uppercase}.head{display:flex;justify-content:space-between;gap:20px;align-items:start}h1{font-family:Shantell,sans-serif;font-variation-settings:'INFM' 75,'BNCE' 14;font-size:40px;line-height:1.2;font-weight:550;margin:13px 0 10px}p{color:#79716f;margin:0;line-height:1.6}.pill{border:1px solid #d8cec3;border-radius:99px;padding:9px 13px;font-size:11px;color:#756a68;white-space:nowrap}.controls{display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin:26px 0 30px;padding:16px 20px;border:1px solid #e1d8cb;border-radius:14px;background:#fffaf2}.swatches{display:flex;gap:6px}.swatch{border:1px solid transparent;background:transparent;border-radius:8px;padding:7px 10px;color:#655e5b;font:inherit;cursor:pointer}.swatch.active{border-color:#d7c7bc;background:#f0e8dc}.swatch i{display:inline-block;width:10px;height:10px;background:var(--c);border-radius:50%;margin-right:6px}label{display:flex;align-items:center;gap:9px;font-size:12px;color:#7c716b}input{width:92px;accent-color:#674464}output{min-width:27px;font-variant-numeric:tabular-nums}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.label{margin-bottom:11px;color:#817570;font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase}.scene{height:450px;position:relative;overflow:hidden;border-radius:17px;box-shadow:0 12px 35px #392b2010}.desktop{background:#22242c;color:#e7e5e9}.chrome{height:40px;display:flex;align-items:center;gap:6px;padding:0 15px;border-bottom:1px solid #ffffff10;background:#ffffff03}.dot{width:8px;height:8px;border-radius:50%;background:#73727a}.dot:first-child{background:#db837a}.dot:nth-child(2){background:#dab77c}.dot:nth-child(3){background:#89b896}.window-title{font-size:10px;color:#95949f;text-align:center;flex:1;padding-right:39px}.content{padding:25px 26px}.invoice-title{font-size:20px;letter-spacing:-.5px;font-weight:600;margin-bottom:5px}.subtle{font-size:11px;color:#92909c}.invoice-head{display:flex;justify-content:space-between;align-items:start}.status-tag{border-radius:5px;color:#b7c9bb;background:#435f4e55;padding:5px 7px;font-size:9px}.fake-table{margin-top:28px;font-size:11px;color:#b2afbc}.tr{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #ffffff0c}.tr.total{color:#eeecf0;font-weight:600;border:0}.actions{display:flex;gap:11px;position:absolute;bottom:42px;left:26px}.target{font:600 12px system-ui;border-radius:7px;padding:12px 18px;border:0;cursor:pointer}.desktop .target{background:#eeebf1;color:#323039}.secondary{border:1px solid #53515d;border-radius:7px;background:transparent;color:#a7a3af;padding:10px 16px;font:12px system-ui;cursor:pointer}.browser{background:#fffdfa;color:#3e3940}.browser .chrome{background:#f4f0eb;border-color:#e5e0d8}.browser .window-title{background:#fffdfa;padding:4px;border-radius:5px;margin:0 45px 0 20px;color:#9d9290}.site-nav{display:flex;justify-content:space-between;font-size:11px;font-weight:650;color:#766371;margin:4px 0 32px}.site-nav span:last-child{font-weight:400;color:#b0a2a7}.web-title{font-size:26px;font-weight:600;line-height:1.15;letter-spacing:-.8px}.web-sub{margin-top:12px;color:#9f9598;font-size:11px;width:220px;line-height:1.6}.web-card{margin-top:20px;display:flex;gap:13px;align-items:center;border:1px solid #ece3dc;border-radius:8px;padding:13px}.web-thumb{width:42px;height:42px;background:#e7d7c4;border-radius:6px;display:grid;place-items:center;color:#a1856a;font-size:22px}.web-card strong{font-size:11px}.web-card small{font-size:10px;display:block;color:#b0a0a2;margin-top:5px}.browser .target{background:#543e51;color:white}.browser .secondary{border-color:#e2d8dc;color:#8f808a}.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}.note-text{font-family:Shantell,sans-serif;fill:var(--ink);font-variation-settings:'INFM' var(--informal),'BNCE' 16,'wght' 500;font-size:25px}.note-sub{font-size:17px}.caption{padding:13px 3px;color:#8a7e78;font-size:12px;line-height:1.6}.foot{display:flex;justify-content:space-between;gap:20px;border-top:1px solid #ded6cb;margin-top:24px;padding-top:17px;color:#9a8c82;font-size:11px;line-height:1.6}.foot a{color:#796175}.live-result{height:19px;margin-top:9px;font-size:11px;color:#8e746b}.theme-note{font-family:Shantell,sans-serif;font-size:16px;font-variation-settings:'INFM' 80,'BNCE' 15;color:#8a6d72;transform:rotate(-2deg)}@media(max-width:850px){.grid{grid-template-columns:1fr}.shell{padding:24px 18px}h1{font-size:32px}.controls{gap:13px}.head .pill{display:none}.foot{flex-direction:column}}
+</style>
+<body>
+<main class="shell">
+  <div class="head"><div><div class="eyebrow">Companion / a visual experiment</div><h1>A little help, drawn by hand.</h1><p>The same playful pointer over a desktop app and a website.</p></div><span class="pill">Local style preview · simulated screens</span></div>
+  <div class="controls" aria-label="Style controls">
+    <div class="swatches"><button class="swatch active" data-ink="#674064" style="--c:#674064"><i></i>Plum</button><button class="swatch" data-ink="#28665b" style="--c:#28665b"><i></i>Forest</button><button class="swatch" data-ink="#b55732" style="--c:#b55732"><i></i>Terracotta</button></div>
+    <label>Roughness <input id="roughness" type="range" min="0.4" max="2.6" value="1.9" step="0.1"><output for="roughness" id="rough-value">1.9</output></label>
+    <label>Playfulness <input id="informality" type="range" min="0" max="100" value="35"><output for="informality" id="informal-value">35</output></label>
+  </div>
+  <div class="grid">
+    <section><div class="label">01 / Desktop application</div><div class="scene desktop" id="desktop-scene">
+      <div class="chrome"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span class="window-title">Invoice Studio</span></div>
+      <div class="content"><div class="invoice-head"><div><div class="invoice-title">Invoice #014</div><div class="subtle">River Studio · November 2026</div></div><span class="status-tag">Ready to send</span></div>
+      <div class="fake-table"><div class="tr"><span>Brand illustrations</span><span>₹12,000</span></div><div class="tr"><span>Motion study</span><span>₹4,000</span></div><div class="tr total"><span>Total</span><span>₹16,000</span></div></div></div>
+      <div class="actions"><button class="target" id="export-target">Export PDF</button><button class="secondary">Save draft</button></div><svg class="overlay" aria-hidden="true"></svg>
+    </div><div class="caption">An imperfect outline, a slightly crooked cream note, and real handwriting.</div></section>
+    <section><div class="label">02 / Browser website</div><div class="scene browser" id="browser-scene">
+      <div class="chrome"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span class="window-title">studio.example / project</span></div>
+      <div class="content"><div class="site-nav"><span>little studio.</span><span>Your projects / Settings</span></div><div class="web-title">Made something?<br>Let it out into the world.</div><div class="web-sub">Your project is ready. A small nudge can help with the last step.</div><div class="web-card"><div class="web-thumb">✳</div><div><strong>Sunday sketches</strong><small>Portfolio · Draft</small></div></div></div>
+      <div class="actions"><button class="target" id="publish-target">Publish project</button><button class="secondary">Preview</button></div><svg class="overlay" aria-hidden="true"></svg>
+    </div><div class="caption">The same ink, paper, font and sketch renderer, on a light background.</div></section>
+  </div>
+  <div class="live-result" id="result" role="status"></div>
+  <div class="foot"><span>Real <a href="https://roughjs.com/">Rough.js</a> shapes + <a href="https://shantellsans.com/">Shantell Sans</a>.<br>Mock interfaces for visual comparison; no screen-reading or AI calls here.</span><span class="theme-note">a little wonky, on purpose.</span></div>
+</main>
+<script src="assets/rough.js"></script>
+<script>
+let ink='#674064';
+const settingsKey='companion-sketch-style-v1';
+const colorNames={'#674064':'Plum','#28665b':'Forest','#b55732':'Terracotta'};
+function currentStyle(){return {ink,ink_name:colorNames[ink],roughness:Number(document.getElementById('roughness').value),playfulness:Number(document.getElementById('informality').value)}}
+function persistStyle(){
+ const settings=currentStyle();
+ try{localStorage.setItem(settingsKey,JSON.stringify(settings))}catch(error){/* File defaults still work when browser storage is unavailable. */}
+ const hash=new URLSearchParams({ink:settings.ink_name.toLowerCase(),roughness:String(settings.roughness),playfulness:String(settings.playfulness)});
+ history.replaceState(null,'','#'+hash.toString());
+}
+function restoreStyle(){
+ let saved=null;
+ try{saved=JSON.parse(localStorage.getItem(settingsKey))}catch(error){}
+ const hash=new URLSearchParams(location.hash.slice(1));
+ if(hash.has('ink')){
+   const match=Object.entries(colorNames).find(([hex,name])=>name.toLowerCase()===hash.get('ink'));
+   saved={ink:match?match[0]:'#674064',roughness:Number(hash.get('roughness')),playfulness:Number(hash.get('playfulness'))};
+ }
+ if(saved && Object.hasOwn(colorNames,saved.ink) && Number.isFinite(saved.roughness) && saved.roughness>=0.4 && saved.roughness<=2.6 && Number.isInteger(saved.playfulness) && saved.playfulness>=0 && saved.playfulness<=100){
+   ink=saved.ink;
+   document.getElementById('roughness').value=String(saved.roughness);
+   document.getElementById('informality').value=String(saved.playfulness);
+ }
+ document.getElementById('rough-value').value=document.getElementById('roughness').value;
+ document.getElementById('informal-value').value=document.getElementById('informality').value;
+ document.querySelectorAll('.swatch').forEach(b=>b.classList.toggle('active',b.dataset.ink===ink));
+}
+restoreStyle();
+
+const ns='http://www.w3.org/2000/svg';
+function text(svg,x,y,words,klass){const t=document.createElementNS(ns,'text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('class',klass);t.textContent=words;svg.append(t)}
+function annotate(sceneId,targetId,title,subtitle,seed){
+ const scene=document.getElementById(sceneId),svg=scene.querySelector('svg'),button=document.getElementById(targetId);svg.replaceChildren();
+ const base=scene.getBoundingClientRect(),rect=button.getBoundingClientRect();const x=rect.left-base.left,y=rect.top-base.top,w=rect.width,h=rect.height;
+ svg.setAttribute('viewBox',`0 0 ${base.width} ${base.height}`);svg.style.setProperty('--ink',ink);svg.style.setProperty('--informal',document.getElementById('informality').value);
+ const r=rough.svg(svg),roughness=Number(document.getElementById('roughness').value),style={stroke:ink,strokeWidth:1.8,roughness,seed};
+ svg.append(r.rectangle(x-8,y-7,w+16,h+14,{...style,fill:'none'}));
+ const nw=Math.min(286,base.width-82),nh=91,nx=Math.min(base.width-nw-22,x+Math.min(w+14,130)),ny=y-135;
+ const note=r.polygon([[nx+5,ny+4],[nx+nw-5,ny-3],[nx+nw+1,ny+nh-6],[nx-3,ny+nh+2]],{stroke:'#d9c8a6',strokeWidth:.8,fill:'#fff4d8',fillStyle:'solid',roughness:.65,seed:seed+1});note.style.filter='drop-shadow(0 4px 5px #0000001d)';svg.append(note);
+ text(svg,nx+18,ny+37,title,'note-text');text(svg,nx+18,ny+65,subtitle,'note-text note-sub');
+ const ax=nx+23,ay=ny+nh+4,ex=x+w*.8,ey=y-12;
+ svg.append(r.path(`M ${ax} ${ay} Q ${ax-30} ${ay+23} ${ex} ${ey}`,{...style,seed:seed+2}));
+ svg.append(r.line(ex-2,ey-9,ex,ey,{...style,seed:seed+3}));svg.append(r.line(ex+9,ey-3,ex,ey,{...style,seed:seed+4}));
+}
+function draw(){persistStyle();annotate('desktop-scene','export-target','Click Export PDF','your invoice, ready to go.',31);annotate('browser-scene','publish-target','Click Publish project','time to share your work.',47);window.previewReady=true;}
+document.querySelectorAll('.swatch').forEach(b=>b.addEventListener('click',()=>{ink=b.dataset.ink;document.querySelectorAll('.swatch').forEach(x=>x.classList.toggle('active',x===b));draw()}));
+document.getElementById('roughness').addEventListener('input',e=>{document.getElementById('rough-value').value=e.target.value;draw()});
+document.getElementById('informality').addEventListener('input',e=>{document.getElementById('informal-value').value=e.target.value;draw()});
+document.querySelectorAll('.target').forEach(b=>b.addEventListener('click',()=>document.getElementById('result').textContent=`${b.textContent} received the click through the annotation. Preview only.`));
+document.fonts.ready.then(draw);window.addEventListener('resize',draw);
+window.addEventListener('hashchange',()=>{restoreStyle();draw()});
+</script>
+</body></html>
