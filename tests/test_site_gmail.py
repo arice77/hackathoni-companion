@@ -27,11 +27,11 @@ def make_screen(*steps, filled=(), empty=(), extra=()):
 
 class GmailSiteTests(unittest.TestCase):
     def setUp(self):
-        self.guide = PACK.new_guide()
+        self.guide = PACK.start_guidance(COMPOSE_QUESTION)
         self.post = self.enterContext(patch.object(sarvam, "_post", side_effect=AssertionError("Unexpected provider call")))
 
-    def point(self, question, snap, step, revision=0):
-        decision = self.guide.decide(question, snap, revision=revision)
+    def point(self, snap, step):
+        decision = self.guide.decide(snap)
         self.assertEqual(decision.kind, "point")
         self.assertEqual(snap.control(decision.control_id).label, step.label)
         self.assertEqual(validate(decision, snap), (True, "ok"))
@@ -55,60 +55,78 @@ class GmailSiteTests(unittest.TestCase):
         for utterances, step, snap in cases:
             for question in utterances:
                 with self.subTest(question=question):
-                    self.guide = PACK.new_guide()
-                    self.point(question, snap, step)
+                    self.guide = PACK.start_guidance(question)
+                    self.point(snap, step)
         self.post.assert_not_called()
 
-    def test_compose_walk_without_reading_values(self):
-        self.point(COMPOSE_QUESTION, make_screen(COMPOSE), COMPOSE)
-        editor = make_screen(TO, SUBJECT, BODY, ATTACH, SEND)
-        decision = self.point(COMPOSE_QUESTION, editor, TO)
+    def test_compose_walk_uses_filled_flags_and_skips_optional_attachment(self):
+        self.point(make_screen(COMPOSE), COMPOSE)
+        steps = (TO, SUBJECT, BODY, ATTACH, SEND)
+        decision = self.point(make_screen(*steps, empty=("To", "Subject", "Message Body")), TO)
         self.assertIn("son’s email", decision.instruction_en)
-        self.assertIn("say ‘Next’", decision.instruction_en)
-        self.point("skip", editor, TO, revision=1)
-        self.point("അടുത്തത്", editor, SUBJECT, revision=2)
-        self.point("അടുത്തത്", editor, SUBJECT, revision=2)
-        self.point("next", editor, BODY, revision=3)
-        decision = self.point("next", editor, ATTACH, revision=4)
+        self.assertNotIn("say ‘Next’", decision.instruction_en)
+        self.point(make_screen(*steps, filled=("To",), empty=("Subject", "Message Body")), SUBJECT)
+        # Gmail can collapse the To input after the user focuses the subject or body.
+        self.point(make_screen(*steps[1:], filled=("Subject",), empty=("Message Body",)), BODY)
+        ready = make_screen(*steps[1:], filled=("Subject", "Message Body"))
+        decision = self.point(ready, ATTACH)
         self.assertIn("Open", decision.instruction_en)
         self.assertIn("skip", decision.instruction_en)
-        decision = self.point("skip", editor, SEND, revision=5)
+        self.assertTrue(self.guide.skip_current())
+        decision = self.point(ready, SEND)
         self.assertIn("only when you’re ready", decision.instruction_en)
-        closed = self.guide.decide("skip", make_screen(COMPOSE), revision=5)
+        closed = self.guide.decide(make_screen(COMPOSE))
         self.assertEqual((closed.kind, closed.control_id), ("clarify", None))
         self.assertIn("can’t confirm", closed.instruction_en)
 
+    def test_next_acknowledges_only_one_unknown_field_per_call(self):
+        editor = make_screen(TO, SUBJECT, BODY, ATTACH, SEND)
+        decision = self.point(editor, TO)
+        self.assertIn("say ‘Next’", decision.instruction_en)
+        self.assertFalse(self.guide.skip_current("skip"))
+        self.assertTrue(self.guide.skip_current("അടുത്തത് / Next"))
+        self.point(editor, SUBJECT)
+        self.point(editor, SUBJECT)
+        self.assertTrue(self.guide.skip_current("Next"))
+        self.point(editor, BODY)
+        self.assertTrue(self.guide.skip_current("Next"))
+        self.point(editor, ATTACH)
+        self.assertTrue(self.guide.skip_current("Next"))
+        self.point(editor, SEND)
+
     def test_visible_empty_field_blocks_send_and_acknowledgement(self):
-        editor = make_screen(TO, SUBJECT, BODY, ATTACH, SEND, filled=("To", "Subject"), empty=("Message Body",))
-        self.point(COMPOSE_QUESTION, editor, BODY)
-        self.point("done", editor, BODY, revision=1)
-        ready = make_screen(TO, SUBJECT, BODY, ATTACH, SEND, filled=("To", "Subject", "Message Body"))
-        self.point("done", ready, ATTACH, revision=1)
-        self.assertTrue(self.guide.skip_optional())
-        self.point("done", ready, SEND, revision=1)
+        editor = make_screen(TO, SUBJECT, BODY, ATTACH, SEND, filled=("To", "Subject"))
+        self.point(editor, BODY)
+        self.assertTrue(self.guide.skip_current("Next"))
+        empty_body = make_screen(TO, SUBJECT, BODY, ATTACH, SEND, filled=("To", "Subject"), empty=("Message Body",))
+        self.point(empty_body, BODY)
+        self.assertFalse(self.guide.skip_current("Next"))
+        self.point(empty_body, BODY)
 
     def test_confirmed_to_field_can_collapse_after_focus_moves_to_subject(self):
-        self.point(COMPOSE_QUESTION, make_screen(TO, SUBJECT, BODY, SEND), TO)
+        self.point(make_screen(TO, SUBJECT, BODY, SEND), TO)
         collapsed = make_screen(SUBJECT, BODY, SEND)
-        self.point("next", collapsed, SUBJECT, revision=1)
-        self.point("next", collapsed, BODY, revision=2)
-        self.point("next", collapsed, SEND, revision=3)
-        self.point("next", make_screen(TO, SUBJECT, BODY, SEND, empty=("To",)), TO, revision=3)
+        for step in (SUBJECT, BODY, SEND):
+            self.assertTrue(self.guide.skip_current("Next"))
+            self.point(collapsed, step)
+        self.point(make_screen(TO, SUBJECT, BODY, SEND, empty=("To",)), TO)
 
     def test_reply_never_opens_a_row_or_uses_a_new_draft(self):
-        question = "How do I reply to this email?"
-        self.assertEqual(self.guide.decide(question, make_screen(COMPOSE)).kind, "clarify")
-        self.point(question, make_screen(REPLY, extra=(OPEN_EMAIL,)), REPLY)
+        self.guide = PACK.start_guidance("How do I reply to this email?")
+        self.assertEqual(self.guide.decide(make_screen(COMPOSE)).kind, "clarify")
+        self.point(make_screen(REPLY, extra=(OPEN_EMAIL,)), REPLY)
         editor = make_screen(BODY, SEND, extra=(OPEN_EMAIL,))
-        self.point(question, editor, BODY)
-        self.point("done", editor, SEND, revision=1)
+        self.point(editor, BODY)
+        self.assertTrue(self.guide.skip_current("done"))
+        self.point(editor, SEND)
         new_draft = make_screen(TO, SUBJECT, BODY, SEND, extra=(OPEN_EMAIL,))
-        self.assertEqual(self.guide.decide("done", new_draft, revision=1).kind, "clarify")
+        self.assertEqual(self.guide.decide(new_draft).kind, "clarify")
 
     def test_search_resolves_editable_combo_not_search_button(self):
+        self.guide = PACK.start_guidance("Mail engane search cheyyam")
         field = replace(SEARCH, role="AXComboBox")
         button = Control("Search", "AXButton", "Search mail", (10, 70, 80, 20))
-        decision = self.point("Mail engane search cheyyam", make_screen(field, extra=(button,)), SEARCH)
+        decision = self.point(make_screen(field, extra=(button,)), SEARCH)
         self.assertIn("press Enter", decision.instruction_en)
 
     def test_only_canonical_chrome_and_masked_question(self):
@@ -125,7 +143,7 @@ class GmailSiteTests(unittest.TestCase):
         self.assertEqual(sanitized.count("[redacted]"), 4)
         for token in ("example.invalid", "012-3456", "2026", "൧൨൩"):
             self.assertNotIn(token, sanitized)
-        self.assertEqual(self.guide.decide(question, make_screen(COMPOSE)).kind, "unsupported")
+        self.assertEqual(PACK.start_guidance(question).decide(make_screen(COMPOSE)).kind, "unsupported")
         self.post.assert_not_called()
 
     def test_registered_planner_dispatches_gmail_without_provider_fallback(self):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from threading import Lock
 
 from ..contracts import Decision, Snapshot
 from . import PrivacyProfile, SiteGoal, SitePack, SiteStep, _phrase
@@ -62,12 +63,9 @@ class GmailPack(SitePack):
     def is_practice(self, snap: Snapshot) -> bool:
         return False
 
-    def new_guide(self) -> GmailGuide:
-        return GmailGuide()
-
-    def start_guidance(self, question: str) -> _BoundGmailGuide:
+    def start_guidance(self, question: str) -> GmailGuide:
         goal = self.goal_for(self.privacy.filter_question(question))
-        return _BoundGmailGuide(goal.phrases[0] if goal else "")
+        return GmailGuide(goal.name if goal else None)
 
 
 PACK = GmailPack(
@@ -99,16 +97,18 @@ PACK = GmailPack(
 )
 
 _NEXT = {"next", "done", "അടുത്തത്", "കഴിഞ്ഞു", "adutha", "aduthathu"}
-_SKIP = {"skip", "ഒഴിവാക്കൂ", "വേണ്ട", "venda"}
+_SKIP = {"skip", "no", "ഒഴിവാക്കൂ", "വേണ്ട", "venda"}
 
 
 class GmailGuide:
     """One local session. Unknown field state advances only on a new, explicit acknowledgement."""
 
-    def __init__(self) -> None:
-        self._goal: str | None = None
-        self._revision: int | None = None
+    def __init__(self, goal: str | None) -> None:
+        self._goal = goal
+        self._lock = Lock()
         self._current: SiteStep | None = None
+        self._acknowledgement: SiteStep | None = None
+        self._pending: SiteStep | None = None
         self._confirmed: set[SiteStep] = set()
         self._saw_editor = False
 
@@ -123,6 +123,7 @@ class GmailGuide:
             return self._note(snap, "ആ ബോക്സ് ഇപ്പോൾ കാണുന്നില്ല. അത് കാണുന്ന പേജ് തുറക്കൂ.",
                               "I can’t see that control. Open the screen where it appears.")
         self._current = step
+        self._acknowledgement = step if acknowledge and target.filled is None else None
         decision = step.point(snap, target)
         if optional:
             return replace(decision,
@@ -133,35 +134,29 @@ class GmailGuide:
                            instruction_en=decision.instruction_en + " When you’re done, say ‘Next’.")
         return decision
 
-    def skip_optional(self) -> bool:
-        if self._goal == "compose" and self._current == ATTACH:
-            self._confirmed.add(ATTACH)
-            return True
-        return False
+    def skip_current(self, question: str = "skip") -> bool:
+        """Queue one Next or Skip for the control currently being explained."""
+        utterances = {_phrase(part) for part in question.split(" / ", 1)}
+        next_requested = bool(utterances & _NEXT)
+        with self._lock:
+            if self._goal == "compose" and self._current == ATTACH and (next_requested or utterances & _SKIP):
+                self._pending = ATTACH
+                return True
+            if next_requested and self._acknowledgement is not None:
+                self._pending = self._acknowledgement
+                return True
+            return False
 
-    def decide(self, question: str, snap: Snapshot, *, revision: int = 0) -> Decision:
+    def decide(self, snap: Snapshot) -> Decision:
+        with self._lock:
+            pending, self._pending = self._pending, None
+            self._current = self._acknowledgement = None
+            return self._decide(snap, pending)
+
+    def _decide(self, snap: Snapshot, pending: SiteStep | None) -> Decision:
         if not PACK.matches(snap):
             return self._note(snap, "Gmail തുറന്നിട്ട് വീണ്ടും ചോദിക്കൂ.", "Open Gmail and ask again.", unsupported=True)
         snap = PACK.privacy.filter_snapshot(snap)
-        question = PACK.privacy.filter_question(question)
-        utterances = {_phrase(part) for part in question.split(" / ", 1)}
-        acknowledge = bool(utterances & _NEXT)
-        advance = acknowledge or bool(utterances & _SKIP)
-        if revision != self._revision and advance:
-            pending = self._current
-            if not self.skip_optional() and acknowledge and pending in {TO, SUBJECT, BODY}:
-                target = pending.target(snap)
-                if target is None or target.filled is None:
-                    self._confirmed.add(pending)
-        if not advance:
-            goal = PACK.goal_for(question)
-            if goal is None:
-                return self._note(snap, "പുതിയ ഇമെയിൽ എഴുതാനോ, മറുപടി നൽകാനോ, മെയിൽ തിരയാനോ, ഫോട്ടോ ചേർക്കാനോ സഹായിക്കാം.",
-                                  "I can help write, reply, search for mail, or attach a photo.", unsupported=True)
-            if self._goal != goal.name or revision != self._revision:
-                self._goal, self._current, self._saw_editor = goal.name, None, False
-                self._confirmed.clear()
-        self._revision = revision
         if self._goal == "search":
             candidates = [replace(SEARCH, role=role) for role in SEARCH_ROLES if replace(SEARCH, role=role).target(snap)]
             if len(candidates) == 1:
@@ -171,13 +166,15 @@ class GmailGuide:
         if self._goal == "attach":
             return self._point(snap, ATTACH)
         if self._goal not in {"compose", "reply"}:
-            return self._note(snap, "എന്ത് ചെയ്യാനാണ് സഹായം വേണ്ടത്?", "What would you like help with?")
+            return self._note(snap, "പുതിയ ഇമെയിൽ എഴുതാനോ, മറുപടി നൽകാനോ, മെയിൽ തിരയാനോ, ഫോട്ടോ ചേർക്കാനോ സഹായിക്കാം.",
+                              "I can help write, reply, search for mail, or attach a photo.", unsupported=True)
         if self._goal == "reply" and not any(control.role == "AXStaticText" and control.label == "Open email"
                                              for control in snap.controls):
             return self._note(snap, "മറുപടി അയയ്ക്കേണ്ട ഇമെയിൽ നിങ്ങൾ തന്നെ തുറന്നിട്ട് ചോദിക്കൂ.",
                               "Open the email you want to reply to, then ask again.")
         editor = any(step.target(snap) is not None for step in (TO, SUBJECT, BODY, SEND))
         if not editor:
+            self._confirmed.clear()
             if self._saw_editor:
                 return self._note(snap, "എഴുതിയ ഇമെയിൽ ഇപ്പോൾ കാണുന്നില്ല. അത് അയച്ചോ എന്ന് എനിക്ക് ഉറപ്പിക്കാൻ കഴിയില്ല.",
                                   "The draft is no longer visible. I can’t confirm whether it was sent.")
@@ -186,21 +183,19 @@ class GmailGuide:
         if self._goal == "reply" and (TO.target(snap) or SUBJECT.target(snap)):
             return self._note(snap, "ഇത് പുതിയ ഇമെയിൽ എഴുതുന്ന ബോക്സാണ്. മറുപടി നൽകേണ്ട മെയിലിലെ ‘Reply’ തുറക്കൂ.",
                               "This is a new email draft. Open ‘Reply’ on the email you want to answer.")
-        for step in (TO, SUBJECT, BODY) if self._goal == "compose" else (BODY,):
+        fields = (TO, SUBJECT, BODY) if self._goal == "compose" else (BODY,)
+        for step in fields:
             target = step.target(snap)
             filled = target.filled if target is not None else None
-            if filled is True or (filled is None and step in self._confirmed):
-                continue
-            return self._point(snap, step, acknowledge=True)
+            if filled is False:
+                self._confirmed.discard(step)
+            elif filled is True or step == pending:
+                self._confirmed.add(step)
+        if pending == ATTACH:
+            self._confirmed.add(ATTACH)
+        for step in fields:
+            if step not in self._confirmed:
+                return self._point(snap, step, acknowledge=True)
         if self._goal == "compose" and ATTACH not in self._confirmed and ATTACH.target(snap) is not None:
             return self._point(snap, ATTACH, optional=True)
         return self._point(snap, SEND)
-
-
-class _BoundGmailGuide:
-    def __init__(self, public_question: str) -> None:
-        self._question = public_question
-        self._guide = GmailGuide()
-
-    def decide(self, snap: Snapshot) -> Decision:
-        return self._guide.decide(self._question, snap)

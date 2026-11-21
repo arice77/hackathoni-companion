@@ -9,9 +9,11 @@ INBOX = "https://mail.google.com/mail/u/0/#inbox"
 
 
 class GmailPrivacyTests(unittest.TestCase):
-    def collect(self, nodes, url=INBOX):
+    def collect(self, nodes, url=INBOX, *, value_fields=()):
         def get(element, attribute):
-            self.assertNotIn(attribute, {"AXValue", "AXIdentifier", "AXDOMIdentifier"})
+            self.assertNotIn(attribute, {"AXIdentifier", "AXDOMIdentifier"})
+            if attribute == "AXValue":
+                self.assertIn(element, value_fields)
             return nodes[element].get(attribute)
 
         with patch.object(reader, "_frame", side_effect=lambda el, get: nodes[el].get("frame", VIEWPORT)):
@@ -53,18 +55,49 @@ class GmailPrivacyTests(unittest.TestCase):
         self.assertNotIn("Latha", repr(controls))
         self.assertNotIn("appointment", repr(controls))
 
-    def test_compose_keeps_to_label_and_never_reads_input_values(self):
+    def test_compose_exports_only_occupancy_of_allowlisted_fields(self):
         nodes = {
-            "page": {"AXRole": "AXWebArea", "AXChildren": ["to", "subject", "body", "send"]},
+            "page": {"AXRole": "AXWebArea",
+                     "AXChildren": ["to", "subject", "body", "cc", "unlabelled", "password", "send"]},
             "to": {"AXRole": "AXComboBox", "AXTitleUIElement": "to-label", "AXValue": "meenakshi@example.test"},
             "to-label": {"AXRole": "AXStaticText", "AXLabel": "To recipients"},
             "subject": {"AXRole": "AXTextField", "AXTitle": "Subject", "AXValue": "Personal tax records"},
             "body": {"AXRole": "AXTextArea", "AXTitle": "Message Body", "AXValue": "My report is attached."},
+            "cc": {"AXRole": "AXTextField", "AXTitle": "Cc", "AXValue": " \t\n"},
+            "unlabelled": {"AXRole": "AXTextArea", "AXValue": "Unrelated draft"},
+            "password": {"AXRole": "AXTextField", "AXSubrole": "AXSecureTextField", "AXTitle": "Subject",
+                         "AXValue": "Private password"},
             "send": {"AXRole": "AXButton", "AXTitle": "Send \u200e(⌘Enter)\u200e"},
         }
-        controls = self.collect(nodes, INBOX + "?compose=new")
-        self.assertEqual([control.label for control in controls], ["To", "Subject", "Message Body", "Send"])
-        self.assertTrue(all(control.filled is None and control.identifier is None for control in controls))
+        controls = self.collect(nodes, INBOX + "?compose=new", value_fields={"to", "subject", "body", "cc"})
+        self.assertEqual([(control.label, control.filled) for control in controls],
+                         [("To", True), ("Subject", True), ("Message Body", True), ("Cc", False), ("Send", None)])
+        self.assertTrue(all(control.identifier is None for control in controls))
+        for text in ("meenakshi@example.test", "Personal tax records", "My report is attached.",
+                     "Unrelated draft", "Private password"):
+            self.assertNotIn(text, repr(controls))
+
+    def test_recipient_chip_counts_without_exposing_address_or_reading_suggestions(self):
+        nodes = {
+            "page": {"AXRole": "AXWebArea", "AXChildren": ["row"]},
+            "row": {"AXRole": "AXGroup", "AXChildren": ["to", "suggestions"], "frame": (40, 50, 400, 26)},
+            "to": {"AXRole": "AXComboBox", "AXTitle": "To", "AXValue": "", "AXParent": "row",
+                   "frame": (90, 50, 210, 23)},
+            "chip": {"AXRole": "AXToken", "AXTitle": "Meenakshi <meenakshi@example.test>"},
+            "suggestions": {"AXRole": "AXListBox", "AXChildren": ["suggested"]},
+            "suggested": {"AXRole": "AXToken", "AXTitle": "Suggested Person"},
+        }
+        self.assertFalse(self.collect(nodes, value_fields={"to"})[0].filled)
+        nodes["to"]["AXChildren"] = ["chip"]
+        with_chip = self.collect(nodes, value_fields={"to"})
+        self.assertTrue(with_chip[0].filled)
+        self.assertNotIn("meenakshi@example.test", repr(with_chip))
+        del nodes["to"]["AXChildren"]
+        nodes["row"]["AXChildren"].append("chip")
+        nodes["chip"] = {"AXRole": "AXButton", "AXTitle": "Remove meenakshi@example.test"}
+        with_remove_button = self.collect(nodes, value_fields={"to"})
+        self.assertTrue(with_remove_button[0].filled)
+        self.assertNotIn("meenakshi@example.test", repr(with_remove_button))
 
     def test_snapshot_uses_private_projection_for_gmail_host(self):
         with (patch.object(reader, "is_trusted", return_value=True),
