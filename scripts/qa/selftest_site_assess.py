@@ -345,4 +345,10 @@ assert d("youtube", "AXMenuItem", "Malayalam", "", o)[0] == "press" and d("youtu
 o.player_controls = False
 assert d("youtube", "AXButton", "Mute (m)", "", o)[0] == "refuse"  # off unless the player-controls walk asked for it
 
+# phase bookkeeping never raises when the follow-up list is empty (Gmail: 'Next' acknowledgements start phases 2, 3, ...)
+for phase in range(1, 8):
+    assert drv.tidy_kind(phase, []) == "" and drv.next_ask(phase, []) is None, phase
+two = [("mute", ""), ("speed it up", "speed")]
+assert drv.next_ask(1, two) == "mute" and drv.next_ask(2, two) == "speed it up" and drv.next_ask(3, two) is None
+assert drv.tidy_kind(1, two) == "" and drv.tidy_kind(2, two) == "" and drv.tidy_kind(3, two) == "speed" and drv.tidy_kind(4, two) == ""
 print("site self-test OK")

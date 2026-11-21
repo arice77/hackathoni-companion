@@ -438,6 +438,17 @@ def final_tidy(bounds, speed_touched: bool = False) -> dict:
 
 
 
+def tidy_kind(phase: int, asks) -> str:
+    """The tidy-up kind for the question that just ended (phase 2 is the first follow-up), or '' (never raises: Gmail has no
+    follow-up list but its 'Next' acknowledgements still start new phases)."""
+    return asks[phase - 2][1] if 2 <= phase <= len(asks) + 1 else ""
+
+
+def next_ask(phase: int, asks):
+    """The follow-up question to ask once `phase` ends, or None when there is none."""
+    return asks[phase - 1][0] if 0 <= phase - 1 < len(asks) else None
+
+
 # ---- main --------------------------------------------------------------------------------------------
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -504,9 +515,9 @@ def main(argv=None) -> int:
         ok_reasons = {"complete", "reached-target"} | ({"unsupported"} if a.player_controls else set())
         if fatal and not (a.player_controls and reason == "unsupported") or reason not in ok_reasons:
             return True
-        if phase >= 2 and asks[phase - 2][1]:
-            emit({"event": "tidy", "after": asks[phase - 2][0][:40], **tidy(asks[phase - 2][1])})
-        if phase - 1 >= len(asks):
+        if (kind := tidy_kind(phase, asks)):
+            emit({"event": "tidy", "after": asks[phase - 2][0][:40], **tidy(kind)})
+        if next_ask(phase, asks) is None:
             return True
         if phase == 1:
             pid, window = our_window(bounds)
@@ -522,7 +533,7 @@ def main(argv=None) -> int:
         if a.companion_pid is None:
             phase_end[phase + 1] = "no --companion-pid to ask the next question"
             return True
-        result = ask_companion(a.companion_pid, asks[phase - 1][0])
+        result = ask_companion(a.companion_pid, next_ask(phase, asks))
         emit({"event": "ask", "result": result, "n": phase})
         if result != "asked":
             phase_end[phase + 1] = result
