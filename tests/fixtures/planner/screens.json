@@ -511,5 +511,183 @@
       {"id": "c01", "role": "AXButton", "label": "Upload PDF", "filled": null, "enabled": true, "identifier": null},
       {"id": "c02", "role": "AXButton", "label": "Download CSV", "filled": null, "enabled": true, "identifier": null}
     ]
+  },
+  "kseb-home": {
+    "origin": "kseb-probe-replay",
+    "host": "wss.kseb.in",
+    "controls": [
+      {
+        "id": "quick",
+        "role": "AXLink",
+        "label": "Quick Pay",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "other",
+        "role": "AXLink",
+        "label": "Register Complaint/Service",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      }
+    ]
+  },
+  "kseb-form": {
+    "origin": "kseb-probe-replay",
+    "host": "wss.kseb.in",
+    "controls": [
+      {
+        "id": "title",
+        "role": "AXHeading",
+        "label": "Quick Pay",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "consumer-heading",
+        "role": "AXHeading",
+        "label": "Consumer No",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "consumer",
+        "role": "AXTextField",
+        "label": "13 digit Consumer number",
+        "filled": false,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "mobile-heading",
+        "role": "AXHeading",
+        "label": "Registered Mobile Number",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "mobile",
+        "role": "AXTextField",
+        "label": "Enter Mobile Number",
+        "filled": false,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "verification-heading",
+        "role": "AXHeading",
+        "label": "Enter the text in image",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "verification",
+        "role": "AXTextField",
+        "label": "Enter text shown below",
+        "filled": false,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "refresh",
+        "role": "AXLink",
+        "label": "Refresh",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "submit",
+        "role": "AXButton",
+        "label": "Submit to see the bill",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      }
+    ]
+  },
+  "kseb-filled": {
+    "origin": "kseb-probe-replay",
+    "host": "wss.kseb.in",
+    "controls": [
+      {
+        "id": "title",
+        "role": "AXHeading",
+        "label": "Quick Pay",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "consumer-heading",
+        "role": "AXHeading",
+        "label": "Consumer No",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "consumer",
+        "role": "AXTextField",
+        "label": "13 digit Consumer number",
+        "filled": true,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "mobile-heading",
+        "role": "AXHeading",
+        "label": "Registered Mobile Number",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "mobile",
+        "role": "AXTextField",
+        "label": "Enter Mobile Number",
+        "filled": true,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "verification-heading",
+        "role": "AXHeading",
+        "label": "Enter the text in image",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "verification",
+        "role": "AXTextField",
+        "label": "Enter text shown below",
+        "filled": true,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "refresh",
+        "role": "AXLink",
+        "label": "Refresh",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      },
+      {
+        "id": "submit",
+        "role": "AXButton",
+        "label": "Submit to see the bill",
+        "filled": null,
+        "enabled": true,
+        "identifier": null
+      }
+    ]
   }
 }

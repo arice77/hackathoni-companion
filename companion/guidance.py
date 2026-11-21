@@ -9,6 +9,7 @@ from dataclasses import dataclass, field, replace
 from hashlib import sha256
 
 from .contracts import Control, Decision, Snapshot
+from .sites import SiteStep
 
 ENTRY_ROLES = {
     "AXTextField", "AXTextArea", "AXSearchField", "AXComboBox", "AXPopUpButton",
@@ -16,8 +17,7 @@ ENTRY_ROLES = {
 }
 GROUP_ROLES = {"AXGroup", "AXRadioGroup"}
 OPTION_ROLES = {"AXRadioButton", "AXCheckBox"}
-PRIMARY_ACTIONS = {"next", "continue", "save"}
-WEB_PRIMARY_ACTIONS = PRIMARY_ACTIONS | {"save draft", "search", "submit order"}
+_PRIMARY_ACTION = re.compile(r"\b(?:submit|proceed|continue|pay|next|save|search|send)\b|\bsee the bill\b", re.I)
 _REQUIRED_LABEL = re.compile(r"(?:\*|\(required\))\s*:?$", re.IGNORECASE)
 _OPTIONAL_ENTRY = re.compile(
     r"\(optional\)|\(not required\)|^preferred\b|^(?:(?:delivery|additional) )?(?:notes|comments|instructions)\s*:?$",
@@ -61,6 +61,10 @@ def required_entry(control: Control) -> bool:
     )
 
 
+def is_primary_action(control: Control) -> bool:
+    return control.enabled and control.role == "AXButton" and bool(_PRIMARY_ACTION.search(control.label))
+
+
 def _grouped_options(controls: tuple[Control, ...]) -> dict[str, list[Control]]:
     grouped = defaultdict(list)
     for c in controls:
@@ -99,6 +103,7 @@ class FormUnit:
     options: tuple[Control, ...] = ()
     optional: bool = False
     action: bool = False
+    site_step: SiteStep | None = None
 
     @property
     def key(self) -> ControlKey:
@@ -122,9 +127,10 @@ class FormPlan:
     units: tuple[FormUnit, ...]
     groups: dict[str, FormUnit]
     heading: str
+    site_steps: tuple[SiteStep, ...] = ()
 
     @classmethod
-    def from_snapshot(cls, snap: Snapshot) -> FormPlan:
+    def from_snapshot(cls, snap: Snapshot, site_steps: tuple[SiteStep, ...] = ()) -> FormPlan:
         snap = with_choice_group_bounds(snap)
         ordered = tuple(sorted(snap.controls, key=reading_rank))
         options = _grouped_options(ordered)
@@ -139,16 +145,18 @@ class FormPlan:
             groups[c.id] if c.id in groups else FormUnit(c, optional=not required_entry(c))
             for c in ordered if c.id in groups or (c.role in ENTRY_ROLES and c.label)
         ]
-        primary = [
-            c for c in ordered if c.enabled and c.role == "AXButton"
-            and label_key(c.label).rstrip(" »›") in WEB_PRIMARY_ACTIONS
-        ]
+        primary = [c for c in ordered if is_primary_action(c)]
         if len(primary) == 1:
             units.append(FormUnit(primary[0], action=True))
         heading = next((
             c.label for c in ordered if c.label and (c.role == "AXHeading" or c.identifier == "screen-title")
         ), "")
-        return cls(snap, ordered, tuple(units), groups, heading)
+        if site_steps:
+            units = [
+                FormUnit(target, action=step.action, site_step=step)
+                for step in site_steps if (target := step.target(snap)) is not None
+            ]
+        return cls(snap, ordered, tuple(units), groups, heading, site_steps)
 
     def serialize(self, changed: set[ControlKey]) -> str:
         """Reading order, nested choices, and state flags without editable values."""
@@ -193,7 +201,9 @@ class GuidanceSession:
     def observe(self, plan: FormPlan) -> None:
         snap = plan.snap
         identity = snap.app_bundle_id, snap.app_pid, snap.window_title
-        heading = plan.heading or (self.page[3] if self.page and self.page[:3] == identity else "")
+        heading = plan.site_steps[0].label if plan.site_steps else (
+            plan.heading or (self.page[3] if self.page and self.page[:3] == identity else "")
+        )
         page = (*identity, heading)
         if page != self.page:
             self.page = page
@@ -202,17 +212,28 @@ class GuidanceSession:
             self.skipped_keys.clear()
             self.last_key = None
             self.action_status = None
-        for unit in plan.units:
-            if not unit.optional and unit.filled is True:
+        later_filled = False
+        for unit in reversed(plan.units):
+            if unit.filled is True:
                 self.done_keys.add(unit.key)
+                later_filled = True
             elif unit.filled is False:
                 self.done_keys.discard(unit.key)
+            if unit.optional and unit.key not in self.done_keys and later_filled:
+                self.skipped_keys.add(unit.key)
 
     def next_unit(self, plan: FormPlan) -> FormUnit | None:
+        if plan.site_steps:
+            visible = {unit.site_step: unit for unit in plan.units}
+            for step in plan.site_steps:
+                if (step.role, label_key(step.label), None) not in self.done_keys:
+                    unit = visible.get(step)
+                    return unit if unit and (unit.action or unit.filled is False) else None
+            return None
         return next((
             unit for unit in plan.units
-            if unit.key not in self.done_keys and not unit.optional and unit.enabled
-            and (unit.action or unit.filled is False)
+            if unit.key not in self.done_keys and unit.key not in self.skipped_keys and unit.enabled
+            and (unit.action or unit.optional or unit.filled is False)
         ), None)
 
     def remember_pointer(self, target: Control, snap: Snapshot) -> None:

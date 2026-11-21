@@ -641,16 +641,20 @@
     "task": "web_any",
     "question": "What should I do next?",
     "kind": "point",
-    "control_id": "c02",
+    "control_id": "c01",
     "question_form": "english",
     "instruction_contains": {
       "instruction_en": [
         "‘Pizza Toppings’ is optional.",
-        "‘Submit order’"
+        "‘Bacon’",
+        "‘Mushroom’",
+        "or skip"
       ],
       "instruction": [
         "‘Pizza Toppings’ നിർബന്ധമല്ല.",
-        "‘Submit order’"
+        "‘Bacon’",
+        "‘Mushroom’",
+        "ഒഴിവാക്കൂ"
       ]
     }
   },
@@ -690,23 +694,106 @@
   },
   {
     "id": "public-pizza-skip-optional-toppings",
-    "screen": "httpbin-order-ready",
+    "screen": "httpbin-order-size-chosen",
     "task": "web_any",
     "question": "Do I need to choose any toppings?",
     "kind": "point",
-    "control_id": "c02",
+    "control_id": "c01",
     "question_form": "english",
     "instruction_contains": {
       "instruction_en": [
         "‘Pizza Toppings’ is optional.",
-        "‘Submit order’",
-        "if you’re ready"
+        "‘Bacon’",
+        "‘Mushroom’",
+        "or skip"
       ],
       "instruction": [
         "‘Pizza Toppings’ നിർബന്ധമല്ല.",
-        "‘Submit order’",
-        "തയ്യാറാണെങ്കിൽ"
+        "‘Bacon’",
+        "‘Mushroom’",
+        "ഒഴിവാക്കൂ"
       ]
     }
+  },
+  {
+    "id": "kseb-menu",
+    "screen": "kseb-home",
+    "task": "web_site",
+    "question": "How do I open Quick Pay?",
+    "kind": "point",
+    "control_id": "quick",
+    "question_form": "english"
+  },
+  {
+    "id": "kseb-bill-malayalam",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "എന്റെ കറന്റ് ബിൽ എങ്ങനെ അടയ്ക്കാം?",
+    "kind": "point",
+    "control_id": "consumer",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "kseb-bill-english",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "How do I see my electricity bill?",
+    "kind": "point",
+    "control_id": "consumer",
+    "question_form": "english"
+  },
+  {
+    "id": "kseb-bill-manglish",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "Current bill engane nokkam?",
+    "kind": "point",
+    "control_id": "consumer",
+    "question_form": "manglish"
+  },
+  {
+    "id": "kseb-mobile-malayalam",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "ഏത് മൊബൈൽ നമ്പറാണ് കൊടുക്കേണ്ടത്?",
+    "kind": "point",
+    "control_id": "mobile",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "kseb-mobile-manglish",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "Registered mobile number evide kodukkanam?",
+    "kind": "point",
+    "control_id": "mobile",
+    "question_form": "manglish"
+  },
+  {
+    "id": "kseb-verification",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "What does the image say?",
+    "kind": "point",
+    "control_id": "verification",
+    "question_form": "english"
+  },
+  {
+    "id": "kseb-refresh",
+    "screen": "kseb-form",
+    "task": "web_site",
+    "question": "ചിത്രം വായിക്കാൻ പറ്റുന്നില്ല",
+    "kind": "point",
+    "control_id": "refresh",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "kseb-submit",
+    "screen": "kseb-filled",
+    "task": "web_site",
+    "question": "I want to check my KSEB bill.",
+    "kind": "point",
+    "control_id": "submit",
+    "question_form": "english"
   }
 ]

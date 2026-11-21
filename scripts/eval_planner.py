@@ -20,7 +20,7 @@ from companion.validator import MAX_SNAPSHOT_AGE_S, validate
 from companion.voice import sarvam
 
 FIXTURES = ROOT / "tests" / "fixtures" / "planner"
-MAX_CALLS = 138
+MAX_CALLS = 156
 
 
 def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
@@ -38,7 +38,7 @@ def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
         window_title=record.get("host", name),
         window_frame=frame,
         controls=controls,
-        viewport=frame if record["origin"] in {"safari-reader", "public-safari-reader"} else None,
+        viewport=frame if record["origin"] in {"safari-reader", "public-safari-reader", "kseb-probe-replay"} else None,
     )
 
 

@@ -405,11 +405,11 @@ class PlannerTests(unittest.TestCase):
             snap, snapshot_id="size-chosen",
             controls=tuple(replace(c, filled=True) if c.id == "c09" else c for c in controls),
         )
-        self.assertEqual(planner.decide(question, selected).control_id, "c02")
-        self.assertEqual(planner.decide("I want a medium pizza", selected).control_id, "c02")
+        self.assertEqual(planner.decide(question, selected).control_id, "c01")
+        self.assertEqual(planner.decide("I want a medium pizza", selected).control_id, "c01")
         self.assertEqual(planner.decide("I want a large pizza", selected).control_id, "c10")
         optional = planner.decide("Are toppings optional?", snap)
-        self.assertEqual(optional.control_id, "c00")
+        self.assertEqual(optional.control_id, "c01")
         self.assertIn("‘Pizza Toppings’ is optional.", optional.instruction_en)
         self.http.assert_not_called()
 
@@ -426,7 +426,7 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(view["unfinished_input_ids"], ["c00"])
         ids = payload["response_format"]["json_schema"]["schema"]["properties"]["control_id"]["enum"]
         self.assertIn("c00", ids)
-        self.assertTrue({"c01", "c08", "c09", "c10", "c11", "c12", "c13", "c14"}.isdisjoint(ids))
+        self.assertTrue({"c08", "c09", "c10", "c11", "c12", "c13", "c14"}.isdisjoint(ids))
         self.assertEqual((decision.kind, decision.control_id), ("point", "c00"))
         self.assertEqual(decision.instruction_en, "For ‘Pizza Size’, choose ‘Small’, ‘Medium’ or ‘Large’.")
         self.assertEqual(planner.calls[0].outcome, "choice_group_fallback")
@@ -441,21 +441,21 @@ class PlannerTests(unittest.TestCase):
         self.assertIsNone(decision.control_id)
         self.http.assert_called_once()
 
-    def test_broad_help_prefers_unfinished_required_field_on_the_current_page(self):
+    def test_broad_help_offers_an_optional_field_in_reading_order(self):
         name, save = self.snapshot.controls
         optional = Control("c02", "AXTextField", "Nickname (not required)", (10, 30, 100, 10), filled=False)
         email = Control("c03", "AXTextField", "E-mail (required)", (10, 40, 100, 10), filled=False)
         snap = replace(self.snapshot, viewport=self.snapshot.window_frame, controls=(save, email, optional, name))
         decision = self.planner.decide("ഈ പേജ് എങ്ങനെ ഉപയോഗിക്കാം? / How do I use this page?", snap)
-        self.assertEqual((decision.kind, decision.control_id), ("point", email.id))
-        self.assertEqual(decision.instruction_en, "This is a form. Start with ‘E-mail (required)’.")
+        self.assertEqual((decision.kind, decision.control_id), ("point", optional.id))
+        self.assertIn("is optional", decision.instruction_en)
         self.http.assert_not_called()
 
     def test_pizza_walk_follows_each_pointer_under_one_question(self):
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         initial = eval_planner._snapshot("httpbin", screens["httpbin-order-form"], False)
         question = "Can you help me fill this form?"
-        for delivery_required, delivery_steps in ((False, []), (True, ["c06", "c07"])):
+        for delivery_required in (False, True):
             with self.subTest(delivery_required=delivery_required):
                 controls = tuple(
                     replace(c, label=f"{c.label} (required)", filled=False)
@@ -464,7 +464,7 @@ class PlannerTests(unittest.TestCase):
                 )
                 snap = replace(initial, controls=controls)
                 planner = SarvamPlanner("web_any", log_calls=False)
-                expected = ["c03", "c04", "c05", "c00", *delivery_steps, "c02"]
+                expected = ["c03", "c04", "c05", "c00", "c01", "c06", "c07", "c02"]
                 visited, instructions = [], []
                 for number, next_id in enumerate(expected):
                     decision = planner.decide(question, snap)
@@ -474,6 +474,11 @@ class PlannerTests(unittest.TestCase):
                     instructions.append(decision.instruction_en)
                     target = snap.control(decision.control_id)
                     self.assertIsNot(target.filled, True)
+                    optional = next_id == "c01" or (not delivery_required and next_id in {"c06", "c07"})
+                    if optional:
+                        self.assertIn("optional", decision.instruction_en)
+                        self.assertTrue(planner.skip_current())
+                        continue
                     if target.role in {"AXGroup", "AXRadioGroup"}:
                         self.assertEqual(target.label, "Pizza Size")
                         for text in (decision.instruction, decision.instruction_en):
@@ -552,6 +557,56 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertEqual(planner.decide(question, filled).control_id, "new-c04")
         self.http.assert_called_once()
+
+    def test_skip_commands_keep_the_question_and_are_not_reapplied_on_ticks(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        snap = eval_planner._snapshot("httpbin", screens["httpbin-order-size-chosen"], False)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        question = "Can you help me fill this form?"
+        self.assertEqual(planner.decide(question, snap).control_id, "c01")
+        self.assertEqual(planner.decide("ഒഴിവാക്കൂ / Skip", snap).control_id, "c06")
+        self.assertEqual(planner.decide("ഒഴിവാക്കൂ / Skip", snap).control_id, "c06")
+        self.assertEqual(planner.decide(question, snap).control_id, "c06")
+        planner.reset_question()  # The panel can submit a skip through the normal input entry point.
+        self.assertEqual(planner.decide("venda", snap).control_id, "c07")
+        self.assertTrue(planner.skip_current())
+        self.assertFalse(planner.skip_current())
+        self.assertEqual(planner.decide(question, snap).control_id, "c02")
+        self.assertFalse(planner.skip_current())
+        for phrase in ("skip", "NEXT!", "no", "വേണ്ട", "ഒഴിവാക്കൂ", "adutha", "venda"):
+            self.assertTrue(planner.is_skip_phrase(phrase))
+        self.assertFalse(planner.is_skip_phrase("What comes next?"))
+        self.http.assert_not_called()
+
+    def test_two_named_actions_without_a_goal_ask_locally(self):
+        question = "I see Save Draft and Save and Submit. Which one fits my goal?"
+        decision = self.planner.decide(question, self.snapshot)
+        self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+        self.assertEqual(decision.instruction_en, "Which action do you want to take?")
+        self.http.assert_not_called()
+
+    def test_filling_a_later_unit_auto_skips_earlier_optional_units(self):
+        screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
+        before = eval_planner._snapshot("httpbin", screens["httpbin-order-size-chosen"], False)
+        after = eval_planner._snapshot("httpbin", screens["httpbin-order-ready"], False)
+        planner = SarvamPlanner("web_any", log_calls=False)
+        question = "What should I do next?"
+        self.assertEqual(planner.decide(question, before).control_id, "c01")
+        decision = planner.decide(question, after)
+        self.assertEqual((decision.kind, decision.control_id), ("point", "c02"))
+        self.assertEqual(planner.decide(question, before).control_id, "c07")
+        self.http.assert_not_called()
+
+    def test_primary_action_accepts_longer_button_labels(self):
+        field, submit = self.snapshot.controls
+        for label in ("Submit to see the bill", "Proceed to details", "Continue with application", "Pay bill",
+                      "Next: Review", "Save this draft", "Search orders", "Send the request", "See the bill"):
+            with self.subTest(label=label):
+                snap = replace(self.snapshot, controls=(field, replace(submit, label=label)),
+                               viewport=self.snapshot.window_frame)
+                decision = SarvamPlanner("web_any", log_calls=False).decide("What should I do next?", snap)
+                self.assertEqual((decision.kind, decision.control_id), ("point", submit.id))
+        self.http.assert_not_called()
 
     def test_confirmation_requires_new_evidence_after_a_pointed_form_action(self):
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
@@ -727,7 +782,7 @@ class PlannerTests(unittest.TestCase):
         cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         self.assertTrue({TYPED_QUESTION, QUESTION} <= {case["question"] for case in cases})
-        self.assertEqual(len(cases), 69)
+        self.assertEqual(len(cases), 78)
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual(
             {case["question_form"] for case in cases},
@@ -736,7 +791,7 @@ class PlannerTests(unittest.TestCase):
         self.assertLessEqual(len(cases) * len(eval_planner.MODEL_ENDPOINTS), eval_planner.MAX_CALLS)
         self.assertEqual(
             {screen["origin"] for screen in screens.values()},
-            {"aims-reader", "safari-reader", "hand-made", "public-safari-reader"},
+            {"aims-reader", "safari-reader", "hand-made", "public-safari-reader", "kseb-probe-replay"},
         )
         public_cases = [case for case in cases if screens[case["screen"]]["origin"] == "public-safari-reader"]
         self.assertEqual(len(public_cases), 19)

@@ -14,9 +14,10 @@ from uuid import uuid4
 
 from .contracts import Control, Decision, Snapshot
 from .guidance import (
-    GROUP_ROLES, PRIMARY_ACTIONS, ControlKey, FormPlan, FormUnit, GuidanceSession,
-    choice_option, control_key, label_key, reading_rank,
+    GROUP_ROLES, ControlKey, FormPlan, FormUnit, GuidanceSession,
+    choice_option, control_key, is_primary_action, label_key,
 )
+from .sites import SitePack, pack_for
 from .tasks import Task, load
 from .voice import sarvam
 
@@ -59,7 +60,7 @@ Use the screen heading and ascending rank (top-to-bottom, then left-to-right):
 - Questions about how to use this site, what screen you can help with, or how to
   fill this form ask for guidance on the current page. The companion introduces
   the page separately. Point to the first unfinished required step in reading order,
-  even if the primary button is enabled. Skip optional notes and preferences. A filled
+  even if the primary button is enabled. Offer optional notes and preferences as optional. A filled
   field is already done: select it only if the user asks to find or edit it.
 - When unfinished_input_ids is empty, satisfy any prerequisite shown by the status,
   then use the enabled primary action, such as Next, Continue, or Save. If an attachment
@@ -68,8 +69,8 @@ Use the screen heading and ascending rank (top-to-bottom, then left-to-right):
 - A control with group belongs to the choice set with that label. The user chooses
   the value. For an undecided radio choice, point at the set and ask the user to
   choose. Point at an option only if the user already named that value. Skip sets
-  with filled=true. Treat optional checkbox sets as optional and guide the next
-  required step. Do not suggest any particular option on your own.
+  with filled=true. For optional checkbox sets, explain that the user can tick any
+  options or skip. Do not suggest any particular option on your own.
 - Broad wording alone is in scope. Ask a short clarifying question if the page has
   competing purposes and you need the user's goal to select a starting point.
 - Use unsupported for off-topic requests, a missing requested control, or a screen
@@ -116,6 +117,7 @@ _NEXT_STEP = re.compile(
     r"|(?:ഇനി എന്ത് ചെയ്യണം|എവിടെ തുടങ്ങണം)"
     r"|ini entha cheyyendathu"
 )
+_SKIP_PHRASES = {"skip", "next", "no", "വേണ്ട", "ഒഴിവാക്കൂ", "adutha", "venda"}
 _OPTION_INTENT = re.compile(
     r"(?:i (?:want|would like|prefer|choose|pick)|(?:please )?(?:choose|select|pick|add)"
     r"|എനിക്ക്|enikku|enikk)\s+(?:(?:a|an|the)\s+)?"
@@ -132,6 +134,7 @@ _DEICTIC_QUESTION = re.compile(
     r"|(?:ഇത്|അത്) (?:അമർത്തട്ടേ|ക്ലിക്ക് ചെയ്യട്ടേ)"
     r"|(?:ithu?|athu?) (?:click|press|select) cheyyatte"
 )
+_UNSTATED_ACTION_GOAL = re.compile(r"i see .+ and .+\. which (?:one|action) (?:fits|matches) my goal")
 _CONTROL_WORD = r"(?:button|field|link|control|option|menu item|ബട്ടൺ|ഫീൽഡ്|ലിങ്ക്)"
 _NAMED_CONTROL = rf"{_CONTROL_WORD}\s+(?:label(?:l)?ed|named|called)\s+"
 _LABEL_CONTEXT = re.compile(
@@ -276,6 +279,12 @@ def _requested_options(question: str, requested_label: str | None, controls: lis
 def _choice_instructions(group: FormUnit) -> tuple[str, str]:
     names = list(dict.fromkeys(f"‘{c.label}’" for c in group.options if c.enabled))
     quoted = f"‘{group.control.label}’"
+    if group.optional:
+        choices = ", ".join(names)
+        return (
+            f"{quoted} നിർബന്ധമല്ല. {choices} ഇവയിൽ വേണ്ടത് ടിക്ക് ചെയ്യൂ, അല്ലെങ്കിൽ ഒഴിവാക്കൂ.",
+            f"{quoted} is optional. Tick any you want from {choices}, or skip.",
+        )
     if not names:
         return f"{quoted} ൽ നിങ്ങൾക്ക് വേണ്ട ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക.", f"Choose the option you want in {quoted}."
     if len(names) == 1:
@@ -301,54 +310,53 @@ def _asked_about_optional_sets(phrases: list[str], groups: dict[str, FormUnit]) 
     }
 
 
-def _choice_guidance(
-    decision: Decision, snap: Snapshot, groups: dict[str, FormUnit], asked_optional: set[str],
-    announced: set[ControlKey],
-) -> Decision:
+def _choice_guidance(decision: Decision, snap: Snapshot, groups: dict[str, FormUnit]) -> Decision:
     target = snap.control(decision.control_id) if decision.control_id is not None else None
     if decision.kind != "point" or target is None:
         return decision
     if group := groups.get(target.id):
         ml, en = _choice_instructions(group)
-        decision = replace(decision, instruction=ml, instruction_en=en)
-    skipped = [
-        g.control for g in groups.values()
-        if g.key not in announced and (
-            g.control.id in asked_optional or (
-                g.optional and not g.filled
-                and reading_rank(g.control) < reading_rank(target)
-            )
-        )
-    ]
-    if not skipped:
-        return decision
-    announced.update(control_key(c) for c in skipped)
-    names = ", ".join(f"‘{c.label}’" for c in skipped)
-    return replace(decision, instruction=f"{names} നിർബന്ധമല്ല. {decision.instruction}",
-                   instruction_en=f"{names} {'is' if len(skipped) == 1 else 'are'} optional. {decision.instruction_en}")
+        return replace(decision, instruction=ml, instruction_en=en)
+    return decision
+
+
+def _scroll_step(snap: Snapshot) -> Decision | None:
+    if snap.below_fold_count > 0:
+        return Decision("clarify", snap.snapshot_id, "തുടരാൻ താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
+                        "Scroll down to continue.", source="sarvam")
+    return None
 
 
 def _form_step(plan: FormPlan, session: GuidanceSession) -> Decision | None:
     unit = session.next_unit(plan)
     if unit is None:
-        if plan.snap.below_fold_count > 0:
-            return Decision(
-                "clarify", plan.snap.snapshot_id, "തുടരാൻ താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
-                "Scroll down to continue.", source="sarvam",
-            )
-        return None
+        return _scroll_step(plan.snap)
     target = unit.control
+    if unit.site_step is not None:
+        return unit.site_step.point(plan.snap, target)
     label = f"‘{target.label}’"
+    order_form = any(u.action and label_key(u.control.label) == "submit order" for u in plan.units)
+    if order_form and (unit.optional or unit.action) and not session.done_keys and not any(
+        not u.action and not u.optional for u in plan.units
+    ):
+        return Decision(
+            "clarify", plan.snap.snapshot_id, "ഫോമിന്റെ തുടക്കം കാണാൻ മുകളിലേക്ക് സ്ക്രോൾ ചെയ്ത് വീണ്ടും ചോദിക്കൂ.",
+            "Scroll up to the start of the form, then ask again.", source="sarvam",
+        )
     if label_key(target.label) == "submit order":
-        if not session.done_keys:
-            return Decision(
-                "clarify", plan.snap.snapshot_id, "ഫോമിന്റെ തുടക്കം കാണാൻ മുകളിലേക്ക് സ്ക്രോൾ ചെയ്ത് വീണ്ടും ചോദിക്കൂ.",
-                "Scroll up to the start of the form, then ask again.", source="sarvam",
-            )
         ml = f"വിവരങ്ങൾ പരിശോധിച്ച ശേഷം തയ്യാറാണെങ്കിൽ {label} അമർത്തുക."
         en = f"Review the details and use {label} if you’re ready."
     else:
-        ml, en = f"{label} മുതൽ തുടങ്ങൂ.", f"Start with {label}."
+        ml, en = (
+            (f"{label} മുതൽ തുടങ്ങൂ.", f"Start with {label}.")
+            if session.last_key is None
+            else (f"അടുത്തത്, {label}.", f"Next, {label}.")
+        )
+        if unit.optional and not unit.options:
+            ml, en = (
+                f"{label} നിർബന്ധമല്ല. വേണമെങ്കിൽ പൂരിപ്പിക്കൂ, അല്ലെങ്കിൽ ഒഴിവാക്കൂ.",
+                f"{label} is optional. Fill it in if you want, or skip.",
+            )
     return Decision("point", plan.snap.snapshot_id, ml, en, target.id, "sarvam")
 
 
@@ -368,10 +376,7 @@ def _point_ids(general_help: bool, actionable: list[Control]) -> list[str]:
         return [c.id for c in actionable]
     pending = [c for c in actionable if c.filled is not True]
     if not any(c.filled is False for c in pending):
-        primary = [
-            c for c in pending
-            if c.role == "AXButton" and c.label.casefold().strip(" …»›") in PRIMARY_ACTIONS
-        ]
+        primary = [c for c in pending if is_primary_action(c)]
         if len(primary) == 1:
             return [primary[0].id]
     return [c.id for c in pending]
@@ -485,9 +490,11 @@ class SarvamPlanner:
         if model not in MODEL_ENDPOINTS:
             raise ValueError(f"Unsupported Sarvam planner model: {model}")
         task_name = task.name if isinstance(task, Task) else task
+        self._site_only = task_name == "web_site"
         explicit_goal = task.notes.get("goal") if isinstance(task, Task) else None
         self.goal = explicit_goal or (
-            _TASK_GOALS.get(task_name, task_name.replace("_", " ")) if task_name and task_name != "web_any" else None
+            _TASK_GOALS.get(task_name, task_name.replace("_", " "))
+            if task_name and task_name not in {"web_any", "web_site"} else None
         )
         self._completion_pattern = None
         if task_name in _TASK_GOALS:
@@ -504,10 +511,30 @@ class SarvamPlanner:
         self._intent: tuple[Decision, Control | None] | None = None
         self._cache: dict[tuple, tuple[Decision, Control | None]] = {}
         self._lock = Lock()
+        self._skip_lock = Lock()
+        self._skip_target: tuple[int, ControlKey] | None = None
+        self._pending_skip: tuple[int, ControlKey] | None = None
+        self._skip_command = False
 
     def reset_question(self) -> None:
         """Begin another submission, including when the user repeats the same words."""
         self._question_version += 1
+
+    @staticmethod
+    def is_skip_phrase(text: str) -> bool:
+        return any(_question_phrase(part) in _SKIP_PHRASES for part in text.split(" / ", 1))
+
+    def skip_current(self) -> bool:
+        """Queue one skip for the current optional pointer without waiting for Sarvam."""
+        version = self._question_version
+        return self._queue_skip(version, version)
+
+    def _queue_skip(self, current_version: int, next_version: int) -> bool:
+        with self._skip_lock:
+            if self._skip_target is None or self._skip_target[0] != current_version:
+                return False
+            self._pending_skip, self._skip_target = (next_version, self._skip_target[1]), None
+            return True
 
     def decide(self, question: str, snap: Snapshot) -> Decision:
         question = question.strip()
@@ -518,14 +545,32 @@ class SarvamPlanner:
             )
         if _uses_unresolved_reference(question):
             return _clarify_target(snap)
+        if any(_UNSTATED_ACTION_GOAL.fullmatch(_question_phrase(part)) for part in question.split(" / ", 1)):
+            return Decision("clarify", snap.snapshot_id, "ഏത് കാര്യം ചെയ്യാനാണ് നിങ്ങൾക്ക് സഹായം വേണ്ടത്?",
+                            "Which action do you want to take?", source="sarvam")
         if not snap.controls and snap.below_fold_count <= 0:
             return _unsupported(snap, "ഈ സ്ക്രീനിൽ നിയന്ത്രണങ്ങൾ കാണുന്നില്ല.", "This screen exposes no controls.")
         with self._lock:
-            plan = FormPlan.from_snapshot(snap)
+            version = self._question_version
+            skip_command = self.is_skip_phrase(question)
+            if skip_command:
+                if not self._question:
+                    return Decision("clarify", snap.snapshot_id, "ഒഴിവാക്കാൻ ഇപ്പോൾ ഒരു ഘട്ടമില്ല.",
+                                    "There is no current step to skip.", source="sarvam")
+                if not self._skip_command or version != self._active_version:
+                    self._queue_skip(self._active_version, version)
+                self._active_version = version
+                question = self._question
+            self._skip_command = skip_command
+            site = pack_for(snap)
+            if self._site_only and site is None:
+                return _unsupported(snap, "ഇപ്പോൾ KSEB Quick Pay-ൽ സഹായിക്കാം. ആ പേജ് തുറക്കൂ.",
+                                    "I can guide KSEB Quick Pay. Open that page to continue.")
+            site_steps = site.steps if site and any(step.target(snap) for step in site.steps) else ()
+            plan = FormPlan.from_snapshot(snap, site_steps)
             snap = plan.snap
             screen = (snap.app_bundle_id, snap.app_pid, snap.window_title,
                       snap.below_fold_count, _screen_signature(snap))
-            version = self._question_version
             if question != self._question or version != self._active_version:
                 self._cache.clear()
                 self._question = question
@@ -533,49 +578,103 @@ class SarvamPlanner:
                 self._session = GuidanceSession()
                 self._last_presentation = None
                 self._intent = None
+            if site and self._practice_site_complete(site, plan):
+                return Decision(
+                    "complete", snap.snapshot_id, "നന്നായി! പരിശീലന ബിൽ ഇപ്പോൾ കാണാം.",
+                    "Well done! The practice bill is now visible.", source="sarvam",
+                )
             if confirmation := self._session.confirmation(snap):
                 return confirmation
+            before_skips = self._session.skipped_keys.copy()
             self._session.observe(plan)
+            with self._skip_lock:
+                pending, self._pending_skip = self._pending_skip, None
+            if pending is not None and pending[0] == version:
+                self._session.skipped_keys.add(pending[1])
+            if before_skips != self._session.skipped_keys:
+                self._cache.clear()
+                self._last_presentation = None
             states = {control_key(c): (c.filled, c.enabled) for c in plan.ordered}
             changed = {key for key, state in states.items() if self._observed.get(key) != state}
             self._observed = states
             if screen not in self._cache:
-                decision = self._request(question, plan, changed)
+                decision = self._request(question, plan, changed, site)
                 target = snap.control(decision.control_id) if decision.control_id is not None else None
                 self._cache[screen] = decision, target
             decision, target = self._cache[screen]
             decision = _bind(decision, target, snap)
             if decision.kind != "point":
                 self._last_presentation = None
+                with self._skip_lock:
+                    self._skip_target = None
                 return decision
             if self._last_presentation is not None and self._last_presentation[0] == screen:
                 _, ml, en = self._last_presentation
                 return replace(decision, instruction=ml, instruction_en=en)
-            phrases = [_question_phrase(part) for part in _SENTENCE_END.split(question)]
-            decision = _choice_guidance(
-                decision, snap, plan.groups, _asked_about_optional_sets(phrases, plan.groups),
-                self._session.skipped_keys,
-            )
-            if not self._session.intro_done and snap.viewport is not None and _is_general_help_question(question):
+            decision = _choice_guidance(decision, snap, plan.groups)
+            if self._session.last_key is not None and not decision.instruction_en.startswith("Next,"):
+                en = decision.instruction_en
+                decision = replace(decision, instruction=f"അടുത്തത്, {decision.instruction}",
+                                   instruction_en=f"Next, {en[:1].lower()}{en[1:]}")
+            if not site and not self._session.intro_done and snap.viewport is not None and _is_general_help_question(question):
                 ml, en = _page_intro(plan)
                 decision = replace(decision, instruction=f"{ml} {decision.instruction}",
                                    instruction_en=f"{en} {decision.instruction_en}")
                 self._session.intro_done = True
             if target is not None:
                 self._session.remember_pointer(target, snap)
+            optional_unit = next((u for u in plan.units if u.optional and u.control.id == decision.control_id), None)
+            with self._skip_lock:
+                self._skip_target = (version, optional_unit.key) if optional_unit is not None else None
             self._last_presentation = (screen, decision.instruction, decision.instruction_en)
             return decision
 
-    def _request(self, question: str, plan: FormPlan, changed: set[ControlKey]) -> Decision:
+    def _practice_site_complete(self, site: SitePack, plan: FormPlan) -> bool:
+        action = site.steps[-1]
+        return (
+            site.is_practice(plan.snap)
+            and self._session.last_key == (action.role, label_key(action.label), None)
+            and any(c.role == "AXHeading" and c.label == site.practice_result for c in plan.ordered)
+        )
+
+    def _site_decision(self, question: str, plan: FormPlan, site: SitePack) -> Decision | None:
+        goal = site.goal_for(question)
+        if goal is None and not (_is_general_help_question(question) or _NEXT_STEP.fullmatch(_question_phrase(question))):
+            return None
+        snap = plan.snap
+        if goal is not None and goal.step is not None:
+            if target := goal.step.target(snap):
+                return goal.step.point(snap, target)
+        elif plan.site_steps:
+            if decision := _form_step(plan, self._session):
+                return decision
+        elif target := site.entry.target(snap):
+            return site.entry.point(snap, target)
+        return _scroll_step(snap) or Decision(
+            "clarify", snap.snapshot_id, "Quick Pay ഫോം തുറന്ന് ആവശ്യമായ ഭാഗം കാണിക്കൂ.",
+            "Open the Quick Pay form or scroll to the field you need.", source="sarvam",
+        )
+
+    def _request(self, question: str, plan: FormPlan, changed: set[ControlKey], site: SitePack | None) -> Decision:
         snap, ordered, groups = plan.snap, plan.ordered, plan.groups
+        if site and (decision := self._site_decision(question, plan, site)):
+            return decision
+        if site:
+            plan = FormPlan.from_snapshot(site.privacy.filter_snapshot(snap), plan.site_steps)
+            ordered, groups = plan.ordered, plan.groups
         actionable = [
             c for c in ordered
-            if (c.id in groups and groups[c.id].enabled and not groups[c.id].filled and not groups[c.id].optional)
+            if (c.id in groups and groups[c.id].enabled and not groups[c.id].filled
+                and groups[c.id].key not in self._session.skipped_keys)
             or (c.role not in GROUP_ROLES and _pointable(c) and not choice_option(c))
         ]
         candidates = actionable
         phrases = [_question_phrase(part) for part in _SENTENCE_END.split(question)]
         asked_optional = _asked_about_optional_sets(phrases, groups)
+        if len(asked_optional) == 1:
+            group_id = next(iter(asked_optional))
+            if any(c.id == group_id for c in actionable):
+                return Decision("point", snap.snapshot_id, "", "", group_id, "sarvam")
         requested_label = _requested_label(question)
         preferences = _requested_options(question, requested_label, ordered)
         if len(preferences) > 1:
@@ -661,7 +760,7 @@ class SarvamPlanner:
                     return step
             return _clarify_target(snap)
         view = {
-            "question": question,
+            "question": site.privacy.filter_question(question) if site else question,
             "screen_title": plan.heading or snap.window_title,
             "unfinished_input_ids": [
                 unit.control.id for unit in plan.units
@@ -671,6 +770,8 @@ class SarvamPlanner:
         }
         if self.goal:
             view["task_goal"] = self.goal
+        if site:
+            view["task_goal"] = f"Guide {site.name} up to viewing the bill. The user reads any verification image."
         payload = {
             "model": self.model,
             "messages": [
@@ -702,6 +803,12 @@ class SarvamPlanner:
             self._intent = decision, None
             return decision
         decision, outcome = _interpret(response, snap, key, point_ids, groups)
+        if site and decision.control_id is not None:
+            target = snap.control(decision.control_id)
+            known = next((step for step in (*site.steps, site.entry) if target is not None and step.matches(target)), None)
+            if known is not None:
+                decision = (_form_step(plan, self._session) or self._site_decision("What should I do next?", plan, site)
+                            if known.action and known in site.steps else known.point(snap, target))
         request_id = response.get("id")
         request_id = request_id.replace(key, "[redacted]") if isinstance(request_id, str) else ""
         self._record(PlannerCall(latency, outcome, request_id, 200))
