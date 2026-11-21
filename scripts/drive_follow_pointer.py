@@ -7,7 +7,10 @@ on the pointed control, the way a person following the pointer would, then waits
   choice set (fieldset)    presses its first option (the user would choose; QA just needs progress)
   single radio option      presses it
   button                   presses it
-  checkbox, time input     does nothing (nothing optional is ticked); the stop rules below end the run
+  optional units           checkbox set, single checkbox, time input: presses the companion panel's Skip button
+                           (AXIdentifier `companion-skip`, found only in the companion process given by
+                           --companion-pid; Safari's time input cannot be driven, and nothing optional is ticked).
+                           Without --companion-pid these are left alone and the stop rules below end the run.
   link                     does nothing (detours such as Refresh are never followed)
 
 Stops on: `complete` (done), any other terminal decision, the same target pointed at `--repeat-limit`
@@ -18,6 +21,7 @@ Safety rules, enforced here (same as drive_web_practice.py):
     exactly http://127.0.0.1:$CONDUCTOR_PORT/<path> . No other window, tab or app is walked or pressed.
   * The pointed control is found by the logged frame. If no control of this page matches it, nothing is
     pressed and the miss is recorded.
+  * The only thing pressed outside the page is `companion-skip` in the companion's own window (our own app).
   * Writes only synthetic values into the page. Never run against a personal browser profile.
 
     .venv/bin/python scripts/drive_follow_pointer.py --log runs/session-XXXX.jsonl --out runs/follow.jsonl
@@ -196,6 +200,32 @@ def sample_for(label: str) -> str:
     return "QA Sample"
 
 
+SKIP_ID = "companion-skip"
+SKIP_ROLES = {"AXCheckBox", "AXDateTimeArea", "AXTimeField"}
+
+
+def is_optional_unit(el, role) -> bool:
+    """Controls the driver never fills: a checkbox set (a group without radio options), a single checkbox,
+    the time input. The planner offers them as optional; the driver presses Skip."""
+    if role in SKIP_ROLES:
+        return True
+    return role in {"AXGroup", "AXRadioGroup"} and not descendants(el, {"AXRadioButton"})
+
+
+def press_skip(pid: int) -> str:
+    """AXPress the companion panel's Skip button. Looks only inside the given companion process."""
+    root = AX.AXUIElementCreateApplication(pid)
+    queue, seen = deque([root]), 0
+    while queue and seen < MAX_NODES:
+        el = queue.popleft()
+        seen += 1
+        if _get(el, "AXIdentifier") == SKIP_ID:
+            err = AX.AXUIElementPerformAction(el, "AXPress")
+            return "pressed Skip" if not err else f"Skip press failed (AX error {err})"
+        queue.extend(_get(el, "AXChildren") or [])
+    return "Skip button not found in the companion window"
+
+
 def act(el, role, label):
     """Do what a person following the pointer would. Returns a short result string."""
     if role in TEXT_ROLES:
@@ -252,6 +282,7 @@ def main(argv=None) -> int:
     ap.add_argument("--total-timeout", type=float, default=300.0)
     ap.add_argument("--repeat-limit", type=int, default=3)
     ap.add_argument("--poll", type=float, default=0.3)
+    ap.add_argument("--companion-pid", type=int, help="pid of the companion app whose Skip button may be pressed")
     ap.add_argument("--settle", type=float, default=0.6, help="pause after acting so the page redraws")
     a = ap.parse_args(argv)
     configure(a.page)
@@ -302,7 +333,12 @@ def main(argv=None) -> int:
             key = (role, label)
             seen_targets[key] = seen_targets.get(key, 0) + 1
             filled = is_filled(el, role)
-            result = act(el, role, label)
+            skipping = a.companion_pid is not None and is_optional_unit(el, role)
+            result = press_skip(a.companion_pid) if skipping else act(el, role, label)
+            if skipping and result != "pressed Skip":
+                emit({**rec, "target_role": role, "target_label": label, "action": result})
+                stop = "no-skip-button"
+                break
             emit({**rec, "target_role": role, "target_label": label, "filled_before": filled,
                   "times_pointed": seen_targets[key], "action": result, "iou": round(score, 2)})
             if seen_targets[key] >= a.repeat_limit:

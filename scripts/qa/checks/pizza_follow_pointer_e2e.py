@@ -8,6 +8,12 @@ One question ("Can you help me fill this form?"), no further input. The test-onl
 (scripts/drive_follow_pointer.py) acts only on the control the companion points at, then waits for the
 next decision. Reproduces the integration bugs found by hand: misordered steps, skipped Pizza Size set,
 orientation text repeated at every step.
+
+Policy (Abin's retest): optional units are offered, not skipped. Expected walk: name, phone, email, Pizza Size
+(set), Pizza Toppings (optional, driver presses Skip), Preferred delivery time (optional, driver presses Skip:
+Safari's time input cannot be driven), Delivery instructions (optional, driver types a sample), Submit, complete.
+Each optional unit is offered once and says "optional"; after the first step the wording is "Next...", never
+"Start with". The driver presses the companion panel's Skip button (`companion-skip`, our own app).
 """
 import json
 import os
@@ -24,9 +30,11 @@ import _web
 FEATURE = "web-support"
 QUESTION = "Can you help me fill this form?"
 REQUIRED_ORDER = ["Customer name:", "Telephone:", "E-mail address:", "Pizza Size", "Submit order"]
-# The real page marks nothing required; these two may be pointed at but are never demanded.
-TOLERATED = {"Preferred delivery time:", "Delivery instructions:"}
+# The real page marks nothing required; the companion offers these three, in reading order, as "(optional)".
+OPTIONAL_UNITS = ["Pizza Toppings", "Preferred delivery time:", "Delivery instructions:"]
 OPTIONAL_SET = "Pizza Toppings"
+START_WITH = re.compile(r"\bstart with\b", re.IGNORECASE)
+NEXT_WORD = re.compile(r"\bnext\b", re.IGNORECASE)
 SIZE_OPTIONS = {"Small", "Medium", "Large"}
 TOPPINGS = {"Bacon", "Extra Cheese", "Onion", "Mushroom"}
 RECEIPT = ROOT / "runs" / "pizza-complete.json"
@@ -60,7 +68,8 @@ def run():
         if log is None:
             return [result(FEATURE, "companion start", "fail", "live-machine",
                            app.stderr.read()[-500:] if app.poll() is not None else "no session log within 10 s")]
-        d = subprocess.run([PY, "scripts/drive_follow_pointer.py", "--log", str(log), "--out", str(out_file),
+        d = subprocess.run([PY, "scripts/drive_follow_pointer.py", "--companion-pid", str(app.pid),
+                            "--log", str(log), "--out", str(out_file),
                             "--decision-timeout", "40", "--total-timeout", "240"],
                            cwd=ROOT, capture_output=True, text=True, timeout=300)
         time.sleep(1.0)
@@ -90,7 +99,8 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
 
     # 1 order
     positions, missing = [], []
-    normal = ["Pizza Size" if l in SIZE_OPTIONS else l for l in labels]  # an option of the set counts as the set
+    # an option of a set counts as the set
+    normal = ["Pizza Size" if l in SIZE_OPTIONS else OPTIONAL_SET if l in TOPPINGS else l for l in labels]
     for want in REQUIRED_ORDER:
         idx = next((i for i, l in enumerate(normal) if l == want), None)
         (missing if idx is None else positions).append(want if idx is None else idx)
@@ -133,10 +143,40 @@ def assess(records, driver_rc, driver_err, heading_seen, started, out_file, log)
     results.append(result(FEATURE, "a filled control is never pointed at", "fail" if filled else "pass", "live-machine",
                           f"pointed at already-filled controls: {filled}" if filled else "every pointed control was empty when pointed at"))
 
-    # 6 optional set skipped
-    optional = [r["target_label"] for r in points if r.get("target_label") == OPTIONAL_SET or r.get("target_label") in TOPPINGS]
-    results.append(result(FEATURE, "optional Pizza Toppings are not pointed at", "fail" if optional else "pass", "live-machine",
-                          f"pointed at optional controls: {optional}" if optional else "toppings skipped"))
+    # 6 optional units: offered in reading order, each once, saying "optional"
+    optional_pos = {u: [i for i, l in enumerate(normal) if l == u] for u in OPTIONAL_UNITS}
+    offered_once = {u: len(v) == 1 for u, v in optional_pos.items()}
+    says_optional = {u: bool(v) and all(re.search(r"optional", points[i].get("instruction_en", ""), re.IGNORECASE) for i in v)
+                     for u, v in optional_pos.items()}
+    firsts_pos = [v[0] for v in optional_pos.values() if v]
+    size_pos = next((i for i, l in enumerate(normal) if l == "Pizza Size"), None)
+    submit_pos = next((i for i, l in enumerate(normal) if l == "Submit order"), None)
+    between = all(size_pos is not None and submit_pos is not None and size_pos < p < submit_pos for p in firsts_pos)
+    ordered = len(firsts_pos) == len(OPTIONAL_UNITS) and firsts_pos == sorted(firsts_pos) and between
+    skips = [r["target_label"] for r in points if r.get("action") == "pressed Skip"]
+    results.append(result(FEATURE, "optional units offered in reading order: Pizza Toppings, delivery time, delivery instructions",
+                          "pass" if ordered else "fail", "live-machine",
+                          f"positions {optional_pos}; between Pizza Size ({size_pos}) and Submit ({submit_pos}): {between}; "
+                          f"Skip pressed on {skips}"))
+    bad_once = [u for u in OPTIONAL_UNITS if not offered_once[u]]
+    bad_word = [u for u in OPTIONAL_UNITS if not says_optional[u]]
+    results.append(result(FEATURE, "each optional unit is offered exactly once and says \"optional\"",
+                          "fail" if bad_once or bad_word else "pass", "live-machine",
+                          f"not offered exactly once: { {u: len(optional_pos[u]) for u in bad_once} }; "
+                          f"missing the word 'optional': {bad_word}" if bad_once or bad_word
+                          else "Pizza Toppings, Preferred delivery time and Delivery instructions each offered once, each marked optional"))
+
+    # 6b wording after the first step: "Next...", never "Start with"
+    starts = [r["index"] for r in decisions[1:] if START_WITH.search(r.get("instruction_en", ""))]
+    no_next = [r["index"] for r in decisions[1:] if r["kind"] == "point" and r.get("target_role") != "AXButton"
+               and not NEXT_WORD.search(r.get("instruction_en", ""))]
+    results.append(result(FEATURE, "no \"Start with\" after the first step",
+                          "fail" if starts else "pass", "live-machine",
+                          f"'Start with' in decisions {starts}" if starts else "only the first decision opens with 'Start with'"))
+    results.append(result(FEATURE, "later field steps are phrased \"Next...\"",
+                          "fail" if no_next else "pass", "live-machine",
+                          f"decisions without 'Next' (fields only, buttons exempt): {no_next}" if no_next
+                          else "every later field step says Next"))
 
     # 7 every pointer validated, no reader pauses
     invalid = [r["index"] for r in decisions if r["kind"] == "point" and r.get("valid") is not True]

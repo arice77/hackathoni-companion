@@ -17,25 +17,28 @@ pizza = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pizza)
 
 
-def dec(i, label, text, filled=False, role="AXTextField", times=1, kind="point"):
-    rec = {"event": "decision", "index": i, "kind": kind, "valid": True, "instruction_en": text, "source": "sarvam", "action": "x"}
+def dec(i, label, text, filled=False, role="AXTextField", times=1, kind="point", action="x"):
+    rec = {"event": "decision", "index": i, "kind": kind, "valid": True, "instruction_en": text, "source": "sarvam", "action": action}
     if kind == "point":
         rec.update(target_label=label, target_role=role, filled_before=filled, times_pointed=times)
     return rec
 
 
 GOOD = [
-    dec(0, "Customer name:", "This is an order form. Enter your name in 'Customer name:'."),
-    dec(1, "Telephone:", "Enter the phone number in 'Telephone:'."),
-    dec(2, "E-mail address:", "Enter your e-mail in 'E-mail address:'."),
-    dec(3, "Pizza Size", "Choose a size in 'Pizza Size'.", role="AXGroup"),
-    dec(4, "Submit order", "Click 'Submit order'.", role="AXButton"),
-    dec(5, None, "Done, your order is in.", kind="complete"),
+    dec(0, "Customer name:", "This is an order form. Start with 'Customer name:'."),
+    dec(1, "Telephone:", "Next, enter the phone number in 'Telephone:'."),
+    dec(2, "E-mail address:", "Next, enter your e-mail in 'E-mail address:'."),
+    dec(3, "Pizza Size", "Next, choose a size in 'Pizza Size'.", role="AXGroup"),
+    dec(4, "Pizza Toppings", "Next, 'Pizza Toppings' (optional): tick any you like, or skip.", role="AXGroup", action="pressed Skip"),
+    dec(5, "Preferred delivery time:", "Next, 'Preferred delivery time:' (optional).", role="AXDateTimeArea", action="pressed Skip"),
+    dec(6, "Delivery instructions:", "Next, 'Delivery instructions:' (optional): add a note if you want.", role="AXTextArea"),
+    dec(7, "Submit order", "Next, click 'Submit order'.", role="AXButton"),
+    dec(8, None, "Done, your order is in.", kind="complete"),
     {"event": "stop", "reason": "complete"},
 ]
 BAD = [  # what Abin saw: wrong order, Pizza Size skipped, orientation repeated, a filled field re-pointed
     dec(0, "Telephone:", "This is an order form. Enter the phone in 'Telephone:'."),
-    dec(1, "Customer name:", "This is an order form. Enter your name.", ),
+    dec(1, "Customer name:", "This is an order form. Start with 'Customer name:'."),
     dec(2, "Customer name:", "This is an order form. Enter your name.", filled=True, times=2),
     dec(3, "E-mail address:", "This is an order form. Enter e-mail."),
     dec(4, "Submit order", "This is an order form. Click Submit.", role="AXButton"),
@@ -65,7 +68,8 @@ print("bad: ", bad)
 assert set(good.values()) == {"pass"}, good
 assert [v for v in bad.values()].count("pass") <= 2 and "fail" in bad.values(), bad
 fails = [k for k, v in bad.items() if v == "fail"]
-for needle in ("required steps", "Pizza Size", "no target", "orientation", "a filled control", "completion"):
+for needle in ("required steps", "Pizza Size", "no target", "orientation", "a filled control", "completion",
+               "optional units offered", "each optional unit", "Start with"):
     assert any(needle in k for k in fails), (needle, fails)
 
 # ---- KSEB ----
