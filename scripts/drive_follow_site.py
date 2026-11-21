@@ -173,7 +173,7 @@ def safari_app():
     return app
 
 
-def our_window(bounds, wait: float = 4.0):
+def our_window(bounds, wait: float = 10.0):
     """The single Safari AX window with exactly these bounds, or SystemExit."""
     end = time.time() + wait
     while True:
@@ -649,6 +649,7 @@ def main(argv=None) -> int:
                                     "body": BODY_TEXT}[what]
                             result = type_text(el, text)
                         else:
+                            speed_before = speed_now(window) if why == "speed stepper (decrease)" else None
                             result = press(el)
                             if why == "speed preset":
                                 state["decreases"] = max(state.get("decreases", 0), 0)
@@ -656,6 +657,23 @@ def main(argv=None) -> int:
                             if why == "speed stepper (decrease)":
                                 state["speed_touched"] = True
                                 a.decreases += 1
+                                # A person presses again when nothing happened: if the slider did not move (the panel may still
+                                # have been animating), press up to twice more. Recorded, never hidden.
+                                tries, before = 1, speed_before
+                                while tries < 3 and result.startswith("pressed") and before is not None:
+                                    time.sleep(1.2)
+                                    win = our_window(bounds)[1]
+                                    now = speed_now(win)
+                                    if now is not None and now != before:
+                                        break
+                                    again = find_by_label(win, site, {"AXButton"}, lambda l: l.lower().startswith("decrease playback speed"))
+                                    if again is None or press(again[0]) != "pressed":
+                                        break
+                                    tries += 1
+                                    state["decrease_retries"] = state.get("decrease_retries", 0) + 1
+                                if tries > 1:
+                                    result += f" (slider had not moved: pressed {tries} times)"
+                                time.sleep(0.8)
                                 state["decreases"] = a.decreases
                                 time.sleep(0.8)
                             if site == "youtube" and why == "settings" and seen[key] >= 2 and result == "pressed":

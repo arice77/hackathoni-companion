@@ -141,7 +141,8 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
     exact = counts == [5, 4, 3, 2, 1] or counts == [5, 4, 3, 2]  # the last step may read "(1 more time)" or complete first
     add("slower: the countdown strictly decreases (5, 4, 3, 2, 1) and at most 6 presses", strictly and 1 <= len(pressed) <= MAX_DECREASES,
         f"Decrease pointed {len(dec_pts)} times, pressed {len(pressed)}; countdown read {counts} "
-        f"({'exactly 5,4,3,2,1' if counts == [5, 4, 3, 2, 1] else 'strictly decreasing, not the full 5..1' if strictly else 'NOT decreasing'})")
+        f"({'exactly 5,4,3,2,1' if counts == [5, 4, 3, 2, 1] else 'strictly decreasing, not the full 5..1' if strictly else 'NOT decreasing'}); "
+        f"driver re-presses because the slider had not moved: {stop.get('decrease_retries', 0)}")
 
     restored = stop.get("speed_restored") is True and stop.get("menu_closed") is True
     add("account left as found: speed back to Normal (1.0) and Settings closed", restored,
