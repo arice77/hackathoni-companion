@@ -10,6 +10,7 @@ The person always clicks themselves. The companion never sends clicks or keystro
 from __future__ import annotations
 
 import argparse
+import threading
 import json
 import os
 import time
@@ -35,10 +36,12 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
 UI = {
     "ml": {"heard": "കേട്ടത്", "nothing": "ഒന്നും കേട്ടില്ല — വീണ്ടും പറയൂ.", "start": "ചോദ്യം ചോദിച്ച് തുടങ്ങൂ.",
-           "ask": "ചോദിക്കൂ", "stop": "നിർത്തൂ", "mic": "പിടിച്ച് സംസാരിക്കൂ",
+           "ask": "ചോദിക്കൂ", "stop": "നിർത്തൂ", "mic": "സംസാരിക്കൂ", "listening": "കേൾക്കുന്നു… നിർത്താൻ അമർത്തൂ",
+           "thinking": "മനസ്സിലാക്കുന്നു…",
            "placeholder": "മലയാളത്തിൽ ചോദിക്കൂ (Utter ഇവിടെ പ്രവർത്തിക്കും)"},
     "en": {"heard": "Heard", "nothing": "Heard nothing — try again.", "start": "Ask a question to start.",
-           "ask": "Ask", "stop": "Stop", "mic": "Hold to speak",
+           "ask": "Ask", "stop": "Stop", "mic": "Speak", "listening": "Listening… click to stop",
+           "thinking": "Understanding…",
            "placeholder": "Ask in English (Utter works here)"},
 }
 TICK_S = 0.5
@@ -85,6 +88,10 @@ class Companion(NSObject):
         self.lang = lang  # "ml" or "en": language of the panel, the overlay and (later) the voice
         self.last_decision = None
         self.voice = load_voice()
+        self.mute = False  # set from --mute; QA runs stay silent so they don't spend credits
+        self.recording = False
+        self.last_snapshot = None
+        self.last_spoken = None
         self.task = load_task(task_name)
         self.planner = make_planner(planner_name, task_name)
         self.overlay, self.overlay_kind = make_overlay()
@@ -165,19 +172,116 @@ class Companion(NSObject):
         self.ask_button.setTitle_(t["ask"])
         self.stop_button.setTitle_(t["stop"])
         self.mic_button.setTitle_("🎤 " + t["mic"])
+        self.reset_mic()
         if self.last_decision is not None:
             self.say(self.last_decision)
+            self.last_spoken = None
+            self.speak(self.last_decision)
         self.last_key = None  # redraw the pointer in the new language on the next tick
         self.log("language", lang=self.lang)
 
+    # ---------- voice (Sarvam) ----------
+    @objc.python_method
+    def pref(self) -> str:
+        return "ml-IN" if self.lang == "ml" else "en-IN"
+
+    @objc.python_method
+    def keyterms(self) -> list[str]:
+        """English labels on the current screen help Saaras hear 'Next', 'Save Draft' and the like."""
+        snap, seen = self.last_snapshot, []
+        for c in (snap.controls if snap else ()):
+            if c.label and len(c.label) <= 40 and c.role != "AXStaticText" and c.label not in seen:
+                seen.append(c.label)
+        return seen[:50]
+
     def mic_(self, sender):
-        pass  # wired when the voice module lands (push-to-talk -> ask -> planner -> speak)
+        if self.voice is None:
+            return
+        t = UI[self.lang]
+        if not self.recording:
+            self.recording = True
+            self.voice.stop_speaking()
+            self.mic_button.setTitle_("🔴 " + t["listening"])
+            threading.Thread(target=self.record_worker, daemon=True).start()
+        else:
+            self.recording = False
+            self.mic_button.setEnabled_(False)
+            self.mic_button.setTitle_("… " + t["thinking"])
+            threading.Thread(target=self.transcribe_worker, args=(self.pref(), self.keyterms()), daemon=True).start()
+
+    @objc.python_method
+    def record_worker(self):
+        try:
+            self.voice.record_push_to_talk()
+            self.log("mic_start")
+        except Exception as e:  # noqa: BLE001 - permission or helper failure is shown, not raised
+            self.recording = False
+            self.on_main("voiceFailed:", f"Microphone: {e}")
+
+    @objc.python_method
+    def transcribe_worker(self, pref, keyterms):
+        t0 = time.perf_counter()
+        try:
+            wav = self.voice.stop_recording()
+            heard = self.voice.ask(wav, pref, keyterms=keyterms)
+        except Exception as e:  # noqa: BLE001
+            self.on_main("voiceFailed:", f"Voice: {e}")
+            return
+        self.log("voice_heard", provider=heard.provider, model=heard.model, text=heard.text,
+                 english=heard.english_translation.text if heard.english_translation else None,
+                 ms=round(1000 * (time.perf_counter() - t0)), sarvam_calls=2 if pref == "ml-IN" else 1)
+        self.on_main("voiceHeard:", {"text": heard.text, "planner": heard.planner_text})
+
+    @objc.python_method
+    def on_main(self, selector, payload):
+        self.performSelectorOnMainThread_withObject_waitUntilDone_(selector, payload, False)
+
+    def voiceHeard_(self, payload):
+        self.reset_mic()
+        native, english = payload["text"], payload["planner"]
+        self.field.setStringValue_(native)
+        # The planner sees both: the native words and Sarvam's English translation of them.
+        self.start_question(native if english == native else f"{native} / {english}", shown=native)
+
+    def voiceFailed_(self, message):
+        self.reset_mic()
+        self.status.setStringValue_(str(message))
+        self.log("voice_error", error=str(message))
+
+    @objc.python_method
+    def reset_mic(self):
+        self.recording = False
+        self.mic_button.setEnabled_(self.voice is not None)
+        self.mic_button.setTitle_("🎤 " + UI[self.lang]["mic"])
+
+    @objc.python_method
+    def speak(self, decision: Decision):
+        """Read each new instruction aloud once, in the user's language."""
+        text = self.text_for(decision)
+        if self.voice is None or self.mute or not text or text == self.last_spoken:
+            return
+        self.last_spoken = text
+        pref = self.pref()
+
+        def run():
+            try:
+                self.voice.speak(text, pref)
+                self.log("spoke", chars=len(text), lang=pref, sarvam_calls=1)
+            except Exception as e:  # noqa: BLE001 - readable text stays on screen if speech fails
+                self.on_main("voiceFailed:", f"Speech: {e}")
+        threading.Thread(target=run, daemon=True).start()
 
     # ---------- actions ----------
     def ask_(self, sender):
-        self.question = str(self.field.stringValue())
+        text = str(self.field.stringValue())
+        self.start_question(text, shown=text)
+
+    @objc.python_method
+    def start_question(self, question: str, shown: str):
+        self.question = question
+        self.last_spoken = None
         t = UI[self.lang]
-        self.heard.setStringValue_(f"{t['heard']}: “{self.question}”" if self.question.strip() else t["nothing"])
+        self.heard.setStringValue_(f"{t['heard']}: “{shown}”" if shown.strip() else t["nothing"])
         self.active, self.last_key, self.started = True, None, time.time()
         self.progressed, self.unsure = False, 0
         self.log("question", text=self.question, chars=len(self.question))
@@ -186,6 +290,8 @@ class Companion(NSObject):
     def stop_(self, sender):
         self.active = False
         self.overlay.hide()
+        if self.voice is not None:
+            self.voice.stop_speaking()
         self.say(None, "നിർത്തി.", "Stopped.")
         self.log("stop")
 
@@ -196,6 +302,7 @@ class Companion(NSObject):
         t0 = time.perf_counter()
         try:
             snap = reader.snapshot(self.task.bundle_id)
+            self.last_snapshot = snap
         except reader.ReaderError as e:
             self.overlay.hide()
             self.say(None, "പരിശീലന ഫോം തുറക്കൂ.", str(e))
@@ -228,6 +335,7 @@ class Companion(NSObject):
 
         if changed:
             self.say(decision)
+            self.speak(decision)
             self.status.setStringValue_(
                 f"planner: {decision.source} · pointer: {self.overlay_kind} · "
                 f"observe {1000*(t1-t0):.0f} ms · plan {1000*(t2-t1):.0f} ms · draw {1000*(t3-t2):.0f} ms"
@@ -260,12 +368,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--planner", default=os.environ.get("COMPANION_PLANNER", "scripted"), choices=["scripted", "sarvam"])
     ap.add_argument("--task", default=os.environ.get("COMPANION_TASK", "aims"), help="companion/tasks/<name>.py")
+    ap.add_argument("--mute", action="store_true", help="no spoken replies (QA, or to save Sarvam credits)")
     ap.add_argument("--lang", default=os.environ.get("COMPANION_LANG", "ml"), choices=["ml", "en"])
     ap.add_argument("--question", help="pre-fill and ask (rehearsal/testing); normally typed or dictated")
     args = ap.parse_args()
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
     companion = Companion.alloc().initWithPlanner_task_lang_(args.planner, args.task, args.lang)
+    companion.mute = args.mute
     app.activateIgnoringOtherApps_(True)
     if args.question is not None:
         companion.field.setStringValue_(args.question)

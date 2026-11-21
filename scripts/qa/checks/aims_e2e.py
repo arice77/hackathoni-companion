@@ -27,7 +27,7 @@ def run():
     wait_for(lambda: reader.find_app(drive.BUNDLE))
     time.sleep(1.5)
     before = set((ROOT / "runs").glob("session-*.jsonl"))
-    app = subprocess.Popen([PY, "-m", "companion.app", "--question", QUESTION], cwd=ROOT,
+    app = subprocess.Popen([PY, "-m", "companion.app", "--mute", "--question", QUESTION], cwd=ROOT,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     try:
         log = wait_for(lambda: next(iter(set((ROOT / "runs").glob("session-*.jsonl")) - before), None), 10)
