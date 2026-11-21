@@ -45,6 +45,27 @@ UI = {
            "placeholder": "Ask in English (Utter works here)"},
 }
 TICK_S = 0.5
+
+
+def screen_signature(snap) -> tuple:
+    """What the planner's answer depends on: which controls exist and which are filled."""
+    return tuple(sorted((c.identifier or c.label, c.role, bool(c.filled)) for c in snap.controls))
+
+
+def rebind(decision: Decision, old_snap, new_snap) -> Decision | None:
+    """Carry a decision made on an older snapshot over to a fresh one with the same screen."""
+    target = None
+    if decision.control_id:
+        old = old_snap.control(decision.control_id)
+        if old is None:
+            return None
+        key = old.identifier or (old.role, old.label)
+        target = next((c for c in new_snap.controls
+                       if (c.identifier or (c.role, c.label)) == key), None)
+        if target is None:
+            return None
+    return Decision(decision.kind, new_snap.snapshot_id, decision.instruction, decision.instruction_en,
+                    target.id if target else None, decision.source)
 SETTLE_TICKS = 3  # mid-task "unsupported" must persist this many ticks (screens redraw in pieces)
 
 
@@ -92,8 +113,12 @@ class Companion(NSObject):
         self.recording = False
         self.last_snapshot = None
         self.last_spoken = None
+        self.plan_lock = threading.Lock()
+        self.plan_thread = None
+        self.plan_result = None  # (decision, snapshot, signature, plan_ms) from the background planner
         self.task = load_task(task_name)
         self.planner = make_planner(planner_name, task_name)
+        self.background = getattr(self.planner, "name", "") == "sarvam"  # network planners must not block the UI
         self.overlay, self.overlay_kind = make_overlay()
         self.active = False
         self.progressed, self.unsure = False, 0
@@ -312,7 +337,13 @@ class Companion(NSObject):
                 self.last_key = "reader-error"
             return
         t1 = time.perf_counter()
-        decision = self.planner.decide(self.question, snap)
+        if self.background:
+            decision, plan_ms = self.background_decision(snap)
+            if decision is None:  # the planner is still thinking about this screen
+                return
+        else:
+            decision = self.planner.decide(self.question, snap)
+            plan_ms = None
         t2 = time.perf_counter()
         if decision.kind == "unsupported" and self.progressed:
             self.unsure += 1
@@ -334,6 +365,9 @@ class Companion(NSObject):
         t3 = time.perf_counter()
 
         if changed:
+            if plan_ms is not None:
+                self.status.setStringValue_(str(self.status.stringValue()).replace(
+                    f"plan {1000*(t2-t1):.0f} ms", f"plan {plan_ms:.0f} ms"))
             self.say(decision)
             self.speak(decision)
             self.status.setStringValue_(
@@ -356,6 +390,39 @@ class Companion(NSObject):
             self.active = False
         elif decision.kind in ("clarify", "unsupported"):
             self.active = False
+
+    @objc.python_method
+    def background_decision(self, snap):
+        """Return (decision for this exact screen, plan ms) or (None, None) while still planning."""
+        sig = screen_signature(snap)
+        with self.plan_lock:
+            result, running = self.plan_result, self.plan_thread is not None and self.plan_thread.is_alive()
+        if not running and (result is None or result[2] != sig):
+            question = self.question
+
+            def work():
+                t0 = time.perf_counter()
+                try:
+                    d = self.planner.decide(question, snap)
+                except Exception as e:  # noqa: BLE001 - a failed call becomes an honest unsupported
+                    d = Decision("unsupported", snap.snapshot_id, "സഹായി ഇപ്പോൾ ലഭ്യമല്ല.",
+                                 f"Planner error: {e}", source="sarvam")
+                with self.plan_lock:
+                    self.plan_result = (d, snap, sig, 1000 * (time.perf_counter() - t0))
+            self.plan_thread = threading.Thread(target=work, daemon=True)
+            self.plan_thread.start()
+        if result is None or result[2] != sig:
+            if self.last_key != "thinking":
+                self.overlay.hide()
+                self.instruction.setStringValue_(UI[self.lang]["thinking"])
+                self.last_key = "thinking"
+            return None, None
+        decision = rebind(result[0], result[1], snap)
+        if decision is None:
+            with self.plan_lock:
+                self.plan_result = None
+            return None, None
+        return decision, result[3]
 
     @objc.python_method
     def log(self, event: str, **fields):
