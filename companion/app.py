@@ -223,7 +223,7 @@ class Companion(NSObject):
             return
         self.log("voice_heard", provider=heard.provider, model=heard.model, text=heard.text,
                  english=heard.english_translation.text if heard.english_translation else None,
-                 ms=round(1000 * (time.perf_counter() - t0)), sarvam_calls=2 if pref == "ml-IN" else 1)
+                 ms=round(1000 * (time.perf_counter() - t0)), sarvam_calls=1 + int(heard.english_translation is not None))
         self.on_main("voiceHeard:", {"text": heard.text, "planner": heard.planner_text})
 
     @objc.python_method
