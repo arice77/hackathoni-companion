@@ -13,7 +13,7 @@ import subprocess
 import time
 import unicodedata
 import uuid
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -63,6 +63,9 @@ YOUTUBE_LINK_TEXT = re.compile(
     r"(?<![\w.])(?:https?://)?(?:(?:www|m)\.)?youtube\.com/[^\s<>\"']*"
     r"|(?<!\w)/(?:watch\?|shorts/|@|channel/|playlist\?)[^\s<>\"']+", re.IGNORECASE,
 )
+YOUTUBE_TITLE_IDS = {"video-title", "video-title-link", "channel-title", "playlist-title"}
+YOUTUBE_THUMBNAIL_IDS = {"thumbnail", "thumbnail-link"}
+YOUTUBE_ANCHOR_PREFIX = {"title": "a", "thumbnail": "b", "link": "c"}
 GMAIL_HOST = "mail.google.com"
 GMAIL_FIELDS = {"Search mail", "To", "Cc", "Bcc", "Subject", "Message Body"}
 GMAIL_FOLDERS = {"Inbox", "Starred", "Snoozed", "Sent", "Drafts", "Important", "All Mail", "Spam", "Trash",
@@ -336,6 +339,23 @@ def _youtube_link(value, label: str) -> tuple[str | None, str]:
     return f"youtube-{kind}:{marker}", label.strip()
 
 
+def _youtube_anchor_id(target: str, dom_id: str, in_heading: bool, label: str,
+                       anchors: Counter[tuple[str, str, str]]) -> str:
+    if dom_id in YOUTUBE_THUMBNAIL_IDS:
+        kind = "thumbnail"
+    elif dom_id in YOUTUBE_TITLE_IDS or in_heading:
+        kind = "title"
+    else:
+        kind = "link"
+    label_key = " ".join(label.casefold().split())
+    key = target, kind, label_key
+    index = anchors[key]
+    anchors[key] += 1
+    digest = sha256(f"AXLink:{kind}:{label_key}:{index}".encode("utf-8")).hexdigest()[:9]
+    # The first hex digit carries the anchor type. Positions and frames are not part of the key.
+    return f"{target}:{YOUTUBE_ANCHOR_PREFIX[kind]}{digest}"
+
+
 def _icon_only(label: str) -> bool:
     glyphs = [char for char in label if not char.isspace() and char not in "\u200d\ufe0e\ufe0f"]
     return bool(glyphs) and all("\ue000" <= char <= "\uf8ff" for char in glyphs)
@@ -464,9 +484,13 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         roles |= {"AXGroup", "AXStaticText"}
     leaves = WEB_LEAVES if web else INPUT_ROLES | {SECURE_ROLE}
     value_roles = WEB_VALUE_ROLES if web else INPUT_ROLES
+    youtube_headings: set[int] = set()
+    youtube_anchors: Counter[tuple[str, str, str]] = Counter()
     headings = 0
     below_fold_count = 0
     for index, (el, role, parent) in enumerate(_walk(start, get, limit, leaves)):
+        if youtube and (role == "AXHeading" or parent in youtube_headings):
+            youtube_headings.add(index)
         scroll_clip = _scroll_clip(el, role, scroll_clips.get(parent), get)
         scroll_clips[index] = scroll_clip
         enclosing_set = ancestry.get(parent)
@@ -518,6 +542,10 @@ def _collect(start, get, limit, viewport=None, *, practice=False, window_frame=N
         if web:
             if youtube_link:
                 ident, label = _youtube_link(get(el, "AXURL"), label)
+                if ident is not None:
+                    dom_id = get(el, "AXDOMIdentifier")
+                    ident = _youtube_anchor_id(ident, dom_id if isinstance(dom_id, str) else "",
+                                               index in youtube_headings, label, youtube_anchors)
             if choice_set is None:
                 label = _safe_web_text(label)
             if ident and (len(ident) > MAX_WEB_LABEL_LENGTH or HTTP_URL.search(ident)):

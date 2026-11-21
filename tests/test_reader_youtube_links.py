@@ -13,13 +13,16 @@ HANDLE = "@DemoChannel"
 PLAYLIST = "PL-DemoList123"
 
 
-def fake_snapshot(host, links, *, hidden=()):
+def fake_snapshot(host, links, *, hidden=(), headings=(), frames=None):
     url = f"https://{host}/results?search_query=unexported-search"
-    nodes = {"page": {"AXRole": "AXWebArea", "AXURL": url, "AXChildren": list(links)}}
+    nodes = {"page": {"AXRole": "AXWebArea", "AXURL": url,
+                      "AXChildren": [f"heading-{name}" if name in headings else name for name in links]}}
     nodes.update({
         name: {"AXRole": "AXLink", "AXTitle": label, "AXDOMIdentifier": dom_id, "AXURL": destination}
         for name, (label, dom_id, destination) in links.items()
     })
+    for name in headings:
+        nodes[f"heading-{name}"] = {"AXRole": "AXHeading", "AXChildren": [name]}
     link_url_reads = []
 
     def get(el, name):
@@ -30,7 +33,7 @@ def fake_snapshot(host, links, *, hidden=()):
     def frame(el, _get):
         if el == "page":
             return VIEWPORT
-        return (10, 450, 100, 20) if el in hidden else (10, 20, 100, 20)
+        return (10, 450, 100, 20) if el in hidden else (frames or {}).get(el, (10, 20, 100, 20))
 
     view = reader._WebView("page", VIEWPORT, VIEWPORT, url, ())
     with patch.object(reader, "_frame", side_effect=frame):
@@ -53,13 +56,13 @@ class YouTubeLinkTests(unittest.TestCase):
             "outside": (label, "external-id", f"https://youtube.com.example.org/watch?v={VIDEO}"),
             "below": (label, "hidden-id", f"/watch?v={VIDEO}"),
         }, hidden={"below"})
-        self.assertEqual([(control.label, control.identifier) for control in snap.controls], [
-            (label, marker("watch", VIDEO)),
-            (label, marker("channel", HANDLE.casefold())),
-            (label, marker("channel", "UC-DemoChannel")),
-            (label, marker("playlist", PLAYLIST)),
-            (label, None),
-        ])
+        self.assertEqual([control.label for control in snap.controls], [label] * 5)
+        for control, target in zip(snap.controls, [
+            marker("watch", VIDEO), marker("channel", HANDLE.casefold()),
+            marker("channel", "UC-DemoChannel"), marker("playlist", PLAYLIST),
+        ], strict=False):
+            self.assertRegex(control.identifier, rf"^{target}:[0-9a-f]{{10}}$")
+        self.assertIsNone(snap.controls[-1].identifier)
         self.assertEqual(reads, ["video", "handle", "channel", "playlist", "outside"])
 
     def test_watch_and_shorts_produce_the_same_marker_across_snapshots(self):
@@ -72,6 +75,43 @@ class YouTubeLinkTests(unittest.TestCase):
         })
         self.assertNotEqual(first.controls[0].id, second.controls[1].id)
         self.assertEqual(first.controls[0].identifier, second.controls[1].identifier)
+
+    def test_title_and_thumbnail_have_distinct_keys_when_the_same_label_moves(self):
+        video_url = f"/watch?v={VIDEO}"
+        title = ("Same title", "video-title", video_url)
+        thumbnail = ("Same title", "thumbnail", video_url)
+        first, _ = fake_snapshot("www.youtube.com", {"image": thumbnail, "title": title})
+        second, _ = fake_snapshot("www.youtube.com", {"title": title, "image": thumbnail},
+                                  frames={"title": (30, 40, 130, 20), "image": (5, 70, 180, 90)})
+        title_only, _ = fake_snapshot("www.youtube.com", {"image": thumbnail, "title": title}, hidden={"image"})
+        target = marker("watch", VIDEO)
+        image_id, title_id = (control.identifier for control in first.controls)
+        self.assertRegex(image_id, rf"^{target}:b[0-9a-f]{{9}}$")
+        self.assertRegex(title_id, rf"^{target}:a[0-9a-f]{{9}}$")
+        self.assertEqual([control.identifier for control in second.controls], [title_id, image_id])
+        self.assertEqual(title_only.controls[0].identifier, title_id)
+
+    def test_heading_ancestry_can_mark_title_without_dom_identifier(self):
+        snap, _ = fake_snapshot("m.youtube.com", {
+            "title": ("A video title", None, f"/watch?v={VIDEO}"),
+        }, headings={"title"})
+        link = next(control for control in snap.controls if control.role == "AXLink")
+        self.assertRegex(link.identifier, rf"^{marker('watch', VIDEO)}:a[0-9a-f]{{9}}$")
+
+    def test_same_kind_duplicate_anchors_also_get_distinct_identifiers(self):
+        cases = (
+            ("watch", VIDEO, f"/watch?v={VIDEO}"),
+            ("channel", HANDLE.casefold(), f"/{HANDLE}"),
+            ("playlist", PLAYLIST, f"/playlist?list={PLAYLIST}"),
+        )
+        for kind, key, url in cases:
+            with self.subTest(kind=kind):
+                anchor = ("Same label", None, url)
+                snap, _ = fake_snapshot("youtube.com", {"first": anchor, "second": anchor})
+                first, second = (control.identifier for control in snap.controls)
+                self.assertRegex(first, rf"^{marker(kind, key)}:c[0-9a-f]{{9}}$")
+                self.assertRegex(second, rf"^{marker(kind, key)}:c[0-9a-f]{{9}}$")
+                self.assertNotEqual(first, second)
 
     def test_raw_destinations_and_tokens_do_not_leave_the_reader(self):
         watch_url = f"https://www.youtube.com/watch?v={VIDEO}&t=123"
