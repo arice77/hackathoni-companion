@@ -10,8 +10,8 @@ languages mentioned in the demo only. Refine on three real sites, not "works on 
 
 | Site | Parent tasks (draft) | Limits for tests |
 |---|---|---|
-| YouTube | search, play, Malayalam subtitles, full screen, slower speed | search/play/menus only; no like/subscribe/comment (Safari is signed in to Abin's Google account) |
-| Gmail (Abin's real account) | read latest mail, reply, attach a photo | send only to Abin's own address; never delete/archive/mark; never log subjects, senders or bodies |
+| YouTube | search, play, Malayalam subtitles, full screen, slower speed, like, subscribe | like/subscribe/comment allowed (Abin, 22 Nov ~00:40); tests undo likes/subscriptions and delete test comments |
+| Gmail (Abin's real account) | write, reply, search, attach | Send allowed only to Abin's own two addresses (exact spelling pending his confirmation), via `QA_GMAIL_TO` + `QA_GMAIL_ALLOWED`, max one per run; never delete/archive/mark; never log subjects, senders or bodies |
 | KSEB Quick Pay (wss.kseb.in) | open Quick Pay, enter consumer number, see bill | stop at the captcha; never submit or pay |
 
 Privacy note: on Gmail, on-screen subjects/senders become control labels and reach Sarvam in planner prompts.
