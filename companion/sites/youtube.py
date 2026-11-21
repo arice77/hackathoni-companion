@@ -37,7 +37,7 @@ _CONTROL_KEYS = {
                "വേഗത കുറയ്ക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
     "faster": ("faster", "play it faster", "speed up", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
 }
-_SHORTCUT = re.compile(r"\s*\([a-z]\)$")
+_SHORTCUT = re.compile(r"(?:\s*\([a-z]\)|\s+keyboard shortcut\s+[a-z])$")
 _SEARCH_PATTERNS = (
     re.compile(r"(?:(?:can you|please) )?(?:find(?: and play)?|search(?: for)?|look for|play|show me) (?P<title>.+)"),
     re.compile(r"i (?:want|would like) to (?:watch|hear|find|play|listen to) (?P<title>.+)"),
@@ -45,19 +45,37 @@ _SEARCH_PATTERNS = (
     re.compile(r"(?P<title>.+?)\s+(?:play cheyyu|search cheyyu|thirayoo|kaanam|kelkkanam)"),
 )
 _TITLE_PREFIX = re.compile(r"^(?:the|a|an|please|(?:song|video) (?:called|named)|ഒന്ന്|യൂട്യൂബിൽ)\s+")
-_TITLE_SUFFIX = re.compile(r"\s+(?:on youtube|song|video|paattu|പാട്ട്|വീഡിയോ|please|ഒന്ന്|എന്ന)$")
+_TITLE_SUFFIX = re.compile(r"\s+(?:on youtube|please|ഒന്ന്|എന്ന)$")
+_MEDIA_SUFFIX = re.compile(r"\s+(?:song|video|paattu|പാട്ട്|വീഡിയോ)$")
 _GENERIC_TITLE = {
     "", "a", "a song", "a video", "music", "something", "song", "video", "a malayalam", "malayalam",
     "പാട്ട്", "വീഡിയോ", "paattu", "oru paattu",
 }
 _TOKENS = re.compile(r"(?:[^\W_]|[\u0d00-\u0d03\u0d3b-\u0d4d\u0d57\u200c\u200d])+", re.UNICODE)
 _ROMAN_NAMES = {"ദർശന": "darshana", "ദര്‍ശന": "darshana", "ഹൃദയം": "hridayam"}
-_PLAYER = (
-    ("AXButton", "Play (k)"), ("AXButton", "Pause (k)"), ("AXButton", "Mute (m)"),
-    ("AXButton", "Unmute (m)"), ("AXButton", "Full screen (f)"), ("AXButton", "Exit full screen (f)"),
-    ("AXPopUpButton", "Settings"), ("AXCheckBox", "Subtitles/closed captions (c)"),
-    ("AXCheckBox", "Subtitles/closed captions unavailable"), ("AXButton", "Skip ad"),
-)
+_QUERY_ALIASES = {**_ROMAN_NAMES, "പാട്ട്": "song", "paattu": "song", "വീഡിയോ": "video"}
+_MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
+_RESULT_SIGNALS = {"song", "official", "video"}
+_COLLECTION = re.compile(r"^mix\s*[-–—:]|\bplaylists?\b|\bshorts\b")
+_PLAYER_SHORTCUTS = {
+    "play": "k", "pause": "k", "mute": "m", "unmute": "m", "full screen": "f", "exit full screen": "f",
+}
+_CC_LABEL = "subtitles/closed captions"
+_SKIP_LABELS = ("skip ad", "skip ads", "skip")
+_PLAYER = {
+    *(("AXButton", label) for label in _PLAYER_SHORTCUTS),
+    ("AXPopUpButton", "settings"), ("AXButton", "settings"),
+    ("AXCheckBox", _CC_LABEL), ("AXCheckBox", f"{_CC_LABEL} unavailable"),
+    ("AXSlider", "seek slider"), ("AXSlider", "volume"),
+}
+_PLAYER_SHORTCUT_LABELS = {
+    (role, variant)
+    for role, label, key in (
+        *(("AXButton", label, key) for label, key in _PLAYER_SHORTCUTS.items()),
+        ("AXCheckBox", _CC_LABEL, "c"),
+    )
+    for variant in (f"{label} ({key})", f"{label} keyboard shortcut {key}")
+}
 _VIDEO_LINK_PREFIX = "youtube-watch:"
 
 
@@ -96,11 +114,22 @@ def parse_intent(question: str) -> Intent | None:
                     title = _TITLE_SUFFIX.sub("", title).strip(' "\'“”‘’')
                 titles.append(title)
                 break
-    return Intent("find", tuple(dict.fromkeys(t for t in titles if t not in _GENERIC_TITLE))) if titles else None
+    if not titles:
+        # A familiar title with a media word also works as a short Malayalam request.
+        titles = [part for part in parts if _MEDIA_SUFFIX.sub("", part) in _ROMAN_NAMES]
+    if not titles:
+        return None
+    return Intent("find", tuple(dict.fromkeys(
+        title for title in titles if _MEDIA_SUFFIX.sub("", title) not in _GENERIC_TITLE
+    )))
+
+
+def _player_label(label: str) -> str:
+    return _SHORTCUT.sub("", _phrase(label))
 
 
 def _key(control: Control) -> tuple[str, str]:
-    return control.role, _phrase(control.label)
+    return control.role, _player_label(control.label)
 
 
 def _rank(control: Control) -> tuple[float, float]:
@@ -109,8 +138,20 @@ def _rank(control: Control) -> tuple[float, float]:
 
 def _target(controls: tuple[Control, ...], roles: set[str], label: str) -> Control | None:
     return next((
-        c for c in controls if c.enabled and c.role in roles and _SHORTCUT.sub("", _phrase(c.label)) == label
+        c for c in controls if c.enabled and c.role in roles and _player_label(c.label) == label
     ), None)
+
+
+def _has_player(controls: tuple[Control, ...]) -> bool:
+    return any(_key(c) in _PLAYER for c in controls)
+
+
+def _await_player(snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
+    if _has_player(controls):
+        return _decision(snap, "clarify", "ബട്ടണുകൾ കാണാൻ മൗസ് വീഡിയോയുടെ മുകളിലേക്ക് നീക്കൂ.",
+                         "Move the pointer over the video to show its controls.")
+    return _decision(snap, "clarify", "വീഡിയോയുടെ ബട്ടണുകൾ കാണാൻ ഒന്ന് കാത്തിരിക്കൂ.",
+                     "Waiting for YouTube’s player controls.")
 
 
 def _menu(controls: tuple[Control, ...], label: str) -> Control | None:
@@ -128,7 +169,14 @@ def _point(snap: Snapshot, control: Control, ml: str, en: str) -> Decision:
 
 
 def _title_words(label: str) -> set[str]:
-    return {_ROMAN_NAMES.get(word, word) for word in _TOKENS.findall(_phrase(label))}
+    return {_QUERY_ALIASES.get(word, word) for word in _TOKENS.findall(_phrase(label))}
+
+
+def _search_query(title: str) -> str:
+    words = title.split()
+    if any(_MALAYALAM.search(word) and word not in _QUERY_ALIASES for word in words):
+        return title
+    return " ".join(_QUERY_ALIASES.get(word, word) for word in words)
 
 
 def _video_key(control: Control) -> str:
@@ -152,32 +200,32 @@ def _result_links(controls: tuple[Control, ...]) -> tuple[Control, ...]:
 
 def _best_result(links: tuple[Control, ...], titles: tuple[str, ...]) -> Control | None:
     if not titles:
-        return links[0] if links else None
+        return min(links, key=lambda link: bool(_COLLECTION.search(_phrase(link.label))), default=None)
+    queries = [(_title_words(_MEDIA_SUFFIX.sub("", title)), _title_words(title)) for title in titles]
     matches = []
     for link in links:
         label, words = _phrase(link.label), _title_words(link.label)
-        for title in titles:
-            wanted = _title_words(title)
+        for wanted, query in queries:
             if wanted and wanted <= words:
-                matches.append(((label == title, title in label, len(wanted), -len(words)), link))
+                score = (not _COLLECTION.search(label), len(wanted), query <= words,
+                         len(_RESULT_SIGNALS & words), len(query), -len(words))
+                matches.append((score, link))
     return max(matches, key=lambda row: row[0])[1] if matches else None
 
 
 def _settings(snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
     if gear := _target(controls, {"AXPopUpButton", "AXButton"}, "settings"):
         return _point(snap, gear, "{label} അമർത്തൂ.", "Open {label}.")
-    return _decision(
-        snap, "clarify", "ആദ്യം വീഡിയോ തുറക്കൂ. അപ്പോൾ താഴെ ⚙ Settings കാണാം.",
-        "Open a video first. Then look for Settings at the bottom of the player.",
-    )
+    return _await_player(snap, controls)
 
 
 def _ad(snap: Snapshot, controls: tuple[Control, ...]) -> Decision | None:
-    skip = _target(controls, {"AXButton"}, "skip ad") or _target(controls, {"AXButton"}, "skip ads")
-    if skip is not None:
-        return _point(snap, skip, "പരസ്യം ഒഴിവാക്കാൻ {label} അമർത്തൂ.", "Use {label} to skip the ad.")
+    for label in _SKIP_LABELS:
+        if skip := _target(controls, {"AXButton"}, label):
+            return _point(snap, skip, "പരസ്യം ഒഴിവാക്കാൻ {label} അമർത്തൂ.", "Use {label} to skip the ad.")
     if any(
-        re.fullmatch(r"skip ads?(?: in .+)?|ad \d+ of \d+|ad will end in .+|video will play after ad", _phrase(c.label))
+        re.fullmatch(r"skip(?: ads?)?(?: in .+)?|ad \d+ of \d+|ad will end in .+|video will play after ad",
+                     _phrase(c.label))
         for c in controls
     ):
         return _decision(snap, "clarify", "പരസ്യം തീരുന്നതുവരെ ഒന്ന് കാത്തിരിക്കൂ.",
@@ -220,31 +268,36 @@ class YouTubeGuide:
         links = _result_links(controls)
         fingerprint = tuple((c.role, _video_key(c)) for c in links)
         result = _best_result(links, self.intent.titles)
+        if result is not None and snap.below_fold_count > 0 and _COLLECTION.search(_phrase(result.label)):
+            result = None
         play = _target(controls, {"AXButton"}, "play")
         pause = _target(controls, {"AXButton"}, "pause")
+        player_visible = _has_player(controls)
         results_ui = any(
             c.role in {"AXButton", "AXHeading", "AXPopUpButton"}
             and _phrase(c.label) in {"filters", "search filters", "search results"}
             for c in controls
         )
         if self.search_phase == "watch":
-            on_watch = (play is not None or pause is not None) and (
+            on_watch = player_visible and (
                 not self.had_player or fingerprint != self.prior_results
             )
             if on_watch and pause is not None:
                 return _decision(snap, "complete", "വീഡിയോ ഇപ്പോൾ പ്ലേ ചെയ്യുന്നു.", "The video is playing.")
             if on_watch and play is not None:
                 return _point(snap, play, "വീഡിയോ തുടങ്ങാൻ {label} അമർത്തൂ.", "Use {label} to start the video.")
+            if on_watch:
+                return _await_player(snap, controls)
             if result is not None and _phrase(result.label) == self.result_label:
                 return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
         elif self.search_phase == "start":
-            if play is None and pause is None and (results_ui or (links and search and search.filled is True)):
+            if not player_visible and (results_ui or (links and search and search.filled is True)):
                 self.search_phase = "results"
             elif search is not None:
                 self.search_phase, self.prior_results = "typing", fingerprint
                 self.replacing_search = search.filled is True
         if self.search_phase == "typing" and search is not None:
-            if fingerprint != self.prior_results and links and play is None and pause is None:
+            if fingerprint != self.prior_results and links and not player_visible:
                 self.search_phase = "results"
             elif search.filled is True and not self.replacing_search and submit is not None:
                 self.search_phase = "submitted"
@@ -258,7 +311,7 @@ class YouTubeGuide:
                 return _point(snap, submit, "തിരയാൻ {label} അമർത്തൂ.", "Click {label} to see the results.")
         if result is not None and (self.search_phase != "watch" or self.result_label == _phrase(result.label)):
             self.search_phase, self.result_label, self.prior_results = "watch", _phrase(result.label), fingerprint
-            self.had_player = play is not None or pause is not None
+            self.had_player = player_visible
             return _point(snap, result, "വീഡിയോ കാണാൻ {label} അമർത്തൂ.", "Open {label} to play the video.")
         if self.search_phase in {"results", "watch"} and snap.below_fold_count > 0:
             return _decision(snap, "clarify", "കൂടുതൽ ഫലങ്ങൾ കാണാൻ താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ.",
@@ -280,7 +333,7 @@ class YouTubeGuide:
 
     def _type_into(self, snap: Snapshot, search: Control) -> Decision:
         if self.intent.titles:
-            title = self.intent.titles[0]
+            title = _search_query(self.intent.titles[0])
             ml = f"‘{title}’ എന്ന പേര് ‘{search.label}’ എന്നിടത്ത് ടൈപ്പ് ചെയ്യൂ."
             en = f"Type ‘{title}’ in ‘{search.label}’."
         else:
@@ -312,8 +365,7 @@ class YouTubeGuide:
             return _point(snap, target, ml, en)
         if _target(controls, {"AXButton"}, done):
             return _decision(snap, "complete", ml_done, en_done)
-        return _decision(snap, "clarify", "ആദ്യം വീഡിയോ തുറക്കൂ. താഴെയുള്ള ബട്ടണുകൾ അപ്പോൾ കാണാം.",
-                         "Open a video first so the player controls are visible.")
+        return _await_player(snap, controls)
 
     def _speed(self, snap: Snapshot, controls: tuple[Control, ...]) -> Decision:
         rates = []
@@ -406,7 +458,8 @@ PACK = YouTubePack(
                    "Type the video name in ‘Search’."),
     steps=(),
     privacy=PrivacyProfile(frozenset((role, _phrase(label)) for role, label in (
-        *_PLAYER, *((role, "Search") for role in {*_SEARCH, "AXButton"}),
+        *_PLAYER, *_PLAYER_SHORTCUT_LABELS, *(("AXButton", label) for label in _SKIP_LABELS),
+        *((role, "Search") for role in {*_SEARCH, "AXButton"}),
         *((role, label) for role in _MENU for label in ("Playback speed", "Subtitles/CC", "Malayalam")),
     ))),
     practice_result="",
