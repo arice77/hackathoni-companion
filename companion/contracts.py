@@ -44,6 +44,9 @@ class Snapshot:
     window_frame: Rect
     controls: tuple[Control, ...] = field(default_factory=tuple)
     viewport: Rect | None = None
+    # Actionable page controls below the visible area (not in `controls`). >0 lets the planner say
+    # "scroll down" instead of pointing at something off screen.
+    below_fold_count: int = 0
 
     def control(self, control_id: str) -> Control | None:
         return next((c for c in self.controls if c.id == control_id), None)
