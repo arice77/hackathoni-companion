@@ -25,24 +25,30 @@ _EXPLICIT_SPEED = re.compile(r"(?:set |change )?(?:playback )?speed (?:to |at )?
 _SPEED_CONTEXT = re.compile(r"\b(?:play at|speed|slower|faster|vegathayil)\b|വേഗത്തിൽ")
 _MALAYALAM_CHOICE = re.compile(r"(?:malayalam|മലയാളം)(?:\s*\([^)]*\))?")
 _POLITE_PREFIX = re.compile(r"^(?:(?:can|could|would) you(?: please)?|please|how (?:do|can) i) ")
+_COMMAND_PUNCTUATION = str.maketrans({"\u200c": None, "\u200d": None,
+                                      **dict.fromkeys(",:;…\"“”‘’-–—", " ")})
 _CONTROL_KEYS = {
     "fullscreen": ("full screen", "fullscreen", "go full screen", "bigger screen", "make the video bigger", "make it bigger",
-                   "വീഡിയോ വലുതാക്കി കാണണം", "വലുതാക്കി കാണിക്കൂ", "video valuthakkam", "full screen aakkam"),
+                   "വീഡിയോ വലുതാക്കി കാണണം", "വലുതാക്കി കാണിക്കൂ", "വലുതാക്കൂ", "video valuthakkam",
+                   "full screen aakkam", "full screen ആക്കൂ"),
     "exit_fullscreen": ("exit full screen", "exit fullscreen", "how do i exit full screen",
                         "ഫുൾ സ്ക്രീനിൽ നിന്ന് എങ്ങനെ പുറത്തു വരാം", "full screen engane ozhivakkam"),
-    "pause": ("pause", "pause this video", "pause the video", "വീഡിയോ നിർത്തൂ", "video pause cheyyu"),
-    "play": ("play", "play this video", "resume the video", "വീഡിയോ വീണ്ടും പ്ലേ ചെയ്യൂ", "video play cheyyu"),
+    "pause": ("pause", "pause this video", "pause the video", "നിർത്തൂ", "വീഡിയോ നിർത്തൂ", "video pause cheyyu"),
+    "play": ("play", "play this video", "resume", "resume the video", "പ്ലേ ചെയ്യൂ", "വീഡിയോ വീണ്ടും പ്ലേ ചെയ്യൂ",
+             "video play cheyyu"),
     "mute": ("mute", "mute this video", "mute the sound", "ശബ്ദം ഓഫ് ചെയ്യൂ", "sound mute cheyyu"),
     "unmute": ("unmute", "unmute this video", "turn the sound back on", "ശബ്ദം തിരിച്ചു കൊണ്ടുവരൂ",
                "sound unmute cheyyu"),
-    "captions": ("malayalam subtitles", "show malayalam subtitles", "turn on malayalam subtitles",
-                 "മലയാളം സബ്ടൈറ്റിൽ വേണം", "മലയാളം സബ്‌ടൈറ്റിൽ വേണം", "malayalam subtitle venam",
-                 "malayalam subtitles venam"),
+    "captions": ("subtitles", "show captions", "malayalam subtitles", "show malayalam subtitles",
+                 "turn on malayalam subtitles", "മലയാളം സബ്ടൈറ്റിൽ", "മലയാളം സബ്ടൈറ്റിൽ വേണം", "സബ്ടൈറ്റിൽ ഇടൂ",
+                 "അക്ഷരങ്ങൾ കാണിക്കൂ", "malayalam subtitle venam", "malayalam subtitles venam"),
     "slower": ("slower", "play it slower", "slow down", "slow it down", "make it slower", "make the video slower",
-               "play this video slower", "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ പ്ലേ ചെയ്യൂ", "വേഗം കുറയ്ക്കൂ",
-               "വേഗത കുറയ്ക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
-    "faster": ("faster", "play it faster", "speed up", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
+               "play this video slower", "play slowly", "reduce the speed", "too fast", "വീഡിയോ പതുക്കെ പ്ലേ ചെയ്യൂ",
+               "പതുക്കെ പ്ലേ ചെയ്യൂ", "പതുക്കെ", "പതുക്കെ ആക്കൂ", "വേഗം കുറയ്ക്കൂ", "സ്പീഡ് കുറയ്ക്കൂ", "വേഗത കുറയ്ക്കൂ",
+               "സാവധാനം", "slow ആക്കൂ", "pathukke", "pathukke play cheyyu", "speed kurakku", "speed kuraykku"),
+    "faster": ("faster", "play it faster", "speed up", "speed it up", "make the video faster", "വേഗം കൂട്ടൂ", "speed koottu"),
 }
+_SPEED_DEFAULTS = {"slower": Decimal("0.75"), "faster": Decimal("1.25")}
 _SHORTCUT = re.compile(r"(?:\s*\([a-z]\)|\s+keyboard shortcut\s+[a-z])$")
 _SEARCH_PATTERNS = (
     re.compile(r"(?:(?:can you|please) )?(?:find(?: and play)?|search(?: for)?|look for|play|show me) (?P<title>.+)"),
@@ -102,9 +108,15 @@ class Intent:
     speed: Decimal | None = None
 
 
+def _command_phrase(text: str) -> str:
+    # Normalize short commands independently of the text used as a video title.
+    phrase = _phrase(text.replace("ല്‍", "ൽ").replace("ര്‍", "ർ").translate(_COMMAND_PUNCTUATION))
+    return _POLITE_PREFIX.sub("", phrase).removesuffix(" please")
+
+
 def parse_intent(question: str) -> Intent | None:
     parts = tuple(_POLITE_PREFIX.sub("", _phrase(part)) for part in question.split(" / ", 1))
-    for part in parts:
+    for part in map(_command_phrase, parts):
         rate = _EXPLICIT_SPEED.fullmatch(part)
         if rate is None and _SPEED_CONTEXT.search(part):
             rate = _NAMED_SPEED.search(part)
@@ -114,8 +126,8 @@ def parse_intent(question: str) -> Intent | None:
             return Intent("speed", speed=Decimal(rate.group(1)))
         for action, phrases in _CONTROL_KEYS.items():
             if part in phrases:
-                if action in {"slower", "faster"}:
-                    return Intent("speed", speed=Decimal("0.75") if action == "slower" else None)
+                if action in _SPEED_DEFAULTS:
+                    return Intent("speed", speed=_SPEED_DEFAULTS[action])
                 return Intent(action)
     titles = []
     for part in parts:
@@ -446,12 +458,6 @@ class YouTubeGuide:
                 rates.append((Decimal(value[1]), c))
         requested = self.intent.speed
         if rates:
-            if requested is None:
-                faster = ", ".join(str(rate) for rate, _ in rates if rate > 1)
-                return _decision(
-                    snap, "clarify", f"കൂടുതൽ വേഗം എത്ര വേണം? കാണുന്ന ഓപ്ഷനുകൾ {faster or 'ഇല്ല'}.",
-                    f"How fast would you like it? Visible faster options are {faster or 'unavailable'}.",
-                )
             if target := next((c for rate, c in rates if rate == requested), None):
                 if target.filled is True:
                     return _decision(snap, "complete", f"വീഡിയോ {requested} മടങ്ങ് വേഗത്തിലാണ്.",

@@ -30,15 +30,15 @@ def snapshot(name: str, tick: int = 0) -> Snapshot:
 
 
 class YouTubeTests(unittest.TestCase):
-    def test_multilingual_eval(self):
+    @patch.object(sarvam, "_load_api_key", side_effect=AssertionError("Replay must stay in the local site pack"))
+    def test_multilingual_eval(self, load_key):
         self.assertEqual({case["language"] for case in REPLAY["cases"]}, {"english", "malayalam", "manglish"})
         for case in REPLAY["cases"]:
             with self.subTest(case=case["id"]):
-                guide = PACK.start_guidance(case["question"])
-                self.assertIsNotNone(guide)
+                planner = SarvamPlanner("web_site", log_calls=False)
                 for tick, (screen, kind, control_id, *text) in enumerate(case["walk"]):
                     snap = snapshot(screen, tick)
-                    decision = guide.decide(snap)
+                    decision = planner.decide(case["question"], snap)
                     self.assertEqual((decision.kind, decision.control_id), (kind, control_id))
                     self.assertEqual(validate(decision, snap), (True, "ok"))
                     if text:
@@ -47,6 +47,7 @@ class YouTubeTests(unittest.TestCase):
                         label = snap.control(control_id).label
                         self.assertIn(f"‘{label}’", decision.instruction)
                         self.assertIn(f"‘{label}’", decision.instruction_en)
+        load_key.assert_not_called()
 
     def test_search_rebinds_the_same_action_to_fresh_ids_without_advance(self):
         guide = PACK.start_guidance("Find and play Darshana Hridayam")
