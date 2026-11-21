@@ -51,16 +51,22 @@ values (corrections via GSTR-1A), the QRMP ₹5 crore limit, the Kerala taxpayer
 46.2% fully offline (India SME Forum, Dec 2025, n=7,835, sampling to confirm). Kerala adults: 26.4%
 can create a document, 49.4% can email (MoSPI CMS 2025). No survey shows English causes the difficulty.
 
+## Open risk: "build with Devin"
+
+The official field guide says "Bring your own idea and build a project with Devin" (`.context/hackathon-brief.md`).
+We build with Claude and Codex. Abin to confirm with organisers whether Devin must do the building, and whether
+Sarvam must be called at runtime for the Sarvam prize (we do call it at runtime: speech in, speech out).
+
 ## Features
 
-| Feature | Status | Owner | Files | Acceptance |
-|---|---|---|---|---|
-| Reader, scripted planner, validator, loop | merged | coordinator | `companion/*.py`, `companion/tasks/` | QA suite green (3/3 runs) |
-| QA skill + runner | merged | coordinator | `.claude/skills/companion-qa/`, `scripts/qa/` | runs, grows per feature |
-| AIMS fixture | prototype (reference) | coordinator | `apps/aims-training/`, `companion/tasks/aims.py` | e2e green |
-| Web support (reader in browsers + practice web app) | building | Codex `gpt-6.2-sol` (workspace port-louis) | `companion/reader.py`, `apps/web-practice/`, `scripts/serve_web_practice.py`, `scripts/open_web_practice.sh`, `companion/tasks/web_practice.py` | reader sees page controls by DOM id without browser chrome; QA green |
-| Language preference (panel + overlay) | merged | coordinator | `companion/app.py` | `--lang ml|en`, switch in panel, one language shown |
-| Web QA coverage | planned | Sonnet QA | `scripts/drive_web*.py`, `scripts/qa/checks/web_*.py`, registry | e2e green 3/3 in Safari |
-| GST practice portal | parked | — | — | — |
-| Sketch overlay | building | Codex `gpt-6.2-astra` (workspace damascus) | `companion/overlay/**` | `PointerOverlay`; Malayalam renders; click-through proven on own window |
-| Sarvam voice (ml/en ask + speak, mic) | building, needs key | Codex `gpt-6.2-sol` (workspace lome) | `companion/voice/**`, `scripts/sarvam_smoke.py` | live round trip both languages, or explicit BLOCKED |
+| Feature | Status | Owner | Evidence / next |
+|---|---|---|---|
+| Reader, scripted planner, validator, loop | merged | coordinator | QA green on merged tree (runs/qa/20261121-201515) |
+| QA skill + runner | merged, growing | coordinator → Sonnet QA | Sonnet QA adding web/overlay/voice checks now |
+| Web reader + practice web app (Safari; Brave isolated profile) | merged | Codex sol | Practice page only (title + local URL match). **Next: read any page in the front browser window when the user asks** |
+| Sketch overlay | merged; taste pass in progress | Codex astra | Outline too clean, note not crooked, too far from target; fixes briefed |
+| Sarvam voice (Saaras v4 ml/en + translate, Bulbul, mic helper) | merged + wired into panel | Codex sol + coordinator | Live: Malayalam reply spoken on Safari practice page. Real mic needs Abin to allow the macOS prompt |
+| Language preference (panel + overlay + voice) | merged | coordinator | `--lang ml|en`, switch in panel |
+| Sarvam planner (LLM picks the control on any page) | building | Codex sol | eval on sanitized snapshots, signature cache to save credits |
+| AIMS fixture | reference | coordinator | regression target in QA |
+| GST practice portal | parked | — | — |
