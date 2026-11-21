@@ -60,7 +60,7 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 | Optional units (toppings, delivery time, instructions) skipped silently: my earlier policy, wrong for parents | offer every visible unit in order, mark optional, done when filled/skipped/a later unit filled; panel Skip button + spoken "skip" | planner builder + coordinator (Skip button done) + QA (test expectations) |
 | "Start with" on every step | "Next, …" from step 2 | planner builder |
 | KSEB: `clarify` instead of pointing at "Submit to see the bill" | wider primary-action detection; no mid-walk clarify | planner builder (with KSEB pack) |
-| "Browser Accessibility did not respond in time" on real pages | larger budget, one retry, keep last good snapshot | web builder |
+| "Browser Accessibility did not respond in time" on real pages | larger budget, one retry, keep last good snapshot | web builder: merged (b0b1c9b): 750 ms deadline, retry, verified 1.5 s reuse; p95 YouTube 115 ms, Gmail 83 ms, KSEB 16 ms |
 
 ## Site packs (started 22 Nov ~00:15)
 
@@ -68,7 +68,7 @@ run by the orchestrator. Fixes: planner (orientation once, one ordered step list
 |---|---|---|
 | Site-pack framework + KSEB Quick Pay pack + `web_site` task | Codex sol (planner) | building |
 | Local KSEB Quick Pay copy + KSEB follow-pointer check; flake hardening | Sonnet QA | building |
-| Gmail privacy gate (chrome-only labels, aggregated message list), To/Reply targets; YouTube sliders + speed menu probe | Codex sol (web) | building |
+| Gmail privacy gate (chrome-only labels, inbox = one 'Inbox: N messages' control), To found in compose; YouTube sliders kept | Codex sol (web) | merged (8b0d1d8). Reply: unit-tested only. YouTube speed menu: not yet probed |
 
 Commit messages: AI co-author trailers stripped from all local branches on 22 Nov 00:13 (message-only rewrite,
 trees unchanged, base still origin/main e542f90). Backup refs in refs/original until Abin confirms.
