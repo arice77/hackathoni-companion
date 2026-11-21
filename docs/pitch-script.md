@@ -6,7 +6,7 @@
 
 [SAY] I’m Abin. I built a companion for anyone who struggles with computers: your dad, your mom, and their dads and moms. You can read a letter and still have no idea that “Compose” means “write one.”
 
-[SAY] It points. You click. Next time, you know where. I’ve tested Malayalam and English live. Hindi and Kannada are built too. Today I’ll show Malayalam. With Sarvam, more Indian languages are a small step.
+[SAY] It doesn't click for you. It teaches you. It points. You click. Next time, you know where. I’ve tested Malayalam and English live. Hindi and Kannada are built too. Today I’ll show Malayalam. With Sarvam, more Indian languages are a small step.
 
 ## 0:35–1:10 · GasUndo · 35 seconds
 
@@ -20,7 +20,7 @@
 
 [ON SCREEN] Select Ernakulam if needed. Click the search box, type “Bektash Kakkanad,” then click the matching suggestion. Let the companion read the report.
 
-[SAY] There’s the catch. That report is old. Is it open today? We don’t know.
+[SAY] There’s the catch. That report is old, and it says so. Is it open today? We don’t know. It won’t make things up for Amma.
 
 ## 1:10–1:57 · YouTube · 47 seconds
 
@@ -86,7 +86,7 @@
 
 I’m Abin. I built a companion for anyone who struggles with computers: your dad, your mom, and their dads and moms. You can read a letter and still have no idea that “Compose” means “write one.”
 
-It points. You click. Next time, you know where. I’ve tested Malayalam and English live. Hindi and Kannada are built too. Today I’ll show Malayalam. With Sarvam, more Indian languages are a small step.
+It doesn't click for you. It teaches you. It points. You click. Next time, you know where. I’ve tested Malayalam and English live. Hindi and Kannada are built too. Today I’ll show Malayalam. With Sarvam, more Indian languages are a small step.
 
 Let’s try it on something built by two of this hackathon’s own organisers, Vaishakh Suresh and Viswanatha Kartha V. This is GasUndo! I’ve got a question for it.
 
@@ -94,7 +94,7 @@ Let’s try it on something built by two of this hackathon’s own organisers, V
 
 Is Bektash Kakkanad open? Watch the arrow. I pick Ernakulam. Now it’s pointing at “Search restaurants.”
 
-There’s the catch. That report is old. Is it open today? We don’t know.
+There’s the catch. That report is old, and it says so. Is it open today? We don’t know. It won’t make things up for Amma.
 
 ദർശന പാട്ട് പ്ലേ ചെയ്യൂ
 
