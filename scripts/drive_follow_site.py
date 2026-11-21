@@ -13,7 +13,7 @@ Safety rules, enforced here:
     area via Accessibility), at most --max-scrolls times.
   * Allowlist per site. Anything else the pointer lands on is NOT pressed and ends the run ("refused").
       youtube  type the song text into Search; press the Search button; press a result link only if it is a
-               /watch link, names the song and is not an ad; press Play, Skip ad, Settings, Playback speed.
+               /watch link, names the song and is not an ad; press Play, Skip ad / Skip (ad button), Settings, Playback speed.
                Stops at the speed target (--stop-label) WITHOUT pressing it: no setting is applied.
                No like, subscribe or comment control is ever pressed.
       gmail    press Compose; type To (QA_GMAIL_TO), Subject, Message Body; say "Next" in the companion panel when the
@@ -61,7 +61,7 @@ MENU_ROLES = {"AXMenuItem", "AXMenuItemRadio", "AXMenuItemCheckbox", "AXButton"}
 FIELD_ROLES = {"AXComboBox", "AXTextField", "AXTextArea", "AXSearchField"}
 SAY_NEXT = re.compile(r"say\s+[‘'\"]next[’'\"]", re.IGNORECASE)  # the pack asks the person to acknowledge a step
 AD_WORDS = re.compile(r"\b(ad|ads|advert|advertisement|sponsored)\b", re.IGNORECASE)
-SKIP_AD = re.compile(r"^skip ads?\b", re.IGNORECASE)
+SKIP_AD = re.compile(r"^(?:skip ads?\b|skip$)", re.IGNORECASE)  # "Skip ad(s)" and the bare "Skip" ad button (AXButton only)
 SUBJECT_TEXT = "HackaThoni companion test"
 BODY_TEXT = "This is a short test message from the HackaThoni companion check. Please ignore it."
 
@@ -297,6 +297,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path)
     ap.add_argument("--companion-pid", type=int)
     ap.add_argument("--song-text", default="Darshana Hridayam", help="youtube: what the driver types into Search")
+    ap.add_argument("--type-from-instruction", action="store_true",
+                    help="youtube: type the text the planner's instruction quotes (between curly quotes) instead of --song-text")
     ap.add_argument("--song-token", default="darshana", help="youtube: a result link must contain this")
     ap.add_argument("--stop-label", default="", help="youtube: regex; stop (not pressing) when the pointer lands on it")
     ap.add_argument("--then-ask", default="", help="after the first question completes, ask this in the panel")
@@ -441,7 +443,9 @@ def main(argv=None) -> int:
                     else:
                         if verb.startswith("type:"):
                             what = verb.split(":")[1]
-                            text = {"song": a.song_text, "to": env_value("QA_GMAIL_TO"), "subject": SUBJECT_TEXT,
+                            quoted = re.search(r"Type ‘([^’]{1,60})’", rec["instruction_en"])
+                            song = quoted.group(1) if a.type_from_instruction and quoted else a.song_text
+                            text = {"song": song, "to": env_value("QA_GMAIL_TO"), "subject": SUBJECT_TEXT,
                                     "body": BODY_TEXT}[what]
                             result = type_text(el, text)
                         else:

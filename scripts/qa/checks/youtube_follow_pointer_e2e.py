@@ -25,6 +25,8 @@ URL, HOST, PREFIX = "https://www.youtube.com/", "youtube.com", "https://www.yout
 STOP_LABEL = r"^0?\.75$"
 AD = re.compile(r"\b(ad|ads|advert|advertisement|sponsored)\b", re.IGNORECASE)
 SEARCH_ROLES = {"AXComboBox", "AXSearchField", "AXTextField"}
+SKIP_AD = re.compile(r"^(?:skip ads?\b|skip$)", re.IGNORECASE)  # the ad buttons the pack may offer
+TYPE_FROM_INSTRUCTION = os.environ.get("QA_YT_TYPE_FROM_INSTRUCTION") == "1"
 
 
 def _lab(r):
@@ -60,7 +62,8 @@ def run():
 
     err, ctx = _site.run_walk(site="youtube", url=URL, host=HOST, ready_prefix=PREFIX, question=QUESTION,
                               driver_args=["--song-text", SONG_TEXT, "--song-token", SONG_TOKEN,
-                                           "--stop-label", STOP_LABEL, "--then-ask", THEN_ASK],
+                                           "--stop-label", STOP_LABEL, "--then-ask", THEN_ASK,
+                                           *(["--type-from-instruction"] if TYPE_FROM_INSTRUCTION else [])],
                               total_timeout=240)
     if err:
         return err
@@ -112,9 +115,9 @@ def assess(records, driver_rc, driver_err, started, out_file, log):
         if r.get("target_role") == "AXLink":
             if r.get("phase") == 2 or SONG_TOKEN not in lab.lower() or r.get("url_watch") is False or AD.search(lab):
                 bad.append((r["index"], r.get("target_role"), lab[:60]))
-        elif AD.search(lab) and not re.match(r"skip ads?\b", lab, re.IGNORECASE):
+        elif AD.search(lab) and not SKIP_AD.match(lab):
             bad.append((r["index"], r.get("target_role"), lab[:60]))
-    skip_ad = [r["index"] for r in allpts if re.match(r"skip ads?\b", (r.get("target_label") or ""), re.IGNORECASE)]
+    skip_ad = [r["index"] for r in allpts if SKIP_AD.match((r.get("target_label") or "").strip())]
     add("never points at ads or unrelated links (every link names the song and is a /watch result)", not bad,
         f"ad or unrelated targets: {bad}" if bad else f"links pointed at: {[r.get('target_label')[:50] for r in allpts if r.get('target_role') == 'AXLink']}; "
         f"'Skip ad' pointed at in decisions {skip_ad} (allowed: the pack offers it while an ad plays)")

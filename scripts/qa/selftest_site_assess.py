@@ -126,6 +126,11 @@ for needle in ("steps pointed in order", "no target is pointed", "every pointer 
 gs = {r["check"][:14]: r["status"] for r in ggate if r["evidence"] != "needs-human"}
 assert gs["send and compl"] == "blocked" and all(v == "pass" for k, v in gs.items() if k != "send and compl"), gs
 
+# a bare "Skip" ad button pointed at is allowed (not an ad link); an ad link is still a failure
+skip = [dict(r) for r in YGOOD]
+skip.insert(2, dec(2, 1, "Skip", "Use 'Skip' to skip the ad.", "AXButton"))
+assert set(statuses(yt.assess(skip, 0, "", X, X, X)).values()) == {"pass"}
+
 # a stuck step repeated across 'Next' acknowledgements (different phases) still fails the repeat rule
 stuck = [dec(0, 1, "Compose", "Compose."), dec(1, 1, "To", "To.", "AXComboBox"), dec(2, 2, "To", "To.", "AXComboBox")]
 assert any(v == "fail" for k, v in statuses(gm.assess(stuck, 1, "", [], True, 0, X, X)).items() if k.startswith("no target is pointed"))
@@ -157,6 +162,10 @@ assert d("youtube", "AXLink", LINK, "https://www.googleadservices.com/pagead/acl
 assert d("youtube", "AXLink", "Ad · Darshana sponsored", "https://www.youtube.com/watch?v=abc", o)[0] == "refuse"
 assert d("youtube", "AXLink", "Cooking show", "https://www.youtube.com/watch?v=abc", o)[0] == "refuse"
 assert d("youtube", "AXLink", LINK, "https://www.youtube.com/shorts/abc", o)[0] == "refuse"
+assert d("youtube", "AXButton", "Skip", "", o)[0] == "press" and d("youtube", "AXButton", "Skip ad", "", o)[0] == "press"
+assert d("youtube", "AXButton", "Play keyboard shortcut k", "", o)[0] == "press"
+for no in (("AXLink", "Skip"), ("AXButton", "Skip navigation"), ("AXButton", "Skipper")):
+    assert d("youtube", no[0], no[1], "https://www.youtube.com/watch?v=a", o)[0] == "refuse", no
 assert d("youtube", "AXButton", "0.75", "", o)[0] == "hold"
 assert d("youtube", "AXButton", "1.25", "", o)[0] == "refuse"
 for banned in ("Like this video along with 1,234 other people", "Subscribe", "Add a comment...", "Join"):
