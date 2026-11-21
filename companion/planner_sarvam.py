@@ -509,6 +509,8 @@ class SarvamPlanner:
         self._observed: dict[ControlKey, tuple[bool | None, bool]] = {}
         self._last_presentation: tuple[tuple, str, str] | None = None
         self._intent: tuple[Decision, Control | None] | None = None
+        self._guide_pack: SitePack | None = None
+        self._site_guide = None
         self._cache: dict[tuple, tuple[Decision, Control | None]] = {}
         self._lock = Lock()
         self._skip_lock = Lock()
@@ -564,8 +566,8 @@ class SarvamPlanner:
             self._skip_command = skip_command
             site = pack_for(snap)
             if self._site_only and site is None:
-                return _unsupported(snap, "ഇപ്പോൾ KSEB Quick Pay-ൽ സഹായിക്കാം. ആ പേജ് തുറക്കൂ.",
-                                    "I can guide KSEB Quick Pay. Open that page to continue.")
+                return _unsupported(snap, "ഈ സൈറ്റിന് ഇപ്പോൾ പ്രത്യേക സഹായം ലഭ്യമല്ല.",
+                                    "This site does not have a guidance pack yet.")
             site_steps = site.steps if site and any(step.target(snap) for step in site.steps) else ()
             plan = FormPlan.from_snapshot(snap, site_steps)
             snap = plan.snap
@@ -578,6 +580,15 @@ class SarvamPlanner:
                 self._session = GuidanceSession()
                 self._last_presentation = None
                 self._intent = None
+                self._guide_pack, self._site_guide = None, None
+            if self._guide_pack is not site:
+                self._guide_pack = site
+                factory = getattr(site, "start_guidance", None)
+                self._site_guide = factory(question) if factory is not None else None
+                self._intent = None
+                self._cache.clear()
+            if self._site_guide is not None:
+                return self._site_guide.decide(snap)
             if site and self._practice_site_complete(site, plan):
                 return Decision(
                     "complete", snap.snapshot_id, "നന്നായി! പരിശീലന ബിൽ ഇപ്പോൾ കാണാം.",
@@ -630,6 +641,8 @@ class SarvamPlanner:
             return decision
 
     def _practice_site_complete(self, site: SitePack, plan: FormPlan) -> bool:
+        if not site.steps:
+            return False
         action = site.steps[-1]
         return (
             site.is_practice(plan.snap)
@@ -657,7 +670,7 @@ class SarvamPlanner:
 
     def _request(self, question: str, plan: FormPlan, changed: set[ControlKey], site: SitePack | None) -> Decision:
         snap, ordered, groups = plan.snap, plan.ordered, plan.groups
-        if site and (decision := self._site_decision(question, plan, site)):
+        if site and site.steps and (decision := self._site_decision(question, plan, site)):
             return decision
         if site:
             plan = FormPlan.from_snapshot(site.privacy.filter_snapshot(snap), plan.site_steps)
@@ -771,7 +784,11 @@ class SarvamPlanner:
         if self.goal:
             view["task_goal"] = self.goal
         if site:
-            view["task_goal"] = f"Guide {site.name} up to viewing the bill. The user reads any verification image."
+            view["task_goal"] = getattr(
+                site, "provider_goal",
+                f"Guide {site.name} up to viewing the bill. The user reads any verification image."
+                if site.steps else f"Guide the user on {site.name}.",
+            )
         payload = {
             "model": self.model,
             "messages": [

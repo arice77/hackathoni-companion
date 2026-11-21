@@ -1,6 +1,6 @@
 # Site packs
 
-Use `--task web_site --planner sarvam` to guide a supported page in the front Safari window. The planner picks a pack from the host reported by the Accessibility reader. KSEB Quick Pay is the first pack. A page on an unconfigured host gets a local response under `web_site`. KSEB's pack also applies when `web_any` sees the same host.
+Use `--task web_site` to guide a supported page in the front Safari window. The planner picks a pack from the host reported by the Accessibility reader. KSEB Quick Pay and YouTube also apply when `web_any` sees their hosts. A page on an unconfigured host gets a local response under `web_site`.
 
 ## KSEB Quick Pay
 
@@ -17,6 +17,22 @@ The real pack matches `wss.kseb.in`. The QA pack uses the loopback practice page
 The order is **“13 digit Consumer number” → “Enter Mobile Number” → “Enter text shown below” → “Submit to see the bill”**. Guidance asks the user to copy the number from their electricity bill and use the mobile number registered to the connection. The user reads and enters the image text. A separate Refresh goal points at the link when requested. The final button opens the bill view. The practice page emits a synthetic receipt and a known success heading. [Safari probe](site-probes.md)
 
 An off-script request can go to Sarvam once. The KSEB profile passes only exact, allowlisted control labels and headings. It masks mobile- and consumer-number-shaped digit strings in the question. Account-specific headings, bill values, registration hints, the verification image, and entered field values stay out of that payload. The allowlist cannot authorize an early Submit while a known prior field is unfinished.
+
+## YouTube
+
+The pack matches `youtube.com`, `www.youtube.com`, and `m.youtube.com`. A local guide follows the same question across search, results, playback, and menus. It binds each pointer to a visible control in the current snapshot. The guide tracks progress by the control's role and label as Accessibility IDs change.
+
+| Goal | Example |
+|---|---|
+| Find and play a named video | “Find and play Darshana Hridayam”, “എനിക്ക് ഹൃദയം ദർശന പാട്ട് കേൾക്കണം”, “Darshana Hridayam paattu play cheyyu” |
+| Bigger screen | “വീഡിയോ വലുതാക്കി കാണണം”. Use Esc to exit full screen. |
+| Pause, play, mute, or unmute | “Video pause cheyyu”, “Resume the video”, “ശബ്ദം ഓഫ് ചെയ്യൂ”, “Sound unmute cheyyu” |
+| Malayalam subtitles | “മലയാളം സബ്‌ടൈറ്റിൽ വേണം”. Follow CC and Settings → Subtitles/CC → Malayalam when the option is visible. |
+| Slow or change playback speed | “Pathukke play cheyyu” offers 0.75×. “Set playback speed to 1.5” offers 1.5×. An unspecified faster request asks which visible speed the viewer wants. |
+
+A search task points at the search box, then the Search button once the box is filled. If the box was already filled, the instruction asks the viewer to replace the text and press Return because the reader tracks only whether the input has a value. A named search matches the visible result titles. A search without a name points at the first visible video result. The guide points at Skip ad when available and asks the viewer to wait if the player exposes an ad countdown. Subtitles and speed options depend on the current video and menu. [Safari probe](site-probes.md) · [YouTube keyboard shortcuts](https://support.google.com/youtube/answer/7631406?hl=en-IN) · [YouTube subtitle settings](https://support.google.com/youtube/answer/100078?hl=en-UK) · [YouTube playback speed](https://support.google.com/youtube/answer/7509567?hl=en)
+
+Known goals require zero chat calls. For an off-script request, the provider can see an allowlist of standard search and player controls. Video result titles and account labels stay out of that payload. The recorded-state eval exercises 19 multilingual cases with 51 expected decisions in [`tests/fixtures/planner/youtube.json`](../tests/fixtures/planner/youtube.json).
 
 ## Optional steps on general forms
 

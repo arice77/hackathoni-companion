@@ -83,6 +83,7 @@ class SitePack:
 
 
 def pack_for(snap: Snapshot) -> SitePack | None:
-    from .kseb import PACK
+    from .kseb import PACK as kseb
+    from .youtube import PACK as youtube
 
-    return PACK if PACK.matches(snap) else None
+    return next((pack for pack in (kseb, youtube) if pack.matches(snap)), None)
