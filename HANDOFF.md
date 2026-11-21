@@ -6,6 +6,8 @@ State as of **22 Nov 2026, 02:10 IST**. Coordinator branch `arice77/hackathoni-c
 and credits: [docs/build-board.md](docs/build-board.md). Process: `/conductor-orchestrator` skill (Opus
 orchestrates and reviews; Codex Sol/Astra build; Sonnet QA with the `companion-qa` skill).
 
+Demo video: https://www.youtube.com/watch?v=YsxJdO9J-Xs
+
 ## What we're building
 
 Track 02 "Voice & Language: Beyond English" (HackaThoni, Alappuzha). A macOS companion that makes websites

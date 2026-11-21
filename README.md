@@ -1,5 +1,11 @@
 # HackaThoni Companion
 
+## ▶️ Demo video
+
+[![Watch the demo on YouTube](https://img.youtube.com/vi/YsxJdO9J-Xs/maxresdefault.jpg)](https://www.youtube.com/watch?v=YsxJdO9J-Xs)
+
+**[Watch the demo on YouTube](https://www.youtube.com/watch?v=YsxJdO9J-Xs)**: GasUndo, YouTube and Gmail, guided by voice in Malayalam.
+
 ![GasUndo in Ernakulam with a Malayalam instruction pointing to the Search restaurants box](docs/screenshots/gasundo-preview.png)
 
 *Preview: the app's panel and arrow drawn onto a page capture.*
