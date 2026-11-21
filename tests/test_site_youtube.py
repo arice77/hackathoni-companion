@@ -57,6 +57,27 @@ class YouTubeTests(unittest.TestCase):
         self.assertEqual(guide.decide(warm).control_id, "fresh-go")
         self.assertEqual(guide.decide(snapshot("results")).control_id, "best")
 
+    def test_disregards_a_channel_even_when_its_heading_and_link_match(self):
+        guide = PACK.start_guidance("Find and play Darshana Rajendran")
+        self.assertEqual(guide.decide(snapshot("home")).control_id, "search")
+        self.assertEqual(guide.decide(snapshot("typed")).control_id, "go")
+        decision = guide.decide(snapshot("results"))
+        self.assertEqual((decision.kind, decision.control_id), ("clarify", None))
+
+    def test_uses_the_title_anchor_for_a_verified_video(self):
+        snap = snapshot("results")
+        best = snap.control("best")
+        title = replace(best, identifier="youtube-watch:official:title")
+        thumbnail = replace(best, id="thumbnail", label="Image or duration", frame=(20, 2, 160, 25),
+                            identifier="youtube-watch:official:thumbnail")
+        snap = replace(snap, controls=(
+            thumbnail, *(title if c.id == title.id else c for c in snap.controls),
+        ))
+        guide = PACK.start_guidance("Find and play a video")
+        guide.decide(snapshot("home"))
+        guide.decide(snapshot("typed"))
+        self.assertEqual(guide.decide(snap).control_id, "best")
+
     def test_existing_search_text_can_be_replaced_without_reading_it(self):
         guide = PACK.start_guidance("Find and play Darshana Hridayam")
         existing = snapshot("typed")

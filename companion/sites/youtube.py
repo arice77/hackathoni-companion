@@ -57,6 +57,7 @@ _PLAYER = (
     ("AXPopUpButton", "Settings"), ("AXCheckBox", "Subtitles/closed captions (c)"),
     ("AXCheckBox", "Subtitles/closed captions unavailable"), ("AXButton", "Skip ad"),
 )
+_VIDEO_LINK_PREFIX = "youtube-watch:"
 
 
 @dataclass(frozen=True)
@@ -127,13 +128,22 @@ def _title_words(label: str) -> set[str]:
     return {_ROMAN_NAMES.get(word, word) for word in _TOKENS.findall(_phrase(label))}
 
 
+def _video_key(control: Control) -> str:
+    if control.identifier and control.identifier.startswith(_VIDEO_LINK_PREFIX):
+        return control.identifier.removeprefix(_VIDEO_LINK_PREFIX).split(":", 1)[0]
+    return ""
+
+
 def _result_links(controls: tuple[Control, ...]) -> tuple[Control, ...]:
-    # The Safari probe exposed each video title as both a heading and a link.
+    # Channel cards also have both a heading and a link. Only the reader can verify a watch URL.
     titles = {_phrase(c.label) for c in controls if c.role == "AXHeading" and c.label}
     links = {}
     for c in controls:
-        if c.role == "AXLink" and c.enabled and c.label and _phrase(c.label) in titles:
-            links.setdefault(_phrase(c.label), c)
+        if c.role != "AXLink" or not c.enabled or not c.label or not (key := _video_key(c)):
+            continue
+        earlier = links.get(key)
+        if earlier is None or (_phrase(earlier.label) not in titles and _phrase(c.label) in titles):
+            links[key] = c
     return tuple(links.values())
 
 
@@ -205,7 +215,7 @@ class YouTubeGuide:
         search = _target(controls, _SEARCH, "search")
         submit = _target(controls, {"AXButton"}, "search")
         links = _result_links(controls)
-        fingerprint = tuple(_key(c) for c in links)
+        fingerprint = tuple((c.role, _video_key(c)) for c in links)
         result = _best_result(links, self.intent.titles)
         play = _target(controls, {"AXButton"}, "play")
         pause = _target(controls, {"AXButton"}, "pause")

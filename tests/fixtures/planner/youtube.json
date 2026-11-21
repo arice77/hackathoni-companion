@@ -15,9 +15,11 @@
       {"id": "go", "role": "AXButton", "label": "Search"},
       {"id": "voice", "role": "AXButton", "label": "Search with your voice"},
       {"id": "first-heading", "role": "AXHeading", "label": "Darshana reaction"},
-      {"id": "first", "role": "AXLink", "label": "Darshana reaction"},
+      {"id": "first", "role": "AXLink", "label": "Darshana reaction", "identifier": "youtube-watch:reaction"},
       {"id": "best-heading", "role": "AXHeading", "label": "Darshana | Hridayam | Official Video Song"},
-      {"id": "best", "role": "AXLink", "label": "Darshana | Hridayam | Official Video Song"},
+      {"id": "best", "role": "AXLink", "label": "Darshana | Hridayam | Official Video Song", "identifier": "youtube-watch:official"},
+      {"id": "person-heading", "role": "AXHeading", "label": "Darshana Rajendran"},
+      {"id": "person", "role": "AXLink", "label": "Darshana Rajendran"},
       {"id": "private", "role": "AXButton", "label": "Account private display name"}
     ],
     "unmatched": [
@@ -25,7 +27,7 @@
       {"id": "go", "role": "AXButton", "label": "Search"},
       {"id": "voice", "role": "AXButton", "label": "Search with your voice"},
       {"id": "first-heading", "role": "AXHeading", "label": "Darshana reaction"},
-      {"id": "first", "role": "AXLink", "label": "Darshana reaction"}
+      {"id": "first", "role": "AXLink", "label": "Darshana reaction", "identifier": "youtube-watch:reaction"}
     ],
     "watch": [
       {"id": "search", "role": "AXComboBox", "label": "Search", "filled": true},
