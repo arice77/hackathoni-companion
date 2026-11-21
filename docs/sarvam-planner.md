@@ -17,7 +17,9 @@ The default is **`sarvam-105b-conversations`** on `POST https://api.sarvam.ai/v1
 
 ## Fixture eval
 
-`tests/fixtures/planner/screens.json` contains two AIMS and seven Safari practice snapshots captured using the Accessibility reader on 21 November 2026. Test-only AXPress advanced both fixtures. The browser capture matched the practice title and worktree loopback URL. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot. The full set includes a typed Malayalam form question, the bilingual voice question, and hand-made cases for similar labels, a missing control, off-topic and ambiguous questions, completion, a legal decision, and an untrusted label.
+`tests/fixtures/planner/screens.json` contains six AIMS and nine Safari practice snapshots captured using the Accessibility reader on 21 November 2026, plus five hand-made snapshots. The test driver used only the practice fixtures, with synthetic inputs and the worktree loopback URL for Safari. Captured controls are stored in visual reading order with their IDs, labels, state flags, and local identifiers. Replay uses synthetic geometry that preserves that order, with one deliberately stale snapshot.
+
+The 30 cases keep the original 17 expected answers and add 13 cases covering crop details, photo attachment, declaration, completion, and partially filled business details. Questions include 6 Malayalam, 13 English, 6 Manglish, and 5 bilingual voice-style prompts.
 
 ```sh
 .venv/bin/python scripts/eval_planner.py
@@ -25,9 +27,22 @@ The default is **`sarvam-105b-conversations`** on `POST https://api.sarvam.ai/v1
 .venv/bin/python scripts/qa/run.py
 ```
 
-The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The reported target is at least 15 exact kind-and-ID matches out of 17 and zero unknown IDs. The script checks the validator on the cold result and a cached, fresh replay with all IDs shifted. p50 and p95 use HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
+The eval defaults to a two-model comparison. Use `--model sarvam-105b-conversations` to replay the selected model alone. The target carries forward the original 15/17 ratio, which requires 27/30 exact matches with zero unknown IDs. The script checks the validator on the cold result and a cached, fresh replay with all IDs shifted. p50 and p95 use HTTP wall time. Reports go to gitignored `runs/sarvam-planner-eval-*.json` files.
 
-### Live evidence
+### Expanded live stability eval
+
+Two separate invocations used the same frozen 30 cases and the default `sarvam-105b-conversations` model. An exact match requires the expected decision kind and control ID. Both runs reused the local result for all 30 warm replays and rejected the deliberately stale snapshot.
+
+| Run | Exact matches | Unknown IDs | HTTP p50 | HTTP p95 | Chat calls |
+|---|---:|---:|---:|---:|---:|
+| 1 | 28/30 | 0/30 | 557 ms | 1,509 ms | 30 |
+| 2 | 28/30 | 0/30 | 531 ms | 4,034 ms | 30 |
+
+The decisions agreed on 29/30 cases. All 13 additions matched in both runs, including the typed Malayalam question on the Documents screen after attachment. Both runs returned `unsupported` for “Can I use that one?” where `clarify` was expected. Both missed the case with a missing PDF export control, choosing “Print” in run 1 and “Download CSV” in run 2. The detailed reports are `runs/sarvam-planner-eval-20261121T153407.788675Z.json` and `runs/sarvam-planner-eval-20261121T153449.289292Z.json`.
+
+The locked Safari walkthrough on the same planner confirmed all eight expected decisions with the typed Malayalam-only question. It selected “Next” after attachment and reached `complete` with visible status and a fresh local receipt. All pointers passed validation, including after a 2,484 ms planner call. See `runs/session-20261121-210521-546565.jsonl`. The expanded eval and walkthrough used 68 chat calls total (30 per eval and eight for Safari). Unit QA passed all 84 tests.
+
+### Earlier 17-case eval
 
 The first comparison after repairing the missing-label failure and adding reading order used 34 calls. The next full run used 17 calls with the actionable-control schema and explicit unfinished inputs. All 51 warm replays reused the cache and all three deliberately stale snapshots were rejected.
 
@@ -41,7 +56,7 @@ The full reports are `runs/sarvam-planner-eval-20261121T151931.098629Z.json` and
 
 After excluding filled inputs from the recognized generic form questions, a one-call live replay of the bilingual case selected “Next” in 623 ms. See `runs/sarvam-planner-voice-replay-20261121T152315.907606Z.json`.
 
-### Locked Safari walkthrough
+### Earlier locked Safari walkthrough
 
 The muted panel used the typed Malayalam-only form question, and the test driver advanced the local practice page at six-second intervals. The session logged eight valid decisions and reached `complete` with both visible status and a fresh local receipt. The pointer sequence missed the Documents screen's `Next` step by repeating `Attach Sample Document` after attachment. The driver pressed `Next` and continued to Review. See `runs/session-20261121-205321-46a6cc.jsonl` and `runs/sarvam-planner-998ec2448cad441e9f5852cc6365ecbb.jsonl`.
 
@@ -53,6 +68,5 @@ All 19 planner mock tests and 84 unit tests passed. The stock locked QA run pass
 
 ### Open issues
 
-- “Can I use that one?” returned `unsupported` instead of `clarify` in the selected model's full run.
-- The final selected-model 17-case estimate predates the filled-input and primary-action filters. The filled-input change passed the targeted bilingual replay. The post-attachment primary-action change has mock evidence and awaits live confirmation.
+- The expanded eval missed the vague request and the missing PDF export in both runs. The provider selected IDs present on screen in the PDF case.
 - Live browser evidence is limited to the local Safari practice page. Taskless planning was evaluated on captured and hand-made screens. Malayalam instruction quality still needs a native-speaker review.

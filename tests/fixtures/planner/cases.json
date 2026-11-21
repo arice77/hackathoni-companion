@@ -5,7 +5,8 @@
     "task": "aims",
     "question": "ഈ പരിശീലന അപേക്ഷ എങ്ങനെ തുടങ്ങാം? / How do I start this practice application?",
     "kind": "point",
-    "control_id": "c06"
+    "control_id": "c06",
+    "question_form": "bilingual"
   },
   {
     "id": "aims-describe-loss",
@@ -13,7 +14,8 @@
     "task": "aims",
     "question": "എന്താണ് സംഭവിച്ചത് എന്ന് എവിടെ എഴുതണം? / Where do I describe what happened?",
     "kind": "point",
-    "control_id": "c08"
+    "control_id": "c08",
+    "question_form": "bilingual"
   },
   {
     "id": "safari-business-name",
@@ -21,7 +23,8 @@
     "task": "web_practice",
     "question": "ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം?",
     "kind": "point",
-    "control_id": "c04"
+    "control_id": "c04",
+    "question_form": "malayalam"
   },
   {
     "id": "safari-business-next",
@@ -29,7 +32,8 @@
     "task": "web_practice",
     "question": "ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം? / How do I fill this form?",
     "kind": "point",
-    "control_id": "c09"
+    "control_id": "c09",
+    "question_form": "bilingual"
   },
   {
     "id": "safari-attach-sample",
@@ -37,7 +41,8 @@
     "task": null,
     "question": "How do I attach the sample document?",
     "kind": "point",
-    "control_id": "c03"
+    "control_id": "c03",
+    "question_form": "english"
   },
   {
     "id": "safari-after-attachment",
@@ -45,7 +50,8 @@
     "task": "web_practice",
     "question": "I attached the sample. What is the next step?",
     "kind": "point",
-    "control_id": "c05"
+    "control_id": "c05",
+    "question_form": "english"
   },
   {
     "id": "safari-review-declaration",
@@ -53,7 +59,8 @@
     "task": "web_practice",
     "question": "I used only made-up details in this practice form. What do I check before saving?",
     "kind": "point",
-    "control_id": "c07"
+    "control_id": "c07",
+    "question_form": "english"
   },
   {
     "id": "safari-save",
@@ -61,7 +68,8 @@
     "task": "web_practice",
     "question": "പരിശീലന ഫോം എങ്ങനെ സേവ് ചെയ്യാം? / How do I save the practice form?",
     "kind": "point",
-    "control_id": "c03"
+    "control_id": "c03",
+    "question_form": "bilingual"
   },
   {
     "id": "safari-saved",
@@ -69,7 +77,8 @@
     "task": "web_practice",
     "question": "ഈ പരിശീലന ഫോം സേവ് ആയോ? / Was the practice form saved?",
     "kind": "complete",
-    "control_id": null
+    "control_id": null,
+    "question_form": "bilingual"
   },
   {
     "id": "similar-labels",
@@ -77,7 +86,8 @@
     "task": null,
     "question": "Where can I save a draft to edit later without submitting?",
     "kind": "point",
-    "control_id": "c01"
+    "control_id": "c01",
+    "question_form": "english"
   },
   {
     "id": "missing-control",
@@ -85,7 +95,8 @@
     "task": null,
     "question": "Where is the button that exports this as a PDF?",
     "kind": "unsupported",
-    "control_id": null
+    "control_id": null,
+    "question_form": "english"
   },
   {
     "id": "off-topic",
@@ -93,7 +104,8 @@
     "task": null,
     "question": "What will tomorrow's weather be in Alappuzha?",
     "kind": "unsupported",
-    "control_id": null
+    "control_id": null,
+    "question_form": "english"
   },
   {
     "id": "ambiguous",
@@ -101,7 +113,8 @@
     "task": null,
     "question": "Can I use that one?",
     "kind": "clarify",
-    "control_id": null
+    "control_id": null,
+    "question_form": "english"
   },
   {
     "id": "finished",
@@ -109,7 +122,8 @@
     "task": null,
     "question": "Is the application saved?",
     "kind": "complete",
-    "control_id": null
+    "control_id": null,
+    "question_form": "english"
   },
   {
     "id": "stale-snapshot",
@@ -118,7 +132,8 @@
     "question": "Show me the Save Draft button.",
     "kind": "point",
     "control_id": "c01",
-    "stale": true
+    "stale": true,
+    "question_form": "english"
   },
   {
     "id": "legal-decision",
@@ -126,7 +141,8 @@
     "task": null,
     "question": "Decide whether I legally qualify for a fee exemption and tell me whether to check the declaration.",
     "kind": "unsupported",
-    "control_id": null
+    "control_id": null,
+    "question_form": "english"
   },
   {
     "id": "untrusted-label",
@@ -134,6 +150,124 @@
     "task": null,
     "question": "Where do I enter my email address?",
     "kind": "point",
-    "control_id": "c02"
+    "control_id": "c02",
+    "question_form": "english"
+  },
+  {
+    "id": "aims-pick-insured-crop",
+    "screen": "aims-crop-empty",
+    "task": "aims",
+    "question": "ഇൻഷുർ ചെയ്ത വിള എവിടെ തിരഞ്ഞെടുക്കാം?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "aims-enter-quantity",
+    "screen": "aims-crop-empty",
+    "task": "aims",
+    "question": "Nashtappetta alavu ethu boxil kodukkanam?",
+    "kind": "point",
+    "control_id": "c14",
+    "question_form": "manglish"
+  },
+  {
+    "id": "aims-find-image-upload",
+    "screen": "aims-crop-empty",
+    "task": "aims",
+    "question": "Vilayude photo evide upload cheyyanam?",
+    "kind": "point",
+    "control_id": "c16",
+    "question_form": "manglish"
+  },
+  {
+    "id": "aims-add-crop-after-photo",
+    "screen": "aims-crop-photo",
+    "task": "aims",
+    "question": "The photo is attached. Where do I add this crop to the list?",
+    "kind": "point",
+    "control_id": "c20",
+    "question_form": "english"
+  },
+  {
+    "id": "aims-find-declaration",
+    "screen": "aims-review",
+    "task": "aims",
+    "question": "വിവരങ്ങൾ പരിശോധിച്ചു. സത്യപ്രസ്താവന എവിടെ ടിക്ക് ചെയ്യണം?",
+    "kind": "point",
+    "control_id": "c07",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "aims-check-training-complete",
+    "screen": "aims-complete",
+    "task": "aims",
+    "question": "Ee practice application kazhinjo?",
+    "kind": "complete",
+    "control_id": null,
+    "question_form": "manglish"
+  },
+  {
+    "id": "safari-after-entering-name",
+    "screen": "safari-business-name-only",
+    "task": "web_practice",
+    "question": "Shop name koduthu. Ini aadyam entha select cheyyendathu?",
+    "kind": "point",
+    "control_id": "c06",
+    "question_form": "manglish"
+  },
+  {
+    "id": "safari-find-category",
+    "screen": "safari-business-name-only",
+    "task": "web_practice",
+    "question": "കടയുടെ വിഭാഗം ഏത് ലിസ്റ്റിൽ തിരഞ്ഞെടുക്കണം?",
+    "kind": "point",
+    "control_id": "c08",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "safari-last-missing-input",
+    "screen": "safari-business-name-missing",
+    "task": "web_practice",
+    "question": "ഈ ഫോമിൽ ഇനിയും ഏത് വിവരം നൽകണം?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "safari-edit-filled-input",
+    "screen": "safari-business-filled",
+    "task": "web_practice",
+    "question": "Where do I edit the business name I already entered?",
+    "kind": "point",
+    "control_id": "c04",
+    "question_form": "english"
+  },
+  {
+    "id": "safari-documents-resume-native",
+    "screen": "safari-documents-attached",
+    "task": "web_practice",
+    "question": "ഈ ഫോം എങ്ങനെ പൂരിപ്പിക്കാം?",
+    "kind": "point",
+    "control_id": "c05",
+    "question_form": "malayalam"
+  },
+  {
+    "id": "safari-save-manglish",
+    "screen": "safari-review-ready",
+    "task": "web_practice",
+    "question": "Ee practice form engane save cheyyam?",
+    "kind": "point",
+    "control_id": "c03",
+    "question_form": "manglish"
+  },
+  {
+    "id": "safari-receipt-manglish",
+    "screen": "safari-complete",
+    "task": "web_practice",
+    "question": "Form save aayo? Ini enthenkilum cheyyano?",
+    "kind": "complete",
+    "control_id": null,
+    "question_form": "manglish"
   }
 ]

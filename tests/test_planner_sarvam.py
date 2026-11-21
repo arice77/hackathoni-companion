@@ -312,6 +312,12 @@ class PlannerTests(unittest.TestCase):
         cases = json.loads((eval_planner.FIXTURES / "cases.json").read_text())
         screens = json.loads((eval_planner.FIXTURES / "screens.json").read_text())
         self.assertTrue({TYPED_QUESTION, QUESTION} <= {case["question"] for case in cases})
+        self.assertEqual(len(cases), 30)
+        self.assertEqual(len({case["id"] for case in cases}), len(cases))
+        self.assertEqual(
+            {case["question_form"] for case in cases},
+            {"malayalam", "english", "manglish", "bilingual"},
+        )
         self.assertLessEqual(len(cases) * len(eval_planner.MODEL_ENDPOINTS), eval_planner.MAX_CALLS)
         self.assertEqual({screen["origin"] for screen in screens.values()}, {"aims-reader", "safari-reader", "hand-made"})
         for case in cases:

@@ -20,7 +20,7 @@ from companion.validator import MAX_SNAPSHOT_AGE_S, validate
 from companion.voice import sarvam
 
 FIXTURES = ROOT / "tests" / "fixtures" / "planner"
-MAX_CALLS = 40
+MAX_CALLS = 60
 
 
 def _snapshot(name: str, record: dict, stale: bool) -> Snapshot:
@@ -65,6 +65,7 @@ def _case(model: str, case: dict, screen: dict) -> dict:
     return {
         "id": case["id"],
         "origin": screen["origin"],
+        "question_form": case["question_form"],
         "expected": {"kind": expected[0], "control_id": expected[1]},
         "actual": asdict(decision),
         "correct": actual == expected,
