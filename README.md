@@ -1,29 +1,57 @@
 # HackaThoni Companion
 
+> 🥈 **2nd place at HackaThoni 2026** (Alappuzha, 21–22 November 2026) · Track 02: Voice & Language, "Beyond English"
+
+**A voice companion that teaches people who struggle with computers where to click, in their own language.**
+Ask in Malayalam. A hand-drawn arrow points at the next button and the companion speaks the step aloud. You make every click yourself, so next time you can do it alone. It never clicks for you.
+
 ## ▶️ Demo video
 
 [![Watch the demo on YouTube](https://img.youtube.com/vi/YsxJdO9J-Xs/maxresdefault.jpg)](https://www.youtube.com/watch?v=YsxJdO9J-Xs)
 
 **[Watch the demo on YouTube](https://www.youtube.com/watch?v=YsxJdO9J-Xs)**: GasUndo, YouTube and Gmail, guided by voice in Malayalam.
 
+## Who it's for
+
+Parents and grandparents, and anyone who can read a letter but doesn't know that "Compose" means "write one". In Kerala, only about half of adults can send an email (MoSPI CMS 2025). The websites people need are in English, so they wait for someone to come home and click for them. The companion teaches them instead.
+
 ![GasUndo in Ernakulam with a Malayalam instruction pointing to the Search restaurants box](docs/screenshots/gasundo-preview.png)
 
-*Preview: the app's panel and arrow drawn onto a page capture.*
-
-Ask in Malayalam, “Is Bektash Kakkanad open?” The companion points to **Search restaurants** on GasUndo and tells you what to type. It teaches people who are getting comfortable with computers where to click. You make every click yourself, so next time you know where to go.
+*Preview: the app's panel and arrow drawn onto a page capture. Ask "Is Bektash Kakkanad open?" and it points to **Search restaurants** on GasUndo.*
 
 ## How it works
 
-1. Ask by voice. Sarvam Saaras transcribes your question.
-2. The Mac reads the controls on the current Safari page through macOS Accessibility.
-3. A hand-drawn arrow points to the next control. Sarvam Bulbul speaks the step in your language.
-4. You click. The companion checks what changed and points out the next step.
+1. **Ask by voice** in Malayalam or English. Sarvam Saaras turns speech into text.
+2. **It reads the page.** macOS Accessibility exposes the controls on the current Safari page, with no screenshots and no typed values.
+3. **It points and speaks.** A hand-drawn arrow marks the next control, and Sarvam Bulbul speaks the step in your language.
+4. **You click.** The companion sees what changed and moves to the next step.
 
-**Sites.** Check a restaurant report on GasUndo, find a song or slow down playback on YouTube, compose and send an email in Gmail, or practise finding your electricity bill on the KSEB Quick Pay practice copy.
+## What it can do today
 
-**Languages.** Malayalam and English have been tested live. Hindi and Kannada are implemented and covered by offline tests. Live verification for those two languages is pending. [View the language picker](docs/screenshots/language-picker.png)
+| Site | Try saying | What happens |
+|---|---|---|
+| **GasUndo** (built by HackaThoni organisers Vaishakh Suresh and Viswanatha Kartha V) | "Bektash Kakkanad thurannittundo?" / "Is Bektash Kakkanad open?" | District → Search restaurants → the restaurant → reads the report aloud, and says honestly when the report is old |
+| **YouTube** | "Darshana paattu play cheyyoo", then "Enikku ee video slow aakkanam" | Search → the official video (it handles ads and Skip) → Settings → Playback speed → "−" with a countdown to 0.75× |
+| **Gmail** | "Ente makanu oru email ayakkanam" / "I want to write a mail" | Compose → To → Subject → Message → Send → "Your email was sent" |
+| **KSEB Quick Pay** (practice copy) | "How do I pay my electricity bill?" | Walks the form up to the captcha, and never pays |
 
-**Privacy.** The page reader skips passwords and typed values. In Gmail it uses interface labels such as **Compose**, **To** and **Send**, and the **Message sent** confirmation. Your email subjects, recipients and message bodies stay out of the page data sent to the planner.
+YouTube also handles faster, pause and play, mute, Malayalam subtitles and full screen.
+
+**Languages.** Malayalam and English have been tested live. Hindi and Kannada are implemented and covered by offline tests; live verification is pending.
+
+**Privacy.** The reader skips passwords and typed values and reduces URLs to the site name. In Gmail it sees only interface labels such as **Compose**, **To** and **Send**, never your subjects, recipients or messages.
+
+## See the companion
+
+| Ready | Guiding (YouTube speed) | Done (Gmail) |
+|---|---|---|
+| <img src="docs/screenshots/idle-ml.png" width="260" alt="Panel ready for a question in Malayalam"> | <img src="docs/screenshots/guiding-ml.png" width="260" alt="Panel guiding: press minus, 3 more times"> | <img src="docs/screenshots/done-ml.png" width="260" alt="Panel confirming the email was sent"> |
+
+English versions: [guiding](docs/screenshots/guiding-en.png) · [done](docs/screenshots/done-en.png) · [language picker](docs/screenshots/language-picker.png)
+
+![KSEB Quick Pay practice page with the Consumer Number field outlined and its instruction beside it](docs/screenshots/kseb-preview.png)
+
+*Preview: the app's panel and arrow drawn onto a page capture.*
 
 ## How we use Sarvam AI
 
@@ -45,43 +73,37 @@ Devin repairs bugs found by our own QA, with a human reviewing and merging the f
 
 The rest of the companion was built with AI coding agents (Claude and Codex) orchestrated in Conductor. Devin's role is this verified repair loop.
 
-## Quick start on macOS
+## Quick start (macOS)
 
-From the repo root, with `uv` installed and `SARVAM_API_KEY` set in your environment, run the following. Open a supported page in Safari and grant Accessibility access to the launching terminal. Allow microphone access when prompted for voice input.
+You need `uv` installed and a Sarvam API key. Put `SARVAM_API_KEY=…` in a git-ignored `.env` at the repo root, open a supported page in Safari, and grant Accessibility access to your terminal. Allow microphone access when prompted.
 
 ```sh
 ./scripts/bootstrap.sh
-.venv/bin/python -m companion.app --task web_site --lang ml
+.venv/bin/python -m companion.app --task web_site --lang ml   # --lang ml | en | hi | kn
+.venv/bin/python scripts/qa/run.py                             # offline QA suite
 ```
 
-## See the companion
+## Project layout
 
-| Panel state | Malayalam | English |
-| --- | --- | --- |
-| Ready for a question | [Tap to speak](docs/screenshots/idle-ml.png) | |
-| Guiding on YouTube | [വേഗം കുറയ്ക്കാൻ](docs/screenshots/guiding-ml.png) | [Press − three more times](docs/screenshots/guiding-en.png) |
-| Gmail confirms Send | [ഇമെയിൽ അയച്ചു](docs/screenshots/done-ml.png) | [Your email was sent](docs/screenshots/done-en.png) |
+| Path | What's there |
+|---|---|
+| `companion/app.py` | The app: panel, mic, overlay, planning loop |
+| `companion/reader.py` | macOS Accessibility page reader, with the privacy gates |
+| `companion/sites/` | Site guides: GasUndo, YouTube, Gmail, KSEB |
+| `companion/planner_sarvam.py` | Sarvam LLM planner and intent fallback |
+| `companion/voice/` | Sarvam Saaras, Bulbul, Translate and Transliterate, plus the mic |
+| `companion/overlay/`, `companion/panel/` | Hand-drawn arrow and the "paper note" panel |
+| `scripts/qa/` | QA harness: offline replays plus live follow-the-pointer checks |
+| `tools/devin_case/` | Devin repair-case tool |
+| `docs/` | [Build board](docs/build-board.md), [pitch script](docs/pitch-script.md), site notes, screenshots |
 
-![KSEB Quick Pay practice page with the Consumer Number field outlined and its English instruction beside it](docs/screenshots/kseb-preview.png)
+## What's next
 
-*Preview: the app's panel and arrow drawn onto a page capture.*
+- Android, where most parents actually use the internet.
+- More everyday Indian sites, such as Aadhaar updates and bill payments, and guided practice for students learning computers.
+- More Indian languages through Sarvam.
+- Reviewing the Malayalam wording with native speakers, and testing with real families.
 
-## Original hackathon handoff
+---
 
-These early planning notes record the prototype stage. The [build board](docs/build-board.md) tracks subsequent work.
-
-Local handoff for the overnight Alappuzha hackathon. Start with [the local research](outputs/alappuzha-problem-research-2026-11-21.md) and [the companion build notes](<building companion app.md>).
-
-- The crop-loss application coach is the leading hypothesis. Pick the demo after checking where the real workflow stalls. The wage diary, houseboat receipt workflow, and ferry timetable are alternatives.
-- The native component baseline passed Accessibility reading, live pointer alignment, and manual click-through on a controlled fixture. Utter dictation, Sarvam calls, and the complete application are pending.
-- The selected sketch style is Plum `#674064`, roughness `1.9`, and playfulness `35`. The recorded [style settings](work/companion-style-preview/selected-style.json) and [verified visual preview](work/companion-style-preview/preview-selected.png) apply to the simulated screens.
-
-The web style preview is self-contained. From the repository root, run:
-
-```sh
-python3 -m http.server "${CONDUCTOR_PORT:-8000}" --bind 127.0.0.1 --directory work/companion-style-preview
-```
-
-The native fixture sources and test evidence are in [work/companion-components](work/companion-components/README.md). To repeat the native test on this Mac, use the already registered fixture in the original workspace documented in the build notes. Its macOS permission was previously tied to the exact signed build. For a fresh environment, treat the existing probe as reference code that expects the pinned H Companion checkout, its own Python virtual environment, and a locally built test bundle.
-
-In Conductor, choose the local project and start one coordinator chat using [HANDOFF.md](HANDOFF.md). The initial Git commit carries the selected notes, test evidence, fixture sources, and preview assets into any new worktree. Archived notes still link to some files in the original local workspace. The Git project starts without a remote.
+Built overnight on a houseboat in Alappuzha for HackaThoni 2026 by Abin Saji.
